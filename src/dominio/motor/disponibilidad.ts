@@ -6,6 +6,7 @@
 import type {
   EntradaDisponibilidad,
   FechaLocal,
+  HorarioSemanal,
   Instante,
   Intervalo,
   Ocupacion,
@@ -36,18 +37,22 @@ export function intervaloBloqueante(o: Ocupacion, quienPide: string | undefined,
   return { inicio: o.inicio, fin: new Date(o.fin.getTime() + buf * 60_000) };
 }
 
+/** Las franjas de apertura de un día, ya como intervalos absolutos en la zona de la sede. */
+export function franjasIntervalo(horario: HorarioSemanal, fecha: FechaLocal, tz: Tz): Intervalo[] {
+  const dia = diaSemanaDeFecha(fecha);
+  if (dia == null) return [];
+  const out: Intervalo[] = [];
+  for (const f of horario[dia]) {
+    const ini = instanteDeHoraLocal(fecha, f.desde, tz);
+    const fin = instanteDeHoraLocal(fecha, f.hasta, tz);
+    if (ini && fin && fin > ini) out.push({ inicio: ini, fin });
+  }
+  return out;
+}
+
 /** Intervalos libres de la sala ese día, ya descontado todo (§4.5). */
 export function libresDeSala(e: EntradaDisponibilidad): Intervalo[] {
-  const dia = diaSemanaDeFecha(e.fecha);
-  if (dia == null) return [];
-
-  const franjas: Intervalo[] = [];
-  for (const f of e.horario[dia]) {
-    const ini = instanteDeHoraLocal(e.fecha, f.desde, e.tz);
-    const fin = instanteDeHoraLocal(e.fecha, f.hasta, e.tz);
-    if (ini && fin && fin > ini) franjas.push({ inicio: ini, fin });
-  }
-
+  const franjas = franjasIntervalo(e.horario, e.fecha, e.tz);
   const bloqueantes = e.ocupaciones.map((o) => intervaloBloqueante(o, e.inquilinoId, e.politica));
   return restarTodos(franjas, bloqueantes);
 }

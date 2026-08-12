@@ -5,7 +5,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 
-const URL = process.env.DATABASE_URL ?? "postgresql://postgres@127.0.0.1:55432/motor";
+export const URL_DB = process.env.DATABASE_URL ?? "postgresql://postgres@127.0.0.1:55432/motor";
+const URL = URL_DB;
 
 const MIGRACION = join(
   import.meta.dirname,

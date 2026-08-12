@@ -18,8 +18,18 @@ Construido y en verde:
 - **Paso 1** — `intervalos.ts` + `zona.ts`, con **T-01…T-15**.
 - **Paso 2** — migración de `Ocupacion` con los dos `EXCLUDE` (en `prisma/`, T-29 y compañía).
 - **Paso 3** — `horarios.ts` + `disponibilidad.ts` + `limites.ts`, con **T-16…T-27**.
+- **Paso 4** — el camino de escritura con locks (T-28…T-38). Piezas:
+  - `motor/reserva.ts` (puro) — `evaluarReserva`: el veredicto del re-chequeo (`FUERA_DE_HORARIO`/`SLOT_OCUPADO`/`SOLAPA_INQUILINO`).
+  - `src/dominio/reserva-entrada.ts` (puro) — zod + `validarVentanaReserva` (POST forjado).
+  - `src/dominio/locks.ts` (puro) — `clavesDeLock`, única fábrica, ordenadas.
+  - `src/db/prisma.ts` + `src/db/errores.ts` — cliente + mapeo de `23P01`.
+  - `src/servicios/reservas/crear.ts` — `crearOcupacion`: locks → foto desde el `tx` → motor → escritura.
 
-Lo que sigue (paso 4): `server/reservas/crear.ts` con locks y mapeo de `23P01` (T-28…T-38).
+Lo que sigue (paso 5): series, cancelación, no-show, reubicación (T-39…T-50).
+
+> Nombres (§3.2): el camino de escritura vive en `src/servicios/` (§11.2), no en `src/server/`.
+> El guard de tenant (`$extends`) llega con la sesión en F2; hoy el `operadorId` explícito en
+> cada `where` es lo que sostiene el aislamiento.
 
 | Archivo | Responsabilidad | Invariantes (§14) |
 |---|---|---|
@@ -28,7 +38,8 @@ Lo que sigue (paso 4): `server/reservas/crear.ts` con locks y mapeo de `23P01` (
 | `intervalos.ts` | `seSolapan`, `restar`, `restarTodos`, `contiene`, `duracionMin` | 1 (única implementación del solapamiento; `contiene` la única contención con `<=`) |
 | `zona.ts` | `instanteDeHoraLocal`, `rangoDiaEnZona`, `formatHora`, `fechaEnZona`, `diaSemanaDeFecha`, `sumarDiasLocal`, `esFechaCalendarioValida`, `formatIcsUtc`, `horaAMinutos`, `minutosAHora`… | 2, 3, 6 |
 | `horarios.ts` | `parseHorarios`, `sanitizarHorarios`, `resumenHorarios`, `franjasDelDia`, `solapanHora`, `HORARIO_DEFAULT` | 16, 17, 18 |
-| `disponibilidad.ts` | `libresDeSala`, `slotsDe`, `intervaloBloqueante`, `evaluarVentana` | 7, 8, 13, 15, 16, 17, 18 |
+| `disponibilidad.ts` | `libresDeSala`, `slotsDe`, `franjasIntervalo`, `intervaloBloqueante`, `evaluarVentana` | 7, 8, 13, 15, 16, 17, 18 |
+| `reserva.ts` | `evaluarReserva` (re-chequeo puro dentro del lock) | 7, 8, 9, 10 |
 
 ## Tests (`npm test`)
 

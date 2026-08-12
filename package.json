@@ -8,14 +8,20 @@
   },
   "scripts": {
     "test": "node --test \"src/**/*.test.ts\"",
-    "test:db": "node --test \"tests/integracion/**/*.test.ts\"",
+    "test:db": "node --test --test-concurrency=1 \"tests/integracion/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run typecheck && npm test"
+    "verify": "npm run typecheck && npm test",
+    "postinstall": "prisma generate"
   },
   "devDependencies": {
     "@types/node": "^22",
     "@types/pg": "^8.21.0",
     "pg": "^8.23.0",
+    "prisma": "^6.19.3",
     "typescript": "^5.9"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "zod": "^4.4.3"
   }
 }
