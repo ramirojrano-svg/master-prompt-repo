@@ -1,0 +1,151 @@
+// prisma/schema.prisma — fuente de verdad de los MODELOS (§3.5, unificado a operadorId).
+//
+// Crece por fase (§16). Hoy contiene el núcleo del paso 2: tenant + espacio + inquilino
+// + Ocupacion. Auth (Usuario/UsuarioOperador), plata (Reserva/Asiento/Liquidacion),
+// Tarifa y Membresia entran en sus fases con sus migraciones.
+//
+// ⚠️ Lo que Prisma NO expresa vive en SQL a mano (prisma/migrations/0001_ocupacion_exclusion):
+// la extensión btree_gist, las columnas generadas `rango`/`ocupa`, y los dos EXCLUDE.
+// `prisma db push` los BORRA en silencio (lección §9) — usar `prisma migrate`, nunca push.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooler (modo transacción, puerto 6543 en Supabase)
+  directUrl = env("DIRECT_URL") // conexión directa, solo para migraciones
+}
+
+// ─────────────────────────────────────────────────────────────
+// TENANT
+// ─────────────────────────────────────────────────────────────
+model Operador {
+  id       String   @id @default(cuid())
+  nombre   String
+  pais     String   @default("AR") // define moneda, IVA y textos legales (§7)
+  moneda   String   @default("ARS")
+  slug     String   @unique
+  creadoEl DateTime @default(now()) @db.Timestamptz(6)
+
+  sedes       Sede[]
+  salas       Sala[]
+  inquilinos  Inquilino[]
+  ocupaciones Ocupacion[]
+}
+
+// ─────────────────────────────────────────────────────────────
+// ESPACIO
+// ─────────────────────────────────────────────────────────────
+model Sede {
+  id          String  @id @default(cuid())
+  operadorId  String
+  nombre      String
+  direccion   String  @default("")
+  zonaHoraria String // OBLIGATORIO (regla dura §14.4). Se deriva del país en el alta, sin default de esquema.
+  activa      Boolean @default(true)
+
+  operador Operador @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+  salas    Sala[]
+
+  @@unique([operadorId, id]) // habilita las FK compuestas (§3.6)
+  @@index([operadorId])
+}
+
+model Sala {
+  id          String    @id @default(cuid())
+  operadorId  String
+  sedeId      String
+  nombre      String
+  activa      Boolean   @default(true) // baja lógica: NUNCA borrar una sala con historia
+  archivadaEl DateTime? @db.Timestamptz(6)
+
+  operador    Operador    @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+  // NoAction (no SetNull): con FK compuesta y operadorId NOT NULL, SetNull falla con 23502 (§3.6).
+  sede        Sede        @relation(fields: [operadorId, sedeId], references: [operadorId, id], onDelete: NoAction)
+  ocupaciones Ocupacion[]
+
+  @@unique([operadorId, id])
+  @@index([operadorId, sedeId, activa])
+}
+
+// ─────────────────────────────────────────────────────────────
+// INQUILINO
+// ─────────────────────────────────────────────────────────────
+model Inquilino {
+  id         String          @id @default(cuid())
+  operadorId String
+  nombre     String
+  estado     EstadoInquilino @default(activo)
+
+  operador    Operador    @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+  ocupaciones Ocupacion[]
+
+  @@unique([operadorId, id])
+  @@index([operadorId, estado])
+}
+
+enum EstadoInquilino {
+  activo
+  suspendido
+  baja
+}
+
+// ─────────────────────────────────────────────────────────────
+// TIEMPO — una sola tabla ocupa la sala (§4.8.2)
+// ─────────────────────────────────────────────────────────────
+enum TipoOcupacion {
+  reserva
+  hold
+  bloqueo
+  mantenimiento
+
+  @@map("tipo_ocupacion")
+}
+
+enum EstadoOcupacion {
+  solicitada
+  confirmada
+  en_curso
+  usada
+  no_show
+  cancelada
+  rechazada
+  reubicada
+  expirada
+
+  @@map("estado_ocupacion")
+}
+
+model Ocupacion {
+  id                 String          @id @default(cuid())
+  operadorId         String
+  sedeId             String? // NULL = bloqueo global (todo el operador)
+  salaId             String? // NULL solo si tipo='bloqueo'
+  inquilinoId        String? // NULL en bloqueo y mantenimiento
+  tipo               TipoOcupacion
+  estado             EstadoOcupacion @default(confirmada)
+  inicio             DateTime        @db.Timestamptz(6) // SIEMPRE UTC (regla 2)
+  fin                DateTime        @db.Timestamptz(6) // exclusivo: [inicio, fin)
+  bufferMin          Int             @default(0) @db.SmallInt // ESTAMPADO al nacer (§4.6)
+  tzSede             String // ESTAMPADO al nacer (§4.3.3)
+  bloqueaProfesional Boolean         @default(true) // estampado desde la config del centro
+  serieId            String?
+  reemplazaAId       String?
+  expiraAt           DateTime?       @db.Timestamptz(6) // solo tipo='hold'
+  creadoEl           DateTime        @default(now()) @db.Timestamptz(6)
+
+  // Columnas GENERADAS `rango` (tstzrange '[)') y `ocupa` (estado IN (...)) y los dos
+  // EXCLUDE viven en la migración SQL a mano, no acá: Prisma no los expresa.
+
+  operador   Operador   @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+  sala       Sala?      @relation(fields: [operadorId, salaId], references: [operadorId, id], onDelete: NoAction)
+  inquilino  Inquilino? @relation(fields: [operadorId, inquilinoId], references: [operadorId, id], onDelete: NoAction)
+  reemplazaA Ocupacion? @relation("Reubicacion", fields: [reemplazaAId], references: [id], onDelete: NoAction)
+  reemplazos Ocupacion[] @relation("Reubicacion")
+
+  @@index([operadorId, salaId, inicio])
+  @@index([operadorId, inquilinoId, inicio])
+  @@index([serieId])
+}
