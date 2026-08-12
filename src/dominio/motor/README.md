@@ -24,8 +24,14 @@ Construido y en verde:
   - `src/dominio/locks.ts` (puro) — `clavesDeLock`, única fábrica, ordenadas.
   - `src/db/prisma.ts` + `src/db/errores.ts` — cliente + mapeo de `23P01`.
   - `src/servicios/reservas/crear.ts` — `crearOcupacion`: locks → foto desde el `tx` → motor → escritura.
+- **Paso 5** — series, cancelación, no-show, reubicación (T-39…T-50). Piezas:
+  - `motor/serie.ts` (puro) — `planificarSerie`: preview materializable, cada ocurrencia desde su fecha local (DST-correcto).
+  - `motor/cancelacion.ts` (puro) — `calcularCancelacion` (escalones, operador=100%, reintegro a la misma bolsa), `calcularNoShow`. Plata en BigInt.
+  - `src/servicios/reservas/`: `expandir-serie.ts` (locks de todas las ocurrencias, modos parcial/todo_o_nada), `reubicar.ts` (par `reubicada` + fila nueva), `editar.ts` (solo campos no temporales), `no-show.ts` (transición de estado).
 
-Lo que sigue (paso 5): series, cancelación, no-show, reubicación (T-39…T-50).
+Lo que sigue (paso 6): lista de espera y cupo (T-51…T-58). El cupo de horas (BolsaAsiento) y
+la auditoría (Evento) llegan con sus módulos; el reintegro de cupo del no-show/cancelación se
+deriva de ahí (hoy `calcularCancelacion` da el número, el ledger lo asienta).
 
 > Nombres (§3.2): el camino de escritura vive en `src/servicios/` (§11.2), no en `src/server/`.
 > El guard de tenant (`$extends`) llega con la sesión en F2; hoy el `operadorId` explícito en
@@ -40,6 +46,8 @@ Lo que sigue (paso 5): series, cancelación, no-show, reubicación (T-39…T-50)
 | `horarios.ts` | `parseHorarios`, `sanitizarHorarios`, `resumenHorarios`, `franjasDelDia`, `solapanHora`, `HORARIO_DEFAULT` | 16, 17, 18 |
 | `disponibilidad.ts` | `libresDeSala`, `slotsDe`, `franjasIntervalo`, `intervaloBloqueante`, `evaluarVentana` | 7, 8, 13, 15, 16, 17, 18 |
 | `reserva.ts` | `evaluarReserva` (re-chequeo puro dentro del lock) | 7, 8, 9, 10 |
+| `serie.ts` | `planificarSerie` (preview de recurrencia, DST-correcto) | 2, 6, 35 |
+| `cancelacion.ts` | `calcularCancelacion`, `calcularNoShow` (escalones, reintegro, BigInt) | 27, 28, 29 |
 
 ## Tests (`npm test`)
 

@@ -133,6 +133,8 @@ model Ocupacion {
   bloqueaProfesional Boolean         @default(true) // estampado desde la config del centro
   serieId            String?
   reemplazaAId       String?
+  motivo             String? // bloqueo/mantenimiento/reubicación/no-show
+  notaInterna        String? // libre, del operador; nunca datos de paciente (§3.3)
   expiraAt           DateTime?       @db.Timestamptz(6) // solo tipo='hold'
   creadoEl           DateTime        @default(now()) @db.Timestamptz(6)
 

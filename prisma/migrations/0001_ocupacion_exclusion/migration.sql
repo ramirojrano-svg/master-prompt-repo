@@ -86,6 +86,8 @@ CREATE TABLE "Ocupacion" (
     "bloqueaProfesional" BOOLEAN NOT NULL DEFAULT true,
     "serieId" TEXT,
     "reemplazaAId" TEXT,
+    "motivo" TEXT,
+    "notaInterna" TEXT,
     "expiraAt" TIMESTAMPTZ(6),
     "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

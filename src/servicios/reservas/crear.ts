@@ -14,14 +14,8 @@ import { ReservaInput, validarVentanaReserva } from "../../dominio/reserva-entra
 import { evaluarVentana } from "../../dominio/motor/disponibilidad.ts";
 import { LOOKBACK_MIN } from "../../dominio/motor/limites.ts";
 import { evaluarReserva } from "../../dominio/motor/reserva.ts";
-import type { HorarioSemanal, Ocupacion, PoliticaCentro } from "../../dominio/motor/tipos.ts";
-
-const OCUPAN: EstadoOcupacion[] = [
-  EstadoOcupacion.confirmada,
-  EstadoOcupacion.en_curso,
-  EstadoOcupacion.usada,
-  EstadoOcupacion.no_show,
-];
+import type { HorarioSemanal, PoliticaCentro } from "../../dominio/motor/tipos.ts";
+import { aMotor, OCUPAN } from "./comun.ts";
 
 export type CtxReserva = {
   operadorId: string;
@@ -44,12 +38,6 @@ export type ErrorReserva =
   | "SOLAPA_INQUILINO";
 
 export type ResultadoCrear = { ok: true; id: string } | { ok: false; error: ErrorReserva };
-
-type FilaOcupacion = { id: string; salaId: string | null; inquilinoId: string | null; tipo: TipoOcupacion; inicio: Date; fin: Date; bufferMin: number };
-
-function aMotor(o: FilaOcupacion): Ocupacion {
-  return { id: o.id, salaId: o.salaId, inquilinoId: o.inquilinoId, tipo: o.tipo, inicio: o.inicio, fin: o.fin, bufferMin: o.bufferMin };
-}
 
 export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaClient = prisma): Promise<ResultadoCrear> {
   const ahora = ctx.ahora ?? new Date();
