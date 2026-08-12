@@ -19,6 +19,31 @@ function fuentes(dir: string): string[] {
   return out;
 }
 
+/**
+ * Devuelve las líneas del archivo con los comentarios borrados (preservando la cuenta de
+ * líneas). El lint mira CÓDIGO, no prosa: una zona de ejemplo en un docstring es legítima;
+ * un offset fijo en un string de código, no — y ese sigue quedando visible.
+ */
+function codigoPorLinea(txt: string): string[] {
+  let enBloque = false;
+  return txt.split("\n").map((linea) => {
+    let out = linea;
+    if (enBloque) {
+      const cierre = out.indexOf("*/");
+      if (cierre === -1) return "";
+      out = out.slice(cierre + 2);
+      enBloque = false;
+    }
+    out = out.replace(/\/\*[\s\S]*?\*\//g, ""); // bloque que abre y cierra en la misma línea
+    const abre = out.indexOf("/*");
+    if (abre !== -1) {
+      enBloque = true;
+      out = out.slice(0, abre);
+    }
+    return out.replace(/(^|[^:])\/\/.*$/, "$1"); // comentario de línea, sin romper http://
+  });
+}
+
 // Cada patrón prohibido con el motivo por el que muerde (§4.3.1).
 const PROHIBIDOS: { re: RegExp; motivo: string }[] = [
   { re: /America\//, motivo: "zona IANA clavada: la tz entra por parámetro, nunca hardcodeada" },
@@ -30,7 +55,7 @@ const PROHIBIDOS: { re: RegExp; motivo: string }[] = [
 test("T-15 · ningún archivo fuente tiene zonas clavadas ni offsets fijos", () => {
   const hallazgos: string[] = [];
   for (const archivo of fuentes(SRC)) {
-    const lineas = readFileSync(archivo, "utf8").split("\n");
+    const lineas = codigoPorLinea(readFileSync(archivo, "utf8"));
     lineas.forEach((linea, i) => {
       for (const { re, motivo } of PROHIBIDOS) {
         if (re.test(linea)) {

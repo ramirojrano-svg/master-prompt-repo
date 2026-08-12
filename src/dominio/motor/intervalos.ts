@@ -32,3 +32,13 @@ export function restarTodos(base: Intervalo[], quitar: Intervalo[]): Intervalo[]
 export function duracionMin(i: Intervalo): number {
   return Math.round((i.fin.getTime() - i.inicio.getTime()) / 60_000);
 }
+
+/**
+ * ¿`dentro` está contenido en `cont`? Semiabierto: cont.inicio <= dentro.inicio y
+ * dentro.fin <= cont.fin. Vive ACÁ (y no suelto en disponibilidad.ts) porque es la
+ * única comparación de rango con `<=` permitida en el repo: la contención, no el
+ * solapamiento. Todo lo demás usa seSolapan() (§4.2).
+ */
+export function contiene(cont: Intervalo, dentro: Intervalo): boolean {
+  return cont.inicio <= dentro.inicio && dentro.fin <= cont.fin;
+}

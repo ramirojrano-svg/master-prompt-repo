@@ -6,7 +6,7 @@
 // Ninguna función de este archivo tiene default de zona: `tz` es parámetro
 // obligatorio y el tipo rompe si falta (invariante §14.3).
 
-import type { FechaLocal, HoraPared, Instante, Tz } from "./tipos.ts";
+import type { Dia, FechaLocal, HoraPared, Instante, Tz } from "./tipos.ts";
 
 const MIN = 60_000; // ms en un minuto
 const DIA_MS = 86_400_000; // 24h fijas SOLO para muestrear offsets vecinos (no para calcular días)
@@ -152,9 +152,20 @@ export function rangoDiaEnZona(fecha: FechaLocal, tz: Tz): { inicio: Instante; f
  * Día de la semana (0 = domingo) de una fecha local. El mediodía UTC es inmune a
  * cualquier offset del planeta. null si la fecha no existe.
  */
-export function diaSemanaDeFecha(fecha: FechaLocal): number | null {
+export function diaSemanaDeFecha(fecha: FechaLocal): Dia | null {
   if (!esFechaCalendarioValida(fecha)) return null;
-  return new Date(`${fecha}T12:00:00Z`).getUTCDay();
+  return new Date(`${fecha}T12:00:00Z`).getUTCDay() as Dia;
+}
+
+/**
+ * Suma `dias` a una fecha local, con el mediodía UTC como pivote. Inmune al DST porque
+ * la aritmética y la lectura son en UTC: NUNCA sumar días a un INSTANTE local (el día del
+ * cambio dura 23 o 25 h). La usan el horizonte de reserva y la expansión de series (§4.9).
+ */
+export function sumarDiasLocal(fecha: FechaLocal, dias: number): FechaLocal | null {
+  if (!esFechaCalendarioValida(fecha)) return null;
+  const d = new Date(new Date(`${fecha}T12:00:00Z`).getTime() + dias * 86_400_000);
+  return `${String(d.getUTCFullYear()).padStart(4, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
 /**
