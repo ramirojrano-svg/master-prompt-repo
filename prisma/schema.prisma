@@ -38,6 +38,7 @@ model Operador {
   usuarios      UsuarioOperador[]
   asientos      Asiento[]
   liquidaciones Liquidacion[]
+  membresias    Membresia[]
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -131,9 +132,37 @@ model Inquilino {
   operador    Operador    @relation(fields: [operadorId], references: [id], onDelete: Cascade)
   ocupaciones Ocupacion[]
   usuario     UsuarioOperador?
+  membresias  Membresia[]
 
   @@unique([operadorId, id])
   @@index([operadorId, estado])
+}
+
+// ─────────────────────────────────────────────────────────────
+// MEMBRESÍA (§3.5) — plan mensual con cupo de horas. vigenteHasta es FECHA, no booleano
+// (§9 regla 11): null o pasado => NO vigente (fail-closed). Se corre hacia adelante con cada
+// cobro. membresiaVigente() (§4.12) es el ÚNICO predicado que la lee.
+// ─────────────────────────────────────────────────────────────
+model Membresia {
+  id                  String    @id @default(cuid())
+  operadorId          String
+  inquilinoId         String
+  nombre              String
+  precioMensualCent   BigInt // centavos
+  minutosIncluidos    Int       @default(0) // 0 = puro pago por uso
+  precioExcedenteCent BigInt?
+  salaExclusivaId     String?
+  diaDeCobro          Int       @default(1)
+  estado              String    @default("activa") // activa | suspendida | baja
+  vigenteDesde        DateTime  @db.Timestamptz(6)
+  vigenteHasta        DateTime? @db.Timestamptz(6) // null/pasado = no vigente (fail-closed)
+  cancelaAlFin        Boolean   @default(false)
+  creadoEl            DateTime  @default(now()) @db.Timestamptz(6)
+
+  operador  Operador  @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+  inquilino Inquilino @relation(fields: [operadorId, inquilinoId], references: [operadorId, id], onDelete: NoAction)
+
+  @@index([operadorId, inquilinoId, vigenteHasta])
 }
 
 enum EstadoInquilino {

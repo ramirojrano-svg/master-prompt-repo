@@ -102,6 +102,26 @@ CREATE TABLE "Inquilino" (
 );
 
 -- CreateTable
+CREATE TABLE "Membresia" (
+    "id" TEXT NOT NULL,
+    "operadorId" TEXT NOT NULL,
+    "inquilinoId" TEXT NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "precioMensualCent" BIGINT NOT NULL,
+    "minutosIncluidos" INTEGER NOT NULL DEFAULT 0,
+    "precioExcedenteCent" BIGINT,
+    "salaExclusivaId" TEXT,
+    "diaDeCobro" INTEGER NOT NULL DEFAULT 1,
+    "estado" TEXT NOT NULL DEFAULT 'activa',
+    "vigenteDesde" TIMESTAMPTZ(6) NOT NULL,
+    "vigenteHasta" TIMESTAMPTZ(6),
+    "cancelaAlFin" BOOLEAN NOT NULL DEFAULT false,
+    "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Membresia_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Ocupacion" (
     "id" TEXT NOT NULL,
     "operadorId" TEXT NOT NULL,
@@ -239,6 +259,9 @@ CREATE INDEX "Inquilino_operadorId_estado_idx" ON "Inquilino"("operadorId", "est
 CREATE UNIQUE INDEX "Inquilino_operadorId_id_key" ON "Inquilino"("operadorId", "id");
 
 -- CreateIndex
+CREATE INDEX "Membresia_operadorId_inquilinoId_vigenteHasta_idx" ON "Membresia"("operadorId", "inquilinoId", "vigenteHasta");
+
+-- CreateIndex
 CREATE INDEX "Ocupacion_operadorId_salaId_inicio_idx" ON "Ocupacion"("operadorId", "salaId", "inicio");
 
 -- CreateIndex
@@ -294,6 +317,12 @@ ALTER TABLE "Sala" ADD CONSTRAINT "Sala_operadorId_sedeId_fkey" FOREIGN KEY ("op
 
 -- AddForeignKey
 ALTER TABLE "Inquilino" ADD CONSTRAINT "Inquilino_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Membresia" ADD CONSTRAINT "Membresia_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Membresia" ADD CONSTRAINT "Membresia_operadorId_inquilinoId_fkey" FOREIGN KEY ("operadorId", "inquilinoId") REFERENCES "Inquilino"("operadorId", "id") ON DELETE NO ACTION ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Ocupacion" ADD CONSTRAINT "Ocupacion_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
