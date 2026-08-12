@@ -12,3 +12,17 @@ export function esChoqueDeOcupacion(e: unknown): "sala" | "inquilino" | null {
   if (!esExclusion) return null;
   return msg.includes("ocupacion_inquilino_sin_solape") ? "inquilino" : "sala";
 }
+
+function codigoPrisma(e: unknown): string | undefined {
+  return (e as { code?: string })?.code;
+}
+
+/** P2002: violación de unique. La renotificación / el otorgamiento repetido se tragan. */
+export function esUniqueViolado(e: unknown): boolean {
+  return codigoPrisma(e) === "P2002";
+}
+
+/** P2034: conflicto de transacción Serializable. Se reintenta (§5.2). */
+export function esConflictoSerializable(e: unknown): boolean {
+  return codigoPrisma(e) === "P2034";
+}

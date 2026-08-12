@@ -29,9 +29,24 @@ Construido y en verde:
   - `motor/cancelacion.ts` (puro) — `calcularCancelacion` (escalones, operador=100%, reintegro a la misma bolsa), `calcularNoShow`. Plata en BigInt.
   - `src/servicios/reservas/`: `expandir-serie.ts` (locks de todas las ocurrencias, modos parcial/todo_o_nada), `reubicar.ts` (par `reubicada` + fila nueva), `editar.ts` (solo campos no temporales), `no-show.ts` (transición de estado).
 
-Lo que sigue (paso 6): lista de espera y cupo (T-51…T-58). El cupo de horas (BolsaAsiento) y
-la auditoría (Evento) llegan con sus módulos; el reintegro de cupo del no-show/cancelación se
-deriva de ahí (hoy `calcularCancelacion` da el número, el ledger lo asienta).
+- **Paso 6** — lista de espera y cupo (T-51…T-58). Piezas:
+  - `motor/zona.ts` → `periodoDeInstante`: el corte contable en la zona de la sede (T-58).
+  - `src/servicios/reservas/hold.ts` + `espera.ts`: el hold es una fila REAL que ocupa
+    (reusa `crearOcupacion` con `tipo='hold'`); limpieza perezosa de holds vencidos adentro
+    del lock; tope de esperas que cuenta solo futuro (T-51, T-52, T-53).
+  - `src/servicios/plata/cupo.ts`: el libro de MINUTOS (`BolsaAsiento`). Saldo derivado,
+    otorgamiento perezoso por diferencia (idempotente), consumo en `Serializable` con retry
+    `P2034`, dos bolsas (mes/pack), reintegro a la misma bolsa (T-54…T-57).
+
+**El motor está completo.** Lo que sigue (§16 paso 7) es la primera pantalla.
+
+Corrección al master (§4.8.3): el CHECK `ocupacion_bloqueo_no_mixto` prohibía una fila con
+sala + inquilino salvo `reserva`, pero un **hold** legítimamente tiene ambos. Se amplió a
+`tipo NOT IN ('reserva','hold')`: la regla "no mixto" apunta a bloqueo/mantenimiento.
+
+El cargo del excedente, la auditoría (`Evento`) y el asiento de plata (`Asiento`) llegan con
+sus módulos (F3/plata); el cupo ya está, y `calcularCancelacion` ya da los números que el
+ledger asentará.
 
 > Nombres (§3.2): el camino de escritura vive en `src/servicios/` (§11.2), no en `src/server/`.
 > El guard de tenant (`$extends`) llega con la sesión en F2; hoy el `operadorId` explícito en
@@ -48,6 +63,7 @@ deriva de ahí (hoy `calcularCancelacion` da el número, el ledger lo asienta).
 | `reserva.ts` | `evaluarReserva` (re-chequeo puro dentro del lock) | 7, 8, 9, 10 |
 | `serie.ts` | `planificarSerie` (preview de recurrencia, DST-correcto) | 2, 6, 35 |
 | `cancelacion.ts` | `calcularCancelacion`, `calcularNoShow` (escalones, reintegro, BigInt) | 27, 28, 29 |
+| `zona.ts` (+) | `periodoDeInstante` (corte contable en la zona del centro) | 2, 30 |
 
 ## Tests (`npm test`)
 

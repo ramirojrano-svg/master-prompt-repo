@@ -39,8 +39,15 @@ export type ErrorReserva =
 
 export type ResultadoCrear = { ok: true; id: string } | { ok: false; error: ErrorReserva };
 
-export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaClient = prisma): Promise<ResultadoCrear> {
+/** Opciones para reutilizar el camino de escritura como HOLD de lista de espera (§4.11). */
+export type CrearOpts = { tipo?: "reserva" | "hold"; expiraAt?: Date };
+
+export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaClient = prisma, opts: CrearOpts = {}): Promise<ResultadoCrear> {
   const ahora = ctx.ahora ?? new Date();
+  const esHold = opts.tipo === "hold";
+  const tipoFila = esHold ? TipoOcupacion.hold : TipoOcupacion.reserva;
+  // El eje inquilino (constraint y motor) es SOLO para reservas: un hold ocupa la sala, no la agenda del profesional.
+  const bloqueaProf = esHold ? false : ctx.bloqueaProfesional;
 
   // 1. Borde de entrada (módulo puro, testeado).
   const p = ReservaInput.safeParse(raw);
@@ -73,6 +80,14 @@ export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaCl
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${c}))`;
       }
 
+      // 4a-bis. Limpieza PEREZOSA de holds vencidos que pisan esta sala (§4.11): se marcan
+      //         expirada adentro del lock y dejan de ocupar. Depender solo del cron dejaría
+      //         slots muertos si una corrida se cae.
+      await tx.ocupacion.updateMany({
+        where: { operadorId: ctx.operadorId, salaId: sala.id, tipo: TipoOcupacion.hold, estado: EstadoOcupacion.confirmada, expiraAt: { lt: ahora } },
+        data: { estado: EstadoOcupacion.expirada },
+      });
+
       // 4b. Foto DESDE la transacción (no una calculada antes del lock).
       const [ocupSala, ocupInq] = await Promise.all([
         tx.ocupacion.findMany({
@@ -91,7 +106,7 @@ export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaCl
         politica: ctx.politica,
         intervalo: { inicio: v.inicio, fin: v.fin },
         inquilinoId: ctx.inquilinoId,
-        bloqueaProfesional: ctx.bloqueaProfesional,
+        bloqueaProfesional: bloqueaProf,
         ocupacionesSala: ocupSala.map(aMotor),
         ocupacionesInquilino: ocupInq.map(aMotor),
       });
@@ -104,13 +119,14 @@ export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaCl
           sedeId: sala.sedeId,
           salaId: sala.id,
           inquilinoId: ctx.inquilinoId,
-          tipo: TipoOcupacion.reserva,
+          tipo: tipoFila,
           estado: EstadoOcupacion.confirmada,
           inicio: v.inicio,
           fin: v.fin,
           bufferMin: ctx.politica.bufferMin, // ESTAMPADO al nacer
           tzSede: tz,
-          bloqueaProfesional: ctx.bloqueaProfesional,
+          bloqueaProfesional: bloqueaProf,
+          expiraAt: opts.expiraAt ?? null, // requerido para tipo='hold' (CHECK)
         },
         select: { id: true },
       });

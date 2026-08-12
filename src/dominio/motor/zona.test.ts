@@ -8,6 +8,7 @@ import {
   formatHora,
   formatIcsUtc,
   instanteDeHoraLocal,
+  periodoDeInstante,
   rangoDiaEnZona,
 } from "./zona.ts";
 
@@ -88,4 +89,16 @@ test("fechaEnZona devuelve el día local correcto en el borde de medianoche", ()
   // 2026-09-01 00:30 hora de la sede AR cae en 2026-09-01 local aunque en UTC sea 03:30Z.
   const i = instanteDeHoraLocal("2026-09-01", "00:30", AR);
   assert.equal(fechaEnZona(i as Date, AR), "2026-09-01");
+});
+
+test("T-58 · el período se corta en la zona de la sede (31/8 23:30 AR => 2026-08)", () => {
+  const i = instanteDeHoraLocal("2026-08-31", "23:30", AR)!;
+  assert.equal(periodoDeInstante(i, AR), "2026-08");
+});
+
+test("mismo instante, sedes en husos distintos, pueden caer en MESES distintos (§5.10)", () => {
+  // 04:00Z: AR (-3) => 01:00 del 1/9 ; MX (-6) => 22:00 del 31/8
+  const i = new Date("2026-09-01T04:00:00Z");
+  assert.equal(periodoDeInstante(i, AR), "2026-09");
+  assert.equal(periodoDeInstante(i, MX), "2026-08");
 });

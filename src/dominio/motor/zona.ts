@@ -169,6 +169,16 @@ export function sumarDiasLocal(fecha: FechaLocal, dias: number): FechaLocal | nu
 }
 
 /**
+ * Período contable 'YYYY-MM' de un instante, EN LA ZONA DEL CENTRO (§5.12). Una reserva del
+ * 31 a las 23:30 hora de la sede cae en el mes correcto; `new Date(año, mes)` en un server UTC
+ * la pondría en el mes siguiente. El caller pasa este período al ledger de minutos y de plata.
+ */
+export function periodoDeInstante(instante: Instante, tz: Tz): string {
+  const p = partesEnZona(instante, tz);
+  return `${String(p.year).padStart(4, "0")}-${String(p.month).padStart(2, "0")}`;
+}
+
+/**
  * DTSTART de un ICS: UTC con Z (formato 'YYYYMMDDTHHMMSSZ'). El instante ya está
  * en UTC; el ICS lo lleva absoluto y el cliente lo muestra en su zona. El artefacto
  * donde el error de zona se hace visible (§6.14): probado con dos zonas en los tests.

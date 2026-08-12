@@ -29,10 +29,12 @@ model Operador {
   slug     String   @unique
   creadoEl DateTime @default(now()) @db.Timestamptz(6)
 
-  sedes       Sede[]
-  salas       Sala[]
-  inquilinos  Inquilino[]
-  ocupaciones Ocupacion[]
+  sedes         Sede[]
+  salas         Sala[]
+  inquilinos    Inquilino[]
+  ocupaciones   Ocupacion[]
+  esperas       EsperaSlot[]
+  bolsaAsientos BolsaAsiento[]
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -150,4 +152,50 @@ model Ocupacion {
   @@index([operadorId, salaId, inicio])
   @@index([operadorId, inquilinoId, inicio])
   @@index([serieId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// LISTA DE ESPERA (§4.11)
+// ─────────────────────────────────────────────────────────────
+model EsperaSlot {
+  id           String   @id @default(cuid())
+  operadorId   String
+  inquilinoId  String
+  salaId       String? // null = cualquiera del centro
+  fechaDesde   DateTime @db.Timestamptz(6)
+  fechaHasta   DateTime @db.Timestamptz(6)
+  franjaDesde  String? // 'HH:MM' hora local de la sede
+  franjaHasta  String?
+  vigenteHasta DateTime @db.Timestamptz(6)
+  activo       Boolean  @default(true)
+  pases        Int      @default(0) // tras 3 pases sin respuesta => inactivo
+  creadoEl     DateTime @default(now()) @db.Timestamptz(6)
+
+  operador Operador @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+
+  // el tope cuenta SOLO futuro: se filtra por fechaHasta >= ahora
+  @@index([operadorId, activo, fechaHasta])
+}
+
+// ─────────────────────────────────────────────────────────────
+// LIBRO DE MINUTOS (§5.2) — append-only. NUNCA se suma con la plata (Asiento).
+// bolsa='mes' vence solo (el saldo filtra por periodo actual); bolsa='pack' no vence
+// (periodo = '0000-00'). Cero crons de expiración.
+// ─────────────────────────────────────────────────────────────
+model BolsaAsiento {
+  id          String   @id @default(cuid())
+  operadorId  String
+  inquilinoId String
+  bolsa       String   @db.VarChar(8) // 'mes' | 'pack'
+  minutos     Int // + alta, − consumo
+  periodo     String   @db.VarChar(7) // 'YYYY-MM' en la tz del CENTRO, pasado por el caller
+  origenId    String? // membresiaId o bonoId
+  reservaId   String?
+  clave       String // idempotente: '<concepto>:<id>[:<periodo>]'
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  operador Operador @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+
+  @@unique([operadorId, clave])
+  @@index([operadorId, inquilinoId, bolsa, periodo])
 }

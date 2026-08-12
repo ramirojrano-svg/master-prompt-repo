@@ -94,6 +94,40 @@ CREATE TABLE "Ocupacion" (
     CONSTRAINT "Ocupacion_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "EsperaSlot" (
+    "id" TEXT NOT NULL,
+    "operadorId" TEXT NOT NULL,
+    "inquilinoId" TEXT NOT NULL,
+    "salaId" TEXT,
+    "fechaDesde" TIMESTAMPTZ(6) NOT NULL,
+    "fechaHasta" TIMESTAMPTZ(6) NOT NULL,
+    "franjaDesde" TEXT,
+    "franjaHasta" TEXT,
+    "vigenteHasta" TIMESTAMPTZ(6) NOT NULL,
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "pases" INTEGER NOT NULL DEFAULT 0,
+    "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "EsperaSlot_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "BolsaAsiento" (
+    "id" TEXT NOT NULL,
+    "operadorId" TEXT NOT NULL,
+    "inquilinoId" TEXT NOT NULL,
+    "bolsa" VARCHAR(8) NOT NULL,
+    "minutos" INTEGER NOT NULL,
+    "periodo" VARCHAR(7) NOT NULL,
+    "origenId" TEXT,
+    "reservaId" TEXT,
+    "clave" TEXT NOT NULL,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "BolsaAsiento_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "Operador_slug_key" ON "Operador"("slug");
 
@@ -124,6 +158,15 @@ CREATE INDEX "Ocupacion_operadorId_inquilinoId_inicio_idx" ON "Ocupacion"("opera
 -- CreateIndex
 CREATE INDEX "Ocupacion_serieId_idx" ON "Ocupacion"("serieId");
 
+-- CreateIndex
+CREATE INDEX "EsperaSlot_operadorId_activo_fechaHasta_idx" ON "EsperaSlot"("operadorId", "activo", "fechaHasta");
+
+-- CreateIndex
+CREATE INDEX "BolsaAsiento_operadorId_inquilinoId_bolsa_periodo_idx" ON "BolsaAsiento"("operadorId", "inquilinoId", "bolsa", "periodo");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "BolsaAsiento_operadorId_clave_key" ON "BolsaAsiento"("operadorId", "clave");
+
 -- AddForeignKey
 ALTER TABLE "Sede" ADD CONSTRAINT "Sede_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -148,6 +191,12 @@ ALTER TABLE "Ocupacion" ADD CONSTRAINT "Ocupacion_operadorId_inquilinoId_fkey" F
 -- AddForeignKey
 ALTER TABLE "Ocupacion" ADD CONSTRAINT "Ocupacion_reemplazaAId_fkey" FOREIGN KEY ("reemplazaAId") REFERENCES "Ocupacion"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
 
+-- AddForeignKey
+ALTER TABLE "EsperaSlot" ADD CONSTRAINT "EsperaSlot_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "BolsaAsiento" ADD CONSTRAINT "BolsaAsiento_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- [2] INVARIANTES A MANO (lo que Prisma no expresa)
@@ -160,9 +209,10 @@ ALTER TABLE "Ocupacion"
   ADD CONSTRAINT "ocupacion_rango_valido"   CHECK ("fin" > "inicio"),
   ADD CONSTRAINT "ocupacion_dur_max"        CHECK ("fin" <= "inicio" + interval '12 hours'),
   ADD CONSTRAINT "ocupacion_sala_requerida" CHECK ("tipo" = 'bloqueo' OR "salaId" IS NOT NULL),
-  -- una fila con sala Y inquilino solo es válida si es reserva (no bloqueo/mantenimiento mixto)
+  -- sala Y inquilino juntos solo valen para reserva/hold (ambos atan inquilino+sala). Un
+  -- bloqueo/mantenimiento con ambos sería "mixto" y no existe (§4.7.3). El hold SÍ tiene los dos.
   ADD CONSTRAINT "ocupacion_bloqueo_no_mixto"
-    CHECK (NOT ("salaId" IS NOT NULL AND "inquilinoId" IS NOT NULL AND "tipo" <> 'reserva')),
+    CHECK (NOT ("salaId" IS NOT NULL AND "inquilinoId" IS NOT NULL AND "tipo" NOT IN ('reserva', 'hold'))),
   ADD CONSTRAINT "ocupacion_hold_expira"    CHECK ("tipo" <> 'hold' OR "expiraAt" IS NOT NULL);
 
 -- Rango SEMIABIERTO '[)': 09:00-10:00 y 10:00-11:00 NO se solapan. MISMA semántica
