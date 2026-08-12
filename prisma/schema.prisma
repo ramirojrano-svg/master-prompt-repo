@@ -35,6 +35,51 @@ model Operador {
   ocupaciones   Ocupacion[]
   esperas       EsperaSlot[]
   bolsaAsientos BolsaAsiento[]
+  usuarios      UsuarioOperador[]
+}
+
+// ─────────────────────────────────────────────────────────────
+// USUARIOS Y ROLES (§3.5 / §6.2)
+// Un usuario puede trabajar en varios operadores (el psicólogo que alquila en 3 centros tiene
+// UNA identidad y UNA contraseña). El rol vive en la RELACIÓN, nunca en el usuario, y se relee
+// fresco de la DB en cada request (§6.2).
+// ─────────────────────────────────────────────────────────────
+model Usuario {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  nombre        String
+  telefono      String? // canonicalizado en el borde de entrada (regla 17)
+  passwordHash  String? // Credentials (Auth.js); null hasta que se setea
+  sessionVersion Int     @default(0) // se incrementa en baja/cambio de rol crítico (§9)
+  creadoEl      DateTime @default(now()) @db.Timestamptz(6)
+
+  operadores UsuarioOperador[]
+}
+
+enum Rol {
+  owner // dueño del centro
+  gestor // encargado/administradora
+  recepcion // mostrador
+  inquilino_titular // el profesional que alquila
+  inquilino_staff // su secretaria (todo menos plata)
+  soporte_plataforma // nosotros, solo lectura con consentimiento
+}
+
+model UsuarioOperador {
+  usuarioId   String
+  operadorId  String
+  rol         Rol
+  inquilinoId String? // si rol = inquilino_*, a qué inquilino corresponde
+  activo      Boolean @default(true)
+
+  usuario   Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  operador  Operador   @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+  // FK compuesta (operadorId, inquilinoId) NoAction: Postgres rechaza mezclar tenants (§3.6).
+  inquilino Inquilino? @relation(fields: [operadorId, inquilinoId], references: [operadorId, id], onDelete: NoAction)
+
+  @@id([usuarioId, operadorId])
+  @@unique([operadorId, inquilinoId]) // 1:1 con Inquilino sobre la FK compuesta; un inquilino, un acceso
+  @@index([operadorId, rol])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -83,6 +128,7 @@ model Inquilino {
 
   operador    Operador    @relation(fields: [operadorId], references: [id], onDelete: Cascade)
   ocupaciones Ocupacion[]
+  usuario     UsuarioOperador?
 
   @@unique([operadorId, id])
   @@index([operadorId, estado])

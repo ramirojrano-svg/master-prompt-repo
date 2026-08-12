@@ -16,6 +16,9 @@
 CREATE SCHEMA IF NOT EXISTS "public";
 
 -- CreateEnum
+CREATE TYPE "Rol" AS ENUM ('owner', 'gestor', 'recepcion', 'inquilino_titular', 'inquilino_staff', 'soporte_plataforma');
+
+-- CreateEnum
 CREATE TYPE "EstadoInquilino" AS ENUM ('activo', 'suspendido', 'baja');
 
 -- CreateEnum
@@ -34,6 +37,30 @@ CREATE TABLE "Operador" (
     "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Operador_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Usuario" (
+    "id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "telefono" TEXT,
+    "passwordHash" TEXT,
+    "sessionVersion" INTEGER NOT NULL DEFAULT 0,
+    "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Usuario_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "UsuarioOperador" (
+    "usuarioId" TEXT NOT NULL,
+    "operadorId" TEXT NOT NULL,
+    "rol" "Rol" NOT NULL,
+    "inquilinoId" TEXT,
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "UsuarioOperador_pkey" PRIMARY KEY ("usuarioId","operadorId")
 );
 
 -- CreateTable
@@ -132,6 +159,15 @@ CREATE TABLE "BolsaAsiento" (
 CREATE UNIQUE INDEX "Operador_slug_key" ON "Operador"("slug");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Usuario_email_key" ON "Usuario"("email");
+
+-- CreateIndex
+CREATE INDEX "UsuarioOperador_operadorId_rol_idx" ON "UsuarioOperador"("operadorId", "rol");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UsuarioOperador_operadorId_inquilinoId_key" ON "UsuarioOperador"("operadorId", "inquilinoId");
+
+-- CreateIndex
 CREATE INDEX "Sede_operadorId_idx" ON "Sede"("operadorId");
 
 -- CreateIndex
@@ -166,6 +202,15 @@ CREATE INDEX "BolsaAsiento_operadorId_inquilinoId_bolsa_periodo_idx" ON "BolsaAs
 
 -- CreateIndex
 CREATE UNIQUE INDEX "BolsaAsiento_operadorId_clave_key" ON "BolsaAsiento"("operadorId", "clave");
+
+-- AddForeignKey
+ALTER TABLE "UsuarioOperador" ADD CONSTRAINT "UsuarioOperador_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UsuarioOperador" ADD CONSTRAINT "UsuarioOperador_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UsuarioOperador" ADD CONSTRAINT "UsuarioOperador_operadorId_inquilinoId_fkey" FOREIGN KEY ("operadorId", "inquilinoId") REFERENCES "Inquilino"("operadorId", "id") ON DELETE NO ACTION ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Sede" ADD CONSTRAINT "Sede_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
