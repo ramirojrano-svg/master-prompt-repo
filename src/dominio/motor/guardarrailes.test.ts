@@ -9,12 +9,16 @@ import { join } from "node:path";
 // src/ es dos niveles arriba de este archivo (src/dominio/motor -> src).
 const SRC = join(import.meta.dirname, "..", "..");
 
+// El ÚNICO archivo donde las zonas IANA son literales legítimos: el registro país->zona (§7.19).
+// Ahí la zona se DERIVA; en el resto del código entra por parámetro.
+const REGISTRO_DE_ZONAS = new Set(["paises.ts"]);
+
 function fuentes(dir: string): string[] {
   const out: string[] = [];
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, ent.name);
     if (ent.isDirectory()) out.push(...fuentes(p));
-    else if (ent.name.endsWith(".ts") && !ent.name.endsWith(".test.ts")) out.push(p);
+    else if (ent.name.endsWith(".ts") && !ent.name.endsWith(".test.ts") && !REGISTRO_DE_ZONAS.has(ent.name)) out.push(p);
   }
   return out;
 }
