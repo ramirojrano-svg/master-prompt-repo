@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Node / Next.js (SaaS) ---
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.vercel/
+coverage/

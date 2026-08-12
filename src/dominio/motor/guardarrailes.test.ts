@@ -1,0 +1,43 @@
+// src/dominio/motor/guardarrailes.test.ts — T-15 (§15) / Capa A (§3.3)
+// Lint de código FUENTE sobre todo src/ (excluidos los *.test.ts, que usan zonas como DATO).
+// La Capa A sola da falsa seguridad; la Capa B (comportamiento con dos zonas) vive en zona.test.ts.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+// src/ es dos niveles arriba de este archivo (src/dominio/motor -> src).
+const SRC = join(import.meta.dirname, "..", "..");
+
+function fuentes(dir: string): string[] {
+  const out: string[] = [];
+  for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, ent.name);
+    if (ent.isDirectory()) out.push(...fuentes(p));
+    else if (ent.name.endsWith(".ts") && !ent.name.endsWith(".test.ts")) out.push(p);
+  }
+  return out;
+}
+
+// Cada patrón prohibido con el motivo por el que muerde (§4.3.1).
+const PROHIBIDOS: { re: RegExp; motivo: string }[] = [
+  { re: /America\//, motivo: "zona IANA clavada: la tz entra por parámetro, nunca hardcodeada" },
+  { re: /[-+]\d{2}:00['"`]/, motivo: "offset fijo en string (ej. '-03:00'): rompe con DST" },
+  { re: /\b24\s*\*\s*3600\b/, motivo: "'24 * 3600' para el día: el día de DST dura 23 o 25 h" },
+  { re: /\b7\s*\*\s*24\b/, motivo: "'7 * 24' para la semana: la ocurrencia post-DST se corre una hora" },
+];
+
+test("T-15 · ningún archivo fuente tiene zonas clavadas ni offsets fijos", () => {
+  const hallazgos: string[] = [];
+  for (const archivo of fuentes(SRC)) {
+    const lineas = readFileSync(archivo, "utf8").split("\n");
+    lineas.forEach((linea, i) => {
+      for (const { re, motivo } of PROHIBIDOS) {
+        if (re.test(linea)) {
+          hallazgos.push(`${archivo}:${i + 1} — ${motivo}\n    > ${linea.trim()}`);
+        }
+      }
+    });
+  }
+  assert.deepEqual(hallazgos, [], `\n${hallazgos.join("\n")}\n`);
+});
