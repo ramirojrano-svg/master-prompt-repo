@@ -36,6 +36,8 @@ model Operador {
   esperas       EsperaSlot[]
   bolsaAsientos BolsaAsiento[]
   usuarios      UsuarioOperador[]
+  asientos      Asiento[]
+  liquidaciones Liquidacion[]
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -244,4 +246,94 @@ model BolsaAsiento {
 
   @@unique([operadorId, clave])
   @@index([operadorId, inquilinoId, bolsa, periodo])
+}
+
+// ─────────────────────────────────────────────────────────────
+// LIBRO DE PLATA (§5.2) — append-only. NUNCA update, NUNCA delete: se compensa con un asiento
+// de signo opuesto. saldo = SUM(montoCent) sobre cuenta='corriente'. saldo > 0 => deudor.
+// Enteros en centavos (BigInt), jamás Float/number. Nunca se suma con BolsaAsiento (otro libro).
+// ─────────────────────────────────────────────────────────────
+enum CuentaTipo {
+  corriente
+  garantia
+}
+
+enum Concepto {
+  // + (el inquilino DEBE)
+  cargo_uso
+  cargo_excedente
+  cargo_membresia
+  cargo_exclusividad
+  cargo_bono
+  penalidad_tardia
+  penalidad_noshow
+  ajuste_debito
+  deposito_alta
+  interes_mora
+  // − (a favor del inquilino)
+  pago
+  pago_con_deposito
+  nota_credito
+  penalidad_revertida
+  reintegro
+  ajuste_credito
+  deposito_devolucion
+  deposito_ejecucion
+}
+
+model Asiento {
+  id           String     @id @default(cuid())
+  operadorId   String
+  inquilinoId  String
+  cuenta       CuentaTipo @default(corriente)
+  concepto     Concepto
+  montoCent    BigInt // centavos, con signo. + = debe, − = a favor.
+  moneda       String     @db.VarChar(3)
+  periodo      String     @db.VarChar(7) // 'YYYY-MM' en la tz del CENTRO, pasado por el caller
+  fechaHecho   DateTime   @db.Timestamptz(6) // instante del hecho económico (no createdAt)
+  clave        String // idempotente: '<concepto>:<idNatural>[:<periodo>]'
+  reservaId       String?
+  liquidacionId   String? // se sella al cerrar el período; después no se toca
+  pagoId          String?
+  revierteAId     String? // asiento original de una reversa
+  motivo          String? // obligatorio en ajuste_*, deposito_ejecucion, nota_credito
+  creadoPorUserId String? // null = sistema
+  createdAt    DateTime   @default(now()) @db.Timestamptz(6)
+
+  operador Operador @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+
+  @@unique([operadorId, clave]) // anti doble-facturación real (los NULL no colisionan en PG)
+  @@index([operadorId, inquilinoId, cuenta, fechaHecho])
+  @@index([operadorId, periodo])
+  @@index([operadorId, liquidacionId])
+}
+
+model Liquidacion {
+  id           String    @id @default(cuid())
+  operadorId   String
+  inquilinoId  String
+  periodo      String    @db.VarChar(7)
+  numero       Int // correlativo POR OPERADOR, para el PDF interno
+  estado       String // 'borrador' | 'emitida' | 'parcial' | 'pagada' | 'vencida' | 'anulada'
+  // Congelados al emitir. NUNCA se recalculan leyendo los asientos de nuevo.
+  subtotalCent BigInt
+  netoCent     BigInt // estimación fiscal (§7)
+  ivaCent      BigInt
+  alicuota     Int // 0 | 105 | 210 (décimas de %) — congelada
+  totalCent    BigInt
+  venceEl      DateTime  @db.Timestamptz(6)
+  emitidaAt    DateTime? @db.Timestamptz(6)
+  // datos fiscales del receptor ESTAMPADOS al emitir, no leídos de la ficha
+  receptorRazonSocial String
+  receptorCuit        String?
+  receptorCondIva     String
+  facturaExternaTipo  String? // 'A' | 'B' | 'C' — cargado a mano por el operador
+  facturaExternaNro   String?
+  facturaExternaCae   String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+
+  operador Operador @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+
+  @@unique([operadorId, inquilinoId, periodo]) // ← anti doble-facturación real
+  @@unique([operadorId, numero])
 }

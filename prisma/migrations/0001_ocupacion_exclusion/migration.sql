@@ -1,13 +1,11 @@
 -- 0001_ocupacion_exclusion — el núcleo de la concurrencia (§4.8.3 del master).
 --
 -- Estructura (unificada a operadorId, §3.2):
---   [1] Baseline generado por Prisma desde prisma/schema.prisma (tablas, enums, FK
---       compuestas (operadorId,id) NoAction, índices). NO editar a mano: si cambia el
---       schema, se regenera con `prisma migrate diff --from-empty --to-schema-datamodel`.
---   [2] Invariantes que Prisma NO expresa, escritas a mano: btree_gist, columnas
---       generadas `rango`/`ocupa`, los dos EXCLUDE y los CHECK. `prisma db push` las
---       BORRA en silencio (lección §9) — usar SIEMPRE `prisma migrate`, nunca push.
---   El runbook (cómo aplicarla, Docker vs Postgres local) está en prisma/README.md.
+--   [1] Baseline generado por Prisma desde prisma/schema.prisma. NO editar a mano; se regenera
+--       con scripts/regen-migracion.sh.
+--   [2] Invariantes que Prisma NO expresa (prisma/manual.sql): btree_gist, columnas generadas
+--       `rango`/`ocupa`, los dos EXCLUDE y los CHECK. `prisma db push` las BORRA en silencio
+--       (lección §9) — usar SIEMPRE `prisma migrate`, nunca push.
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- [1] BASELINE (Prisma, desde el schema)
@@ -26,6 +24,12 @@ CREATE TYPE "tipo_ocupacion" AS ENUM ('reserva', 'hold', 'bloqueo', 'mantenimien
 
 -- CreateEnum
 CREATE TYPE "estado_ocupacion" AS ENUM ('solicitada', 'confirmada', 'en_curso', 'usada', 'no_show', 'cancelada', 'rechazada', 'reubicada', 'expirada');
+
+-- CreateEnum
+CREATE TYPE "CuentaTipo" AS ENUM ('corriente', 'garantia');
+
+-- CreateEnum
+CREATE TYPE "Concepto" AS ENUM ('cargo_uso', 'cargo_excedente', 'cargo_membresia', 'cargo_exclusividad', 'cargo_bono', 'penalidad_tardia', 'penalidad_noshow', 'ajuste_debito', 'deposito_alta', 'interes_mora', 'pago', 'pago_con_deposito', 'nota_credito', 'penalidad_revertida', 'reintegro', 'ajuste_credito', 'deposito_devolucion', 'deposito_ejecucion');
 
 -- CreateTable
 CREATE TABLE "Operador" (
@@ -155,6 +159,55 @@ CREATE TABLE "BolsaAsiento" (
     CONSTRAINT "BolsaAsiento_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "Asiento" (
+    "id" TEXT NOT NULL,
+    "operadorId" TEXT NOT NULL,
+    "inquilinoId" TEXT NOT NULL,
+    "cuenta" "CuentaTipo" NOT NULL DEFAULT 'corriente',
+    "concepto" "Concepto" NOT NULL,
+    "montoCent" BIGINT NOT NULL,
+    "moneda" VARCHAR(3) NOT NULL,
+    "periodo" VARCHAR(7) NOT NULL,
+    "fechaHecho" TIMESTAMPTZ(6) NOT NULL,
+    "clave" TEXT NOT NULL,
+    "reservaId" TEXT,
+    "liquidacionId" TEXT,
+    "pagoId" TEXT,
+    "revierteAId" TEXT,
+    "motivo" TEXT,
+    "creadoPorUserId" TEXT,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Asiento_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Liquidacion" (
+    "id" TEXT NOT NULL,
+    "operadorId" TEXT NOT NULL,
+    "inquilinoId" TEXT NOT NULL,
+    "periodo" VARCHAR(7) NOT NULL,
+    "numero" INTEGER NOT NULL,
+    "estado" TEXT NOT NULL,
+    "subtotalCent" BIGINT NOT NULL,
+    "netoCent" BIGINT NOT NULL,
+    "ivaCent" BIGINT NOT NULL,
+    "alicuota" INTEGER NOT NULL,
+    "totalCent" BIGINT NOT NULL,
+    "venceEl" TIMESTAMPTZ(6) NOT NULL,
+    "emitidaAt" TIMESTAMPTZ(6),
+    "receptorRazonSocial" TEXT NOT NULL,
+    "receptorCuit" TEXT,
+    "receptorCondIva" TEXT NOT NULL,
+    "facturaExternaTipo" TEXT,
+    "facturaExternaNro" TEXT,
+    "facturaExternaCae" TEXT,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Liquidacion_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "Operador_slug_key" ON "Operador"("slug");
 
@@ -203,6 +256,24 @@ CREATE INDEX "BolsaAsiento_operadorId_inquilinoId_bolsa_periodo_idx" ON "BolsaAs
 -- CreateIndex
 CREATE UNIQUE INDEX "BolsaAsiento_operadorId_clave_key" ON "BolsaAsiento"("operadorId", "clave");
 
+-- CreateIndex
+CREATE INDEX "Asiento_operadorId_inquilinoId_cuenta_fechaHecho_idx" ON "Asiento"("operadorId", "inquilinoId", "cuenta", "fechaHecho");
+
+-- CreateIndex
+CREATE INDEX "Asiento_operadorId_periodo_idx" ON "Asiento"("operadorId", "periodo");
+
+-- CreateIndex
+CREATE INDEX "Asiento_operadorId_liquidacionId_idx" ON "Asiento"("operadorId", "liquidacionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Asiento_operadorId_clave_key" ON "Asiento"("operadorId", "clave");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Liquidacion_operadorId_inquilinoId_periodo_key" ON "Liquidacion"("operadorId", "inquilinoId", "periodo");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Liquidacion_operadorId_numero_key" ON "Liquidacion"("operadorId", "numero");
+
 -- AddForeignKey
 ALTER TABLE "UsuarioOperador" ADD CONSTRAINT "UsuarioOperador_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -242,10 +313,21 @@ ALTER TABLE "EsperaSlot" ADD CONSTRAINT "EsperaSlot_operadorId_fkey" FOREIGN KEY
 -- AddForeignKey
 ALTER TABLE "BolsaAsiento" ADD CONSTRAINT "BolsaAsiento_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- AddForeignKey
+ALTER TABLE "Asiento" ADD CONSTRAINT "Asiento_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Liquidacion" ADD CONSTRAINT "Liquidacion_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- [2] INVARIANTES A MANO (lo que Prisma no expresa)
+-- [2] INVARIANTES A MANO (prisma/manual.sql)
 -- ═══════════════════════════════════════════════════════════════════════════
+
+-- prisma/manual.sql — [2] INVARIANTES A MANO (lo que Prisma no expresa, §4.8.3 / §9).
+-- Este archivo se APENDEA al baseline generado por Prisma para formar la migración
+-- 0001_ocupacion_exclusion (ver scripts/regen-migracion.sh). `prisma db push` borra esto en
+-- silencio: usar SIEMPRE `prisma migrate`.
 
 CREATE EXTENSION IF NOT EXISTS btree_gist;  -- para mezclar `text WITH =` y `range WITH &&`
 
