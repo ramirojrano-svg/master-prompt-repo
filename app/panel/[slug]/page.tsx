@@ -91,6 +91,12 @@ export default async function PanelPage({
         <span className="tenue" style={{ fontSize: 12 }}>
           ahora: {formatHora(hoyServidor, dia.tz)} ({dia.tz})
         </span>
+        {puede(actor.rol, "sala.administrar") && (
+          <nav style={{ marginLeft: "auto", display: "flex", gap: 12 }}>
+            <Link href={`/panel/${slug}/salas`}>Salas</Link>
+            <Link href={`/panel/${slug}/inquilinos`}>Profesionales</Link>
+          </nav>
+        )}
       </header>
 
       {/* KPIs con el DENOMINADOR visible: un porcentaje sin denominador no se puede auditar. */}

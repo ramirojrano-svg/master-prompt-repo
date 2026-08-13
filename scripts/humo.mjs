@@ -88,6 +88,44 @@ try {
   chequeo(!scrollBody, "el <body> NO scrollea horizontal (§6.5)");
   await page3.screenshot({ path: `${OUT}/5-mobile.png`, fullPage: true });
 
+
+  // ── 6. ABM de salas e inquilinos (el onboarding real, §6.12) ──────────────
+  console.log("\n[owner] ABM de salas");
+  await page.goto(`${BASE}/panel/${SLUG}/salas`, { waitUntil: "domcontentloaded" });
+  const salasAntes = await page.locator("tbody tr").count();
+  await page.fill("#nombre", "Consultorio de prueba");
+  await page.fill("#desde", "09:00");
+  await page.fill("#hasta", "18:00");
+  await Promise.all([page.waitForURL(/ok=1|error=/, { timeout: 20_000 }), page.click('button:has-text("Crear sala")')]);
+  const salasDespues = await page.locator("tbody tr").count();
+  chequeo(salasDespues === salasAntes + 1, `salas: ${salasAntes} -> ${salasDespues}`);
+  const resumen = await page.locator('tbody tr:has-text("Consultorio de prueba")').innerText();
+  chequeo(/09:00-18:00/.test(resumen), `horario guardado y resumido: "${resumen.replace(/\s+/g, " ").trim()}"`);
+  await page.screenshot({ path: `${OUT}/6-salas.png`, fullPage: true });
+
+  console.log("\n[owner] archivar sala (no borrar)");
+  await page.locator('tbody tr:has-text("Consultorio de prueba")').locator('button:has-text("Archivar")').click();
+  await page.waitForURL(/ok=1/, { timeout: 20_000 });
+  const filas = await page.locator("tbody tr").count();
+  chequeo(filas === salasDespues, "la sala archivada SIGUE en la lista (no se borró)");
+  chequeo(await page.locator('tbody tr:has-text("Consultorio de prueba"):has-text("(archivada)")').count() === 1, "la sala archivada se muestra rotulada, sin desaparecer");
+
+  console.log("\n[owner] ABM de profesionales");
+  await page.goto(`${BASE}/panel/${SLUG}/inquilinos`, { waitUntil: "domcontentloaded" });
+  const inqAntes = await page.locator("tbody tr").count();
+  await page.fill("#nombre", "Profesional de prueba (Nutrición)");
+  await Promise.all([page.waitForURL(/ok=1|error=/, { timeout: 20_000 }), page.click('button:has-text("Agregar")')]);
+  const inqDespues = await page.locator("tbody tr").count();
+  chequeo(inqDespues === inqAntes + 1, `profesionales: ${inqAntes} -> ${inqDespues}`);
+  await page.screenshot({ path: `${OUT}/7-inquilinos.png`, fullPage: true });
+
+  console.log("\n[recepción] no puede administrar");
+  const ctx4 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page4 = await ctx4.newPage();
+  await entrar(page4, "ana@email.com");
+  await page4.goto(`${BASE}/panel/${SLUG}/salas`, { waitUntil: "domcontentloaded" });
+  chequeo(!page4.url().includes("/salas"), `la recepción es redirigida fuera de /salas (${page4.url().split("/").pop()})`);
+
   console.log(`\n${fallos === 0 ? "TODO OK" : `${fallos} CHEQUEO(S) FALLARON`} · capturas en ${OUT}/`);
 } finally {
   await browser.close();
