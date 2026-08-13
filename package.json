@@ -14,7 +14,8 @@
     "postinstall": "prisma generate",
     "build": "next build",
     "dev": "next dev",
-    "seed": "node prisma/seed.ts"
+    "seed": "node prisma/seed.ts",
+    "humo": "node scripts/humo.mjs"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -23,6 +24,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "pg": "^8.23.0",
+    "playwright": "^1.62.1",
     "prisma": "^6.19.3",
     "typescript": "^5.9"
   },

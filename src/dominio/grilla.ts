@@ -28,8 +28,12 @@ export type BloqueUbicado = {
   columnaId: string;
   fila: number; // 1-indexed (grid-row start)
   span: number; // cantidad de filas (>= 1)
-  carril: number; // 0-indexed dentro de la columna
-  carriles: number; // subcolumnas de ESA columna
+  carril: number; // 0-indexed dentro de la columna (para depurar/ordenar)
+  carriles: number; // subcolumnas declaradas de ESA columna (grid-template-columns)
+  col: number; // 1-indexed: subcolumna donde ARRANCA el bloque
+  colSpan: number; // cuántas subcolumnas ocupa
+  duracionMin: number; // duración REAL (el dato), aunque el layout lo dibuje más alto
+  estirado: boolean; // se dibuja más alto que su duración (bloque corto): se marca punteado (§6.5)
   recortadoArriba: boolean; // empezaba antes de la apertura
   recortadoAbajo: boolean; // terminaba después del cierre
 };
@@ -139,6 +143,12 @@ export function ubicarBloques(bloques: BloqueEntrada[], r: RangoVisible): Bloque
 
     for (const g of grupos) {
       const asignado = asignarCarriles(g);
+      // Carriles USADOS por este cluster: un bloque que no solapa con nadie ocupa TODO el ancho
+      // de la columna; tres solapados se reparten un tercio cada uno. Sin esto, todos los bloques
+      // quedarían con 1/12 del ancho y el texto ilegible (se vio recién en una captura).
+      const usados = Math.max(1, ...[...asignado.values()].map((c) => c + 1));
+      const anchoCarril = Math.max(1, Math.floor(carriles / usados));
+
       for (const b of g) {
         const recortadoArriba = b.desdeMin < r.aperturaMin;
         const recortadoAbajo = b.hastaMin > r.cierreMin;
@@ -149,14 +159,25 @@ export function ubicarBloques(bloques: BloqueEntrada[], r: RangoVisible): Bloque
         const filaFin = Math.ceil((hasta - r.aperturaMin) / paso) + 1;
         const span = Math.max(1, filaFin - fila); // un bloque siempre ocupa al menos una fila
 
+        // clamp: aunque algo salga mal, el carril nunca pide una columna que el grid no tiene
+        const carril = Math.min(asignado.get(b.id) ?? 0, carriles - 1);
+        const col = Math.min(carril * anchoCarril + 1, carriles);
+        // El último carril se estira hasta el final para no dejar un hueco por el redondeo.
+        const colSpan = carril === usados - 1 ? carriles - col + 1 : anchoCarril;
+
         out.push({
           id: b.id,
           columnaId,
           fila,
           span,
-          // clamp: aunque algo salga mal, el carril nunca pide una columna que el grid no tiene
-          carril: Math.min(asignado.get(b.id) ?? 0, carriles - 1),
+          carril,
           carriles,
+          col,
+          colSpan: Math.max(1, colSpan),
+          duracionMin: b.hastaMin - b.desdeMin,
+          // Un bloque más corto que el paso ocupa una fila igual (altura mínima táctil): se
+          // marca para no mentir sobre su duración real.
+          estirado: hasta - desde < paso,
           recortadoArriba,
           recortadoAbajo,
         });

@@ -52,6 +52,34 @@ test("con pocos bloques, las subcolumnas se mantienen en el mínimo", () => {
   assert.equal(us[0]!.carriles, MIN_SUBCOLS);
 });
 
+test("un bloque SOLO ocupa todo el ancho de la columna (no 1/12)", () => {
+  const [u] = ubicarBloques([b("a", "09:00", "10:00")], R);
+  assert.equal(u!.col, 1);
+  assert.equal(u!.colSpan, u!.carriles, "sin solapamiento, el bloque usa la columna entera");
+});
+
+test("dos solapados se reparten la mitad cada uno, sin huecos ni desbordes", () => {
+  const us = ubicarBloques([b("a", "09:00", "11:00"), b("b", "10:00", "12:00")], R);
+  const [p, q] = [...us].sort((x, y) => x.col - y.col);
+  assert.equal(p!.col, 1);
+  assert.equal(p!.colSpan, p!.carriles / 2);
+  assert.equal(q!.col, p!.carriles / 2 + 1);
+  assert.equal(q!.col + q!.colSpan - 1, q!.carriles, "el último llega justo al borde");
+});
+
+test("tres solapados: tercios, y ninguno se sale del grid", () => {
+  const us = ubicarBloques([b("a", "09:00", "12:00"), b("b", "09:30", "12:00"), b("c", "10:00", "12:00")], R);
+  assert.equal(us.length, 3);
+  for (const u of us) {
+    assert.ok(u.col >= 1 && u.col + u.colSpan - 1 <= u.carriles, `col ${u.col}+${u.colSpan} dentro de ${u.carriles}`);
+  }
+});
+
+test("un cluster de 15 no desborda el ancho declarado", () => {
+  const us = ubicarBloques(Array.from({ length: 15 }, (_, k) => b(`x${k}`, "09:00", "12:00")), R);
+  for (const u of us) assert.ok(u.col + u.colSpan - 1 <= u.carriles);
+});
+
 test("§6.17 · bloque que empieza ANTES de la apertura: se clampea a la fila 1", () => {
   const us = ubicarBloques([b("a", "06:00", "09:00")], R); // apertura 08:00
   assert.equal(us[0]!.fila, 1, "nunca fila 0 ni negativa");

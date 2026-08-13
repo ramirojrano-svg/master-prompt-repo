@@ -61,8 +61,15 @@ export function Grilla({ dia }: { dia: DiaVista }) {
             display: "grid", gridTemplateRows: `repeat(${dia.filas}, ${ALTO_CELDA}px)`,
           }}
         >
-          {horas.map((h) => (
-            <div key={h.min} style={{ fontSize: 11, color: "var(--tenue)", textAlign: "right", paddingRight: 6, transform: "translateY(-6px)" }}>
+          {horas.map((h, i) => (
+            <div
+              key={h.min}
+              style={{
+                fontSize: 11, color: "var(--tenue)", textAlign: "right", paddingRight: 6,
+                // la primera etiqueta NO se sube: se cortaría contra el borde de la grilla
+                transform: i === 0 ? undefined : "translateY(-6px)",
+              }}
+            >
               {h.texto}
             </div>
           ))}
@@ -91,11 +98,13 @@ export function Grilla({ dia }: { dia: DiaVista }) {
                 return (
                   <div
                     key={u.id}
-                    title={titulo}
+                    title={u.estirado ? `${titulo} · ${u.duracionMin} min` : titulo}
                     aria-label={`${sala.nombre}, ${titulo}`}
                     style={{
                       gridRow: `${u.fila} / span ${u.span}`,
-                      gridColumn: `${u.carril + 1} / span 1`,
+                      // col/colSpan vienen calculados: un bloque solo ocupa TODO el ancho de la
+                      // columna; los solapados se reparten (§6.4).
+                      gridColumn: `${u.col} / span ${u.colSpan}`,
                       // altura mínima táctil (44px, WCAG 2.5.5) aunque el bloque sea de 15'
                       minHeight: 44,
                       margin: "1px 2px",
@@ -109,7 +118,8 @@ export function Grilla({ dia }: { dia: DiaVista }) {
                         ? "repeating-linear-gradient(45deg, rgba(255,255,255,.25) 0 6px, transparent 6px 12px)"
                         : undefined,
                       borderTop: u.recortadoArriba ? "2px dotted #fff" : undefined,
-                      borderBottom: u.recortadoAbajo ? "2px dotted #fff" : undefined,
+                      // bloque corto dibujado más alto que su duración: borde punteado (§6.5)
+                      borderBottom: u.recortadoAbajo || u.estirado ? "2px dotted #fff" : undefined,
                       userSelect: "none",
                     }}
                   >
