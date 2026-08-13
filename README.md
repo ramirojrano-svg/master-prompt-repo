@@ -13,6 +13,21 @@ Necesitás **Node 22+** y un **Postgres 16**. El Postgres no es opcional ni reem
 base: el motor de reservas usa `EXCLUDE USING gist` con `btree_gist` y advisory locks, que son
 los que impiden que dos profesionales reserven la misma sala a la misma hora.
 
+### Camino rápido (un comando)
+
+```bash
+git clone -b claude/saas-alquiler-consultorios-master-1fxts1 \
+  https://github.com/ramirojrano-svg/master-prompt-repo.git emoapp
+cd emoapp
+bash scripts/setup.sh     # Postgres en Docker + .env.local + migración + datos
+npm run dev               # → http://localhost:3000/panel/espacio-moca
+```
+
+`setup.sh` es idempotente: si ya tenés un Postgres, exportá `DATABASE_URL` antes de correrlo y
+lo usa en vez de levantar uno en Docker.
+
+Si preferís hacerlo a mano, o algo falla, seguí los pasos de abajo.
+
 ### 1. Postgres
 
 La forma más simple, con Docker:
