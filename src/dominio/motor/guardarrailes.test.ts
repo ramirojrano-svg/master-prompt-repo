@@ -6,8 +6,11 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// src/ es dos niveles arriba de este archivo (src/dominio/motor -> src).
-const SRC = join(import.meta.dirname, "..", "..");
+// El lint corre sobre TODO el código de la app, no solo src/: la primera versión escaneaba
+// únicamente src/ y dejó pasar una zona clavada en app/panel/[slug]/page.tsx para calcular
+// "hoy". Un guardarraíl que no cubre toda la superficie da falsa seguridad (§3.3).
+const RAIZ = join(import.meta.dirname, "..", "..", "..");
+const CARPETAS = [join(RAIZ, "src"), join(RAIZ, "app")];
 
 // El ÚNICO archivo donde las zonas IANA son literales legítimos: el registro país->zona (§7.19).
 // Ahí la zona se DERIVA; en el resto del código entra por parámetro.
@@ -18,7 +21,8 @@ function fuentes(dir: string): string[] {
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, ent.name);
     if (ent.isDirectory()) out.push(...fuentes(p));
-    else if (ent.name.endsWith(".ts") && !ent.name.endsWith(".test.ts") && !REGISTRO_DE_ZONAS.has(ent.name)) out.push(p);
+    // .ts y .tsx: las páginas también cuentan (ahí se coló la zona clavada).
+    else if (/\.tsx?$/.test(ent.name) && !/\.test\.tsx?$/.test(ent.name) && !REGISTRO_DE_ZONAS.has(ent.name)) out.push(p);
   }
   return out;
 }
@@ -58,7 +62,7 @@ const PROHIBIDOS: { re: RegExp; motivo: string }[] = [
 
 test("T-15 · ningún archivo fuente tiene zonas clavadas ni offsets fijos", () => {
   const hallazgos: string[] = [];
-  for (const archivo of fuentes(SRC)) {
+  for (const archivo of CARPETAS.flatMap(fuentes)) {
     const lineas = codigoPorLinea(readFileSync(archivo, "utf8"));
     lineas.forEach((linea, i) => {
       for (const { re, motivo } of PROHIBIDOS) {

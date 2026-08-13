@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
-const SRC = join(import.meta.dirname, "..", "..");
+const RAIZ = join(import.meta.dirname, "..", "..", "..");
+const CARPETAS = [join(RAIZ, "src"), join(RAIZ, "app")]; // también las páginas
 const CASAS_SANCIONADAS = new Set(["intervalos.ts", "horarios.ts"]);
 
 function fuentes(dir: string): string[] {
@@ -17,7 +18,7 @@ function fuentes(dir: string): string[] {
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, ent.name);
     if (ent.isDirectory()) out.push(...fuentes(p));
-    else if (ent.name.endsWith(".ts") && !ent.name.endsWith(".test.ts")) out.push(p);
+    else if (/\.tsx?$/.test(ent.name) && !/\.test\.tsx?$/.test(ent.name)) out.push(p);
   }
   return out;
 }
@@ -49,7 +50,7 @@ const GETTIME = /\.getTime\(\)\s*(?:<=|>=)/;
 
 test("§4.2 · no hay comparaciones de rango sueltas fuera de intervalos.ts / horarios.ts", () => {
   const hallazgos: string[] = [];
-  for (const archivo of fuentes(SRC)) {
+  for (const archivo of CARPETAS.flatMap(fuentes)) {
     if (CASAS_SANCIONADAS.has(basename(archivo))) continue;
     codigoPorLinea(readFileSync(archivo, "utf8")).forEach((linea, i) => {
       if (PROP.test(linea) || GETTIME.test(linea)) {

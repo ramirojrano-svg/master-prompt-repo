@@ -26,8 +26,9 @@ export default async function PanelPage({
   const hoyServidor = new Date();
   const dia = await cargarDia({
     actor,
-    // clamp de la fecha: un ?fecha= basura no puede romper la pantalla (§9)
-    fecha: fechaParam && /^\d{4}-\d{2}-\d{2}$/.test(fechaParam) ? fechaParam : fechaEnZona(hoyServidor, "America/Argentina/Buenos_Aires"),
+    // `null` = HOY en la zona de la SEDE, resuelto adentro del servicio: la zona NUNCA se clava
+    // acá (§14.4). Un `?fecha=` basura cae a null en vez de romper la pantalla (§9).
+    fecha: fechaParam && /^\d{4}-\d{2}-\d{2}$/.test(fechaParam) ? fechaParam : null,
   });
   if (!dia) notFound();
 

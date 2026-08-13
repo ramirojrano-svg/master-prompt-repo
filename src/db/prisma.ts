@@ -25,8 +25,13 @@ const TENANT_MODELS = new Set([
 ]);
 const SCOPED_OPS = new Set(["findMany", "findFirst", "findFirstOrThrow", "count", "aggregate", "groupBy", "updateMany", "deleteMany"]);
 
-function crear(): PrismaClient {
-  const base = new PrismaClient();
+/**
+ * Construye un cliente CON el guard de tenant. Exportada para que los tests puedan apuntar a su
+ * propia base sin perder el guard (si el test usara el singleton, escribiría en la base de
+ * desarrollo y la mitad del test miraría datos de otra parte).
+ */
+export function crearPrismaConGuard(datasourceUrl?: string): PrismaClient {
+  const base = datasourceUrl ? new PrismaClient({ datasourceUrl }) : new PrismaClient();
   return base.$extends({
     query: {
       $allModels: {
@@ -45,6 +50,6 @@ function crear(): PrismaClient {
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-export const prisma: PrismaClient = globalForPrisma.prisma ?? crear();
+export const prisma: PrismaClient = globalForPrisma.prisma ?? crearPrismaConGuard();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

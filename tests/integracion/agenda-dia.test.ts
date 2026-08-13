@@ -57,6 +57,15 @@ test("el owner ve el día completo, con identidad y KPIs con denominador", async
   assert.equal(propia.inquilinoNombre, "Dra Perez");
 });
 
+test("§6.4 · el KPI usa la APERTURA como denominador (no el rango visible) y descuenta bloqueos", async () => {
+  const dia = await cargarDia({ actor: owner, fecha: HOY }, db);
+  // 2 salas activas × 14 h de apertura (08-22) = 1680' ; menos 60' de mantenimiento = 1620'.
+  assert.equal(dia!.kpis.disponiblesMin, 2 * 14 * 60 - 60);
+  // Numerador: solo RESERVAS (2 de 1 h en sa1 + 1 h en la archivada), nunca el mantenimiento.
+  assert.equal(dia!.kpis.ocupadasMin, 3 * 60);
+  assert.equal(dia!.kpis.ocupacionPct, Math.round((180 / 1620) * 100));
+});
+
 test("la sala ARCHIVADA con actividad sigue apareciendo (un filtro no borra una fila que existe)", async () => {
   const dia = await cargarDia({ actor: owner, fecha: HOY }, db);
   const arch = dia!.salas.find((s) => s.id === "saArch");

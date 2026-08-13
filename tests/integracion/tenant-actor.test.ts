@@ -1,12 +1,14 @@
 // tests/integracion/tenant-actor.test.ts — aislamiento multi-tenant y resolución de actor (§11.3 / §6.2)
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
-import { prisma } from "../../src/db/prisma.ts";
+import { crearPrismaConGuard } from "../../src/db/prisma.ts";
 import { conTenant } from "../../src/lib/tenant.ts";
 import { resolverActor } from "../../src/lib/actor.ts";
-import { nuevoPool, reiniciarEsquema, seedBase, TZ_SEDE } from "./db.ts";
+import { nuevoPool, reiniciarEsquema, seedBase, TZ_SEDE, URL_DB } from "./db.ts";
 
 const pgPool = nuevoPool();
+// Cliente CON guard apuntado a la base de TEST (no al singleton, que mira la de desarrollo).
+const prisma = crearPrismaConGuard(URL_DB);
 
 async function ocup(id: string, operadorId: string, sedeId: string, salaId: string) {
   await pgPool.query(

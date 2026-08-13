@@ -1,12 +1,23 @@
 // tests/integracion/db.ts — utilería de los tests que SÍ tocan Postgres.
-// Lee DATABASE_URL del entorno (Docker en CI, o el server local). No se mockea la
-// base: el bug de concurrencia ES la base (§11.7).
+// Lee TEST_DATABASE_URL (o DATABASE_URL + "_test"). No se mockea la base: el bug de
+// concurrencia ES la base (§11.7).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 
-export const URL_DB = process.env.DATABASE_URL ?? "postgresql://postgres@127.0.0.1:55432/motor";
-const URL = URL_DB;
+// ⚠️ Los tests hacen DROP SCHEMA para arrancar limpios: NUNCA deben apuntar a la base de
+// desarrollo (te borran el seed en silencio y la app aparece "sin datos"). Por eso la URL sale
+// de TEST_DATABASE_URL, y si no está, del DATABASE_URL con el sufijo `_test`.
+function urlDeTest(): string {
+  if (process.env.TEST_DATABASE_URL) return process.env.TEST_DATABASE_URL;
+  const dev = process.env.DATABASE_URL ?? "postgresql://postgres@127.0.0.1:55432/motor";
+  const u = new URL(dev);
+  if (!u.pathname.endsWith("_test")) u.pathname = `${u.pathname}_test`;
+  return u.toString();
+}
+
+export const URL_DB = urlDeTest();
+const URL_CONEXION = URL_DB;
 
 const MIGRACION = join(
   import.meta.dirname,
@@ -19,7 +30,7 @@ const MIGRACION = join(
 );
 
 export function nuevoPool(max = 8): pg.Pool {
-  return new pg.Pool({ connectionString: URL, max });
+  return new pg.Pool({ connectionString: URL_CONEXION, max });
 }
 
 /** Deja la base con el esquema recién migrado y vacío. */
