@@ -11,6 +11,7 @@ import { crearReservaAjena, mensajeDeError } from "../../../src/servicios/agenda
 import { prisma } from "../../../src/db/prisma.ts";
 import { puede } from "../../../src/lib/permisos.ts";
 import { formatHora, sumarDiasLocal } from "../../../src/dominio/motor/zona.ts";
+import { formatearPesos } from "../../../src/dominio/tarifa.ts";
 import { Grilla } from "./Grilla.tsx";
 import { NuevaReserva } from "./NuevaReserva.tsx";
 
@@ -52,6 +53,26 @@ export default async function PanelPage({
       })
     : [];
 
+  // Aviso de precio: se muestra la tarifa GENERAL vigente (la que aplica salvo excepción). El
+  // precio exacto de cada combinación está en la pantalla de precios; acá alcanza con que nadie
+  // cargue una reserva creyendo que no cobra nada.
+  const puedePrecios = puede(actor.rol, "tarifa.administrar");
+  const general = puedePrecios
+    ? await prisma.tarifa.findFirst({
+        where: { operadorId: actor.operadorId, salaId: null, inquilinoId: null, vigenteHasta: null },
+        select: { precioHoraCent: true },
+        orderBy: { vigenteDesde: "desc" },
+      })
+    : null;
+  const precios = puedePrecios
+    ? {
+        texto: general
+          ? `Se cobra la tarifa vigente (general: ${formatearPesos(general.precioHoraCent, dia.moneda)} la hora).`
+          : "Todavía no cargaste precios: esta reserva no va a generar deuda.",
+        href: `/panel/${slug}/tarifas`,
+      }
+    : null;
+
   // Server action delgada: resuelve la sesión y delega en la acción de dominio, que declara su
   // permiso. Nada de lógica de negocio acá.
   async function crear(formData: FormData) {
@@ -91,12 +112,12 @@ export default async function PanelPage({
         <span className="tenue" style={{ fontSize: 12 }}>
           ahora: {formatHora(hoyServidor, dia.tz)} ({dia.tz})
         </span>
-        {puede(actor.rol, "sala.administrar") && (
-          <nav style={{ marginLeft: "auto", display: "flex", gap: 12 }}>
-            <Link href={`/panel/${slug}/salas`}>Salas</Link>
-            <Link href={`/panel/${slug}/inquilinos`}>Profesionales</Link>
-          </nav>
-        )}
+        <nav style={{ marginLeft: "auto", display: "flex", gap: 12 }}>
+          {puede(actor.rol, "sala.administrar") && <Link href={`/panel/${slug}/salas`}>Salas</Link>}
+          {puede(actor.rol, "inquilino.administrar") && <Link href={`/panel/${slug}/inquilinos`}>Profesionales</Link>}
+          {puede(actor.rol, "tarifa.administrar") && <Link href={`/panel/${slug}/tarifas`}>Precios</Link>}
+          {puede(actor.rol, "finanzas.ver.agregada") && <Link href={`/panel/${slug}/reportes`}>Reportes</Link>}
+        </nav>
       </header>
 
       {/* KPIs con el DENOMINADOR visible: un porcentaje sin denominador no se puede auditar. */}
@@ -115,6 +136,7 @@ export default async function PanelPage({
           accion={crear}
           error={errorParam ? mensajeDeError(errorParam) : undefined}
           creada={creada === "1"}
+          precios={precios}
         />
       )}
     </main>

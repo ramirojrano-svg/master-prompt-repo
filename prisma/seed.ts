@@ -8,10 +8,12 @@
 //
 // Correr:  DATABASE_URL=... npm run seed
 
+import { randomUUID } from "node:crypto";
 import { EstadoInquilino, EstadoOcupacion, PrismaClient, Rol, TipoOcupacion } from "@prisma/client";
 import { hashPassword } from "../src/lib/password.ts";
-import { instanteDeHoraLocal, sumarDiasLocal, fechaEnZona } from "../src/dominio/motor/zona.ts";
+import { instanteDeHoraLocal, sumarDiasLocal, fechaEnZona, periodoDeInstante } from "../src/dominio/motor/zona.ts";
 import { zonaDePais } from "../src/dominio/paises.ts";
+import { cotizar, resolverTarifa } from "../src/dominio/tarifa.ts";
 
 const prisma = new PrismaClient();
 
@@ -128,15 +130,47 @@ async function main() {
     ],
   });
 
+  // ── Precios (§8.8) ────────────────────────────────────────────────────────
+  // La general del centro y dos excepciones, que es como funciona de verdad: un profesional con
+  // precio acordado y una sala más cara. Todas empiezan hace un año: las reservas históricas del
+  // seed también tienen que caer adentro de una tarifa vigente.
+  const desdeTarifas = new Date(Date.now() - 365 * 86_400_000);
+  const tarifas = await Promise.all(
+    [
+      { nombre: "General", salaId: null, inquilinoId: null, precioHoraCent: TARIFA_HORA_CENT },
+      { nombre: salas[2]!.nombre, salaId: salas[2]!.id, inquilinoId: null, precioHoraCent: 950_000n },
+      { nombre: "María Gómez", salaId: null, inquilinoId: maria.id, precioHoraCent: 700_000n },
+    ].map((t) =>
+      prisma.tarifa.create({
+        data: { operadorId: operador.id, vigenteDesde: desdeTarifas, ...t },
+        select: { id: true, salaId: true, inquilinoId: true, precioHoraCent: true, vigenteDesde: true, vigenteHasta: true },
+      }),
+    ),
+  );
+
   // ── Reservas de HOY y de la semana ────────────────────────────────────────
   const hoy = fechaEnZona(new Date(), TZ);
   const filas: Parameters<typeof prisma.ocupacion.createMany>[0]["data"] = [];
 
-  const reserva = (salaId: string, inquilinoId: string | null, fecha: string, desde: string, hasta: string, estado = EstadoOcupacion.confirmada, tipo = TipoOcupacion.reserva) => ({
-    operadorId: operador.id, sedeId: sede.id, salaId, inquilinoId, tipo, estado,
-    inicio: T(fecha, desde), fin: T(fecha, hasta), bufferMin: 15, tzSede: TZ,
-    bloqueaProfesional: tipo === TipoOcupacion.reserva,
-  });
+  const reserva = (salaId: string, inquilinoId: string | null, fecha: string, desde: string, hasta: string, estado = EstadoOcupacion.confirmada, tipo = TipoOcupacion.reserva) => {
+    const inicio = T(fecha, desde);
+    const fin = T(fecha, hasta);
+    // El precio se ESTAMPA acá, igual que en el alta real: la misma resolverTarifa/cotizar, no
+    // una cuenta aparte del seed (§5.1).
+    const cot =
+      tipo === TipoOcupacion.reserva && inquilinoId
+        ? cotizar(resolverTarifa(tarifas, { salaId, inquilinoId, ahora: inicio }), Math.round((fin.getTime() - inicio.getTime()) / 60_000))
+        : null;
+    return {
+      id: randomUUID(),
+      operadorId: operador.id, sedeId: sede.id, salaId, inquilinoId, tipo, estado,
+      inicio, fin, bufferMin: 15, tzSede: TZ,
+      bloqueaProfesional: tipo === TipoOcupacion.reserva,
+      tarifaId: cot?.tarifaId ?? null,
+      precioHoraCent: cot?.tarifaId ? cot.precioHoraCent : null,
+      importeCent: cot?.tarifaId ? cot.importeCent : null,
+    };
+  };
 
   // HOY: día realista en las 3 salas, incluidos los casos de borde.
   const s1 = salas[0]!.id, s2 = salas[1]!.id, s3 = salas[2]!.id;
@@ -176,11 +210,30 @@ async function main() {
 
   await prisma.ocupacion.createMany({ data: filas });
 
-  // Plata: cargos del mes pasado del inquilino de baja (historia que no desaparece).
+  // Plata: cada reserva con precio deja su cargo en la cuenta corriente, con la MISMA clave
+  // idempotente que usa el alta real (`cargo_uso:<ocupacionId>`). El de baja conserva los suyos:
+  // la historia no desaparece porque el profesional se haya ido (§3.6).
+  await prisma.asiento.createMany({
+    data: filas
+      .filter((f) => f.inquilinoId && f.importeCent && f.importeCent > 0n)
+      .map((f) => ({
+        operadorId: operador.id,
+        inquilinoId: f.inquilinoId!,
+        concepto: "cargo_uso" as const,
+        montoCent: f.importeCent!,
+        moneda: operador.moneda,
+        periodo: periodoDeInstante(f.inicio as Date, TZ),
+        fechaHecho: f.inicio as Date,
+        clave: `cargo_uso:${f.id}`,
+        reservaId: f.id,
+      })),
+  });
+
+  // Y algunos pagos, para que los saldos no sean todos deuda: quien pagó, pagó.
   await prisma.asiento.createMany({
     data: [
-      { operadorId: operador.id, inquilinoId: inquilinos[7]!.id, concepto: "cargo_uso", montoCent: TARIFA_HORA_CENT, moneda: "ARS", periodo: mesPasado.slice(0, 7), fechaHecho: T(mesPasado, "17:00"), clave: `cargo_uso:seed-baja` },
-      { operadorId: operador.id, inquilinoId: maria.id, concepto: "cargo_uso", montoCent: TARIFA_HORA_CENT, moneda: "ARS", periodo: hoy.slice(0, 7), fechaHecho: T(hoy, "19:00"), clave: `cargo_uso:seed-maria` },
+      { operadorId: operador.id, inquilinoId: maria.id, concepto: "pago" as const, montoCent: -1_400_000n, moneda: operador.moneda, periodo: periodoDeInstante(T(hoy, "10:00"), TZ), fechaHecho: T(hoy, "10:00"), clave: "pago:seed-maria" },
+      { operadorId: operador.id, inquilinoId: inquilinos[7]!.id, concepto: "pago" as const, montoCent: -800_000n, moneda: operador.moneda, periodo: periodoDeInstante(T(mesPasado, "18:00"), TZ), fechaHecho: T(mesPasado, "18:00"), clave: "pago:seed-baja" },
     ],
   });
 

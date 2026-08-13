@@ -44,6 +44,21 @@ CREATE TABLE "Operador" (
 );
 
 -- CreateTable
+CREATE TABLE "Tarifa" (
+    "id" TEXT NOT NULL,
+    "operadorId" TEXT NOT NULL,
+    "salaId" TEXT,
+    "inquilinoId" TEXT,
+    "nombre" TEXT NOT NULL,
+    "precioHoraCent" BIGINT NOT NULL,
+    "vigenteDesde" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "vigenteHasta" TIMESTAMPTZ(6),
+    "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Tarifa_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Usuario" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
@@ -144,6 +159,9 @@ CREATE TABLE "Ocupacion" (
     "reemplazaAId" TEXT,
     "motivo" TEXT,
     "notaInterna" TEXT,
+    "tarifaId" TEXT,
+    "precioHoraCent" BIGINT,
+    "importeCent" BIGINT,
     "expiraAt" TIMESTAMPTZ(6),
     "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -237,6 +255,15 @@ CREATE TABLE "Liquidacion" (
 CREATE UNIQUE INDEX "Operador_slug_key" ON "Operador"("slug");
 
 -- CreateIndex
+CREATE INDEX "Tarifa_operadorId_vigenteHasta_idx" ON "Tarifa"("operadorId", "vigenteHasta");
+
+-- CreateIndex
+CREATE INDEX "Tarifa_operadorId_inquilinoId_idx" ON "Tarifa"("operadorId", "inquilinoId");
+
+-- CreateIndex
+CREATE INDEX "Tarifa_operadorId_salaId_idx" ON "Tarifa"("operadorId", "salaId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Usuario_email_key" ON "Usuario"("email");
 
 -- CreateIndex
@@ -301,6 +328,9 @@ CREATE UNIQUE INDEX "Liquidacion_operadorId_inquilinoId_periodo_key" ON "Liquida
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Liquidacion_operadorId_numero_key" ON "Liquidacion"("operadorId", "numero");
+
+-- AddForeignKey
+ALTER TABLE "Tarifa" ADD CONSTRAINT "Tarifa_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "UsuarioOperador" ADD CONSTRAINT "UsuarioOperador_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE CASCADE ON UPDATE CASCADE;

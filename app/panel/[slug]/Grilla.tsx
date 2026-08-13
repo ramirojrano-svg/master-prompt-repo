@@ -5,6 +5,7 @@
 
 import type { DiaVista } from "../../../src/servicios/agenda/dia.ts";
 import { minutosAHora } from "../../../src/dominio/motor/zona.ts";
+import { formatearPesos } from "../../../src/dominio/tarifa.ts";
 
 const ALTO_CELDA = 32; // px por paso (30') en desktop
 
@@ -95,10 +96,15 @@ export function Grilla({ dia }: { dia: DiaVista }) {
                 const conIdentidad = "inquilinoNombre" in r ? r : null;
                 const esBloqueo = conIdentidad?.tipo === "mantenimiento" || conIdentidad?.tipo === "bloqueo";
                 const titulo = conIdentidad?.inquilinoNombre ?? conIdentidad?.motivo ?? "Ocupado";
+                // El importe ya viene PROYECTADO: si el que mira no puede ver plata, llega null.
+                // Acá no se decide nada de privacidad, solo se muestra lo que el servidor mandó.
+                const importe = conIdentidad?.importeCent
+                  ? formatearPesos(BigInt(conIdentidad.importeCent), dia.moneda)
+                  : null;
                 return (
                   <div
                     key={u.id}
-                    title={u.estirado ? `${titulo} · ${u.duracionMin} min` : titulo}
+                    title={[titulo, importe, u.estirado ? `${u.duracionMin} min` : null].filter(Boolean).join(" · ")}
                     aria-label={`${sala.nombre}, ${titulo}`}
                     style={{
                       gridRow: `${u.fila} / span ${u.span}`,
@@ -124,6 +130,10 @@ export function Grilla({ dia }: { dia: DiaVista }) {
                     }}
                   >
                     {titulo}
+                    {/* El importe solo si el bloque es alto: en uno de 15' tapa el nombre. */}
+                    {importe && u.span > 1 && (
+                      <div style={{ fontSize: 11, opacity: 0.85 }}>{importe}</div>
+                    )}
                   </div>
                 );
               })}

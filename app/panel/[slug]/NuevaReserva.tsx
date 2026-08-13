@@ -12,6 +12,7 @@ export function NuevaReserva({
   accion,
   error,
   creada,
+  precios,
 }: {
   salas: OpcionSala[];
   inquilinos: OpcionInquilino[];
@@ -19,6 +20,8 @@ export function NuevaReserva({
   accion: (formData: FormData) => Promise<void>;
   error?: string;
   creada?: boolean;
+  /** Aviso de precio, ya formateado por el servidor. null = quien mira no administra precios. */
+  precios?: { texto: string; href: string } | null;
 }) {
   return (
     <details className="panel" style={{ marginTop: 16 }} open={Boolean(error)}>
@@ -55,13 +58,24 @@ export function NuevaReserva({
             <label htmlFor="duracionMin">Duración</label>
             <select id="duracionMin" name="duracionMin" defaultValue="60">
               <option value="30">30 minutos</option>
-              <option value="60">1 hora</option>
-              <option value="90">1 h 30</option>
-              <option value="120">2 horas</option>
-              <option value="240">4 horas (turno)</option>
+              {/* 1 a 12 horas correlativas. 12 h es el máximo que admite el motor
+                  (DURACION_MAX_MIN), y el CHECK de la base lo respalda. */}
+              {Array.from({ length: 12 }, (_, k) => k + 1).map((h) => (
+                <option key={h} value={h * 60}>
+                  {h} {h === 1 ? "hora" : "horas"}
+                </option>
+              ))}
             </select>
           </div>
         </div>
+
+        {/* El precio no se elige en el alta: sale de la tarifa vigente (§8.8). Se avisa cuál es,
+            en vez de dejar que el profesional se entere en el resumen del mes. */}
+        {precios && (
+          <p className="tenue" style={{ marginTop: 12, fontSize: 12 }}>
+            {precios.texto} · <a href={precios.href}>cambiar precios</a>
+          </p>
+        )}
 
         {/* Mensaje honesto: nunca "no hay disponibilidad" cuando la causa es otra (§13). */}
         {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}

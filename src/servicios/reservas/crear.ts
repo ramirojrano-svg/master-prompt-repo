@@ -14,6 +14,9 @@ import { ReservaInput, validarVentanaReserva } from "../../dominio/reserva-entra
 import { evaluarVentana } from "../../dominio/motor/disponibilidad.ts";
 import { LOOKBACK_MIN } from "../../dominio/motor/limites.ts";
 import { evaluarReserva } from "../../dominio/motor/reserva.ts";
+import { cotizar, resolverTarifa } from "../../dominio/tarifa.ts";
+import { periodoDeInstante } from "../../dominio/motor/zona.ts";
+import { asentarIdempotente } from "../plata/ledger.ts";
 import type { HorarioSemanal, PoliticaCentro } from "../../dominio/motor/tipos.ts";
 import { aMotor, OCUPAN } from "./comun.ts";
 
@@ -23,6 +26,7 @@ export type CtxReserva = {
   politica: PoliticaCentro;
   horario: HorarioSemanal; // el de la sala; la fuente de FUERA_DE_HORARIO
   bloqueaProfesional: boolean;
+  moneda?: string; // del operador; default ARS
   ahora?: Date; // inyectable para tests; en prod es new Date()
 };
 
@@ -112,7 +116,23 @@ export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaCl
       });
       if (!veredicto.ok) return { ok: false as const, error: veredicto.codigo };
 
-      // 4d. Escritura. El constraint es la última red: si igual choca, sale 23P01.
+      // 4d. Cotización: se resuelve la tarifa vigente y se ESTAMPA (§8.8). Un hold todavía no
+      //     cobra nada (no es una reserva); el precio se fija cuando se confirma.
+      const minutos = Math.round((v.fin.getTime() - v.inicio.getTime()) / 60_000);
+      const tarifa = esHold
+        ? null
+        : resolverTarifa(
+            await tx.tarifa.findMany({
+              where: { operadorId: ctx.operadorId, vigenteDesde: { lte: ahora }, OR: [{ vigenteHasta: null }, { vigenteHasta: { gt: ahora } }] },
+              select: { id: true, salaId: true, inquilinoId: true, precioHoraCent: true, vigenteDesde: true, vigenteHasta: true },
+            }),
+            { salaId: sala.id, inquilinoId: ctx.inquilinoId, ahora },
+          );
+      // Sin tarifa se estampa NULL, no cero: "todavía no había precio" y "esta hora salió $0" son
+      // dos cosas distintas, y meses después nadie va a poder distinguirlas si guardamos un 0.
+      const cot = tarifa ? cotizar(tarifa, minutos) : null;
+
+      // 4e. Escritura. El constraint es la última red: si igual choca, sale 23P01.
       const creada = await tx.ocupacion.create({
         data: {
           operadorId: ctx.operadorId,
@@ -127,9 +147,30 @@ export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaCl
           tzSede: tz,
           bloqueaProfesional: bloqueaProf,
           expiraAt: opts.expiraAt ?? null, // requerido para tipo='hold' (CHECK)
+          tarifaId: cot?.tarifaId ?? null,
+          precioHoraCent: cot?.precioHoraCent ?? null,
+          importeCent: cot?.importeCent ?? null,
         },
         select: { id: true },
       });
+
+      // 4f. RECIÉN ACÁ lo irreversible: el cargo a la cuenta corriente. Si algo falló antes, la
+      //     reserva no queda huérfana ni el cargo suelto — los dos viven en la misma tx.
+      //     Clave idempotente por ocupación: una renotificación o un reintento no cobra dos veces.
+      if (cot && cot.importeCent > 0n) {
+        await asentarIdempotente(tx, {
+          operadorId: ctx.operadorId,
+          inquilinoId: ctx.inquilinoId,
+          concepto: "cargo_uso",
+          montoCent: cot.importeCent, // positivo: el profesional DEBE
+          moneda: ctx.moneda ?? "ARS",
+          periodo: periodoDeInstante(v.inicio, tz), // el mes se corta en la zona de la SEDE
+          fechaHecho: v.inicio,
+          clave: `cargo_uso:${creada.id}`,
+          reservaId: creada.id,
+        });
+      }
+
       return { ok: true as const, id: creada.id };
     });
   } catch (e) {

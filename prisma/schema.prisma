@@ -39,6 +39,31 @@ model Operador {
   asientos      Asiento[]
   liquidaciones Liquidacion[]
   membresias    Membresia[]
+  tarifas       Tarifa[]
+}
+
+// ─────────────────────────────────────────────────────────────
+// TARIFA (§3.5) — precio de la hora de sala. Se resuelve por ESPECIFICIDAD: la que apunta a un
+// profesional concreto gana sobre la de una sala, y esa sobre la general del centro.
+// El precio NO se edita: se cierra la tarifa vigente (vigenteHasta) y se crea otra. Así, cambiar
+// el precio mañana no reescribe lo que ya se reservó ni lo que ya se facturó (§8.8).
+// ─────────────────────────────────────────────────────────────
+model Tarifa {
+  id             String    @id @default(cuid())
+  operadorId     String
+  salaId         String? // null = todas las salas
+  inquilinoId    String? // null = todos los profesionales
+  nombre         String
+  precioHoraCent BigInt // centavos por hora. Se prorratea por minutos al cotizar.
+  vigenteDesde   DateTime  @default(now()) @db.Timestamptz(6)
+  vigenteHasta   DateTime? @db.Timestamptz(6) // null = vigente hoy
+  creadoEl       DateTime  @default(now()) @db.Timestamptz(6)
+
+  operador Operador @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+
+  @@index([operadorId, vigenteHasta])
+  @@index([operadorId, inquilinoId])
+  @@index([operadorId, salaId])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -219,6 +244,11 @@ model Ocupacion {
   reemplazaAId       String?
   motivo             String? // bloqueo/mantenimiento/reubicación/no-show
   notaInterna        String? // libre, del operador; nunca datos de paciente (§3.3)
+  // SNAPSHOT comercial (§8.8): se estampa al NACER y ningún update posterior lo reescribe.
+  // Cambiar la tarifa en enero no puede mover la liquidación de diciembre.
+  tarifaId           String?
+  precioHoraCent     BigInt? // el precio que regía cuando se creó
+  importeCent        BigInt? // precioHora × minutos / 60, ya calculado y congelado
   expiraAt           DateTime?       @db.Timestamptz(6) // solo tipo='hold'
   creadoEl           DateTime        @default(now()) @db.Timestamptz(6)
 

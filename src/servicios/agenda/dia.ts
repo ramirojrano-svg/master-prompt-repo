@@ -16,6 +16,7 @@ export type SalaVista = { id: string; nombre: string; color: string; activa: boo
 export type DiaVista = {
   fecha: string;
   tz: string;
+  moneda: string;
   salas: SalaVista[];
   reservas: ReservaDTO[];
   ubicaciones: ReturnType<typeof ubicarBloques>;
@@ -34,7 +35,10 @@ export async function cargarDia(
   a: { actor: Actor; fecha: string | null; ahora?: Date },
   db: PrismaClient = prisma,
 ): Promise<DiaVista | null> {
-  const sede = await db.sede.findFirst({ where: { operadorId: a.actor.operadorId, activa: true }, select: { id: true, zonaHoraria: true } });
+  const sede = await db.sede.findFirst({
+    where: { operadorId: a.actor.operadorId, activa: true },
+    select: { id: true, zonaHoraria: true, operador: { select: { moneda: true } } },
+  });
   if (!sede) return null;
   const tz = sede.zonaHoraria;
 
@@ -60,7 +64,7 @@ export async function cargarDia(
     },
     select: {
       id: true, salaId: true, inquilinoId: true, tipo: true, estado: true, inicio: true, fin: true,
-      motivo: true, notaInterna: true,
+      motivo: true, notaInterna: true, importeCent: true,
       inquilino: { select: { nombre: true } },
     },
     orderBy: { inicio: "asc" },
@@ -95,7 +99,7 @@ export async function cargarDia(
 
   const reservas = filasOcup.map((f) =>
     proyectarReserva(
-      { id: f.id, salaId: f.salaId, inquilinoId: f.inquilinoId, inquilinoNombre: f.inquilino?.nombre ?? null, tipo: f.tipo, estado: f.estado, inicio: f.inicio, fin: f.fin, motivo: f.motivo, notaInterna: f.notaInterna },
+      { id: f.id, salaId: f.salaId, inquilinoId: f.inquilinoId, inquilinoNombre: f.inquilino?.nombre ?? null, tipo: f.tipo, estado: f.estado, inicio: f.inicio, fin: f.fin, motivo: f.motivo, notaInterna: f.notaInterna, importeCent: f.importeCent },
       a.actor,
     ),
   );
@@ -125,7 +129,7 @@ export async function cargarDia(
   const ocupacionPct = disponiblesMin > 0 ? Math.round((ocupadasMin / disponiblesMin) * 100) : 0;
 
   return {
-    fecha, tz, salas, reservas, ubicaciones,
+    fecha, tz, moneda: sede.operador.moneda, salas, reservas, ubicaciones,
     aperturaMin, cierreMin, pasoMin: PASO, filas: filasTotales(rv),
     kpis: { ocupadasMin, disponiblesMin, ocupacionPct },
   };

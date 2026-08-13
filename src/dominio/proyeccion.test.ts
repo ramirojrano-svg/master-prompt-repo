@@ -60,3 +60,39 @@ test("vistaDe: operador / propia / ajena", () => {
   // un inquilino sin vínculo nunca "hereda" una reserva sin dueño
   assert.equal(vistaDe(actor("inquilino_titular", null), { inquilinoId: null }), "ajena");
 });
+
+// ── La PLATA se gatea aparte de la identidad ────────────────────────────────
+const conPrecio: FilaReserva = { ...fila, importeCent: 1_200_000n };
+
+test("el owner ve el importe de la reserva", () => {
+  const dto = proyectarReserva(conPrecio, actor("owner")) as Record<string, unknown>;
+  assert.equal(dto.importeCent, "1200000", "string: un BigInt no viaja al cliente");
+});
+
+test("la RECEPCIÓN ve quién está en la sala pero NO cuánto paga", () => {
+  const dto = proyectarReserva(conPrecio, actor("recepcion")) as Record<string, unknown>;
+  assert.equal(dto.inquilinoNombre, "María Gómez (Psicología)");
+  assert.equal(dto.importeCent, null, "identidad y plata son permisos distintos (§6.2)");
+});
+
+test("el profesional ve el importe de SU reserva", () => {
+  const dto = proyectarReserva(conPrecio, actor("inquilino_titular", "in1")) as Record<string, unknown>;
+  assert.equal(dto.importeCent, "1200000");
+});
+
+test("el staff del profesional agenda pero no mira la facturación del titular", () => {
+  const dto = proyectarReserva(conPrecio, actor("inquilino_staff", "in1")) as Record<string, unknown>;
+  assert.equal(dto.notaInterna, "Martín 16h", "es su vista propia");
+  assert.equal(dto.importeCent, null, "pero sin cuenta.ver.propia no hay plata");
+});
+
+test("el importe JAMÁS aparece en la vista ajena", () => {
+  const dto = proyectarReserva(conPrecio, actor("inquilino_titular", "in9"));
+  assert.equal("importeCent" in dto, false);
+  assert.ok(!JSON.stringify(dto).includes("1200000"));
+});
+
+test("sin precio cargado el importe es null, no cero", () => {
+  const dto = proyectarReserva(fila, actor("owner")) as Record<string, unknown>;
+  assert.equal(dto.importeCent, null);
+});

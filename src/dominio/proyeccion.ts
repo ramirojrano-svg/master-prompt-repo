@@ -23,6 +23,8 @@ export type FilaReserva = {
   fin: Date;
   motivo: string | null;
   notaInterna: string | null;
+  /** Lo que se cobró por esa hora, estampado al nacer. null = no había precio cargado. */
+  importeCent?: bigint | null;
 };
 
 export type ReservaAjenaDTO = { id: string; salaId: string | null; inicio: string; fin: string; estado: "ocupado" };
@@ -32,6 +34,8 @@ export type ReservaOperadorDTO = Omit<ReservaAjenaDTO, "estado"> & {
   inquilinoId: string | null;
   inquilinoNombre: string | null;
   motivo: string | null;
+  /** String, no bigint: un BigInt no se puede serializar del servidor al cliente. */
+  importeCent: string | null;
 };
 export type ReservaPropiaDTO = ReservaOperadorDTO & { notaInterna: string | null };
 export type ReservaDTO = ReservaAjenaDTO | ReservaOperadorDTO | ReservaPropiaDTO;
@@ -54,6 +58,11 @@ export function proyectarReserva(r: FilaReserva, actor: { rol: Rol; inquilinoId:
     return { ...base, estado: "ocupado" };
   }
 
+  // La PLATA se gatea aparte de la identidad: la recepción sabe QUIÉN está en la sala (lo necesita
+  // para atender) pero no cuánto paga. Y el profesional ve lo suyo solo si su rol ve su cuenta:
+  // el staff de un consultorio agenda, no mira la facturación del titular (§6.2).
+  const veLaPlata = puede(actor.rol, "cuenta.ver.todas") || (vista === "propia" && puede(actor.rol, "cuenta.ver.propia"));
+
   const conIdentidad: ReservaOperadorDTO = {
     ...base,
     estado: r.estado,
@@ -61,6 +70,7 @@ export function proyectarReserva(r: FilaReserva, actor: { rol: Rol; inquilinoId:
     inquilinoId: r.inquilinoId,
     inquilinoNombre: r.inquilinoNombre,
     motivo: r.motivo,
+    importeCent: veLaPlata && r.importeCent != null ? r.importeCent.toString() : null,
   };
 
   if (vista === "operador") return conIdentidad;

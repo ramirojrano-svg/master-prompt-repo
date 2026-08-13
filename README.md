@@ -85,6 +85,20 @@ Entrá a **`/panel/espacio-moca`** con cualquiera de los tres usuarios del seed:
 > "Ocupado", indistinguibles de un mantenimiento. Eso no es cosmético, es la regla de privacidad
 > (§6.3): la agenda de un psicólogo es información de salud por contexto.
 
+Las pantallas, desde la agenda:
+
+| Pantalla | Para qué | Quién entra |
+|---|---|---|
+| `/panel/<slug>` | agenda del día, multi-sala, con alta de reserva | todos (cada uno ve lo suyo) |
+| `…/salas` | alta, edición y **archivado** de salas | owner y gestor |
+| `…/inquilinos` | alta y baja de profesionales | owner y gestor |
+| `…/tarifas` | **precio de la hora**: general, por sala y por profesional | solo el owner |
+| `…/reportes` | facturado, cobrado, deuda y ocupación del mes | owner, gestor y soporte |
+
+> El precio **no se edita**: ponés uno nuevo y el anterior queda cerrado. Por eso una reserva de
+> ayer sigue valiendo lo que valía aunque hoy subas la tarifa, y el resumen del mes pasado no
+> cambia solo (§8.8).
+
 ---
 
 ## Comandos
@@ -93,8 +107,8 @@ Entrá a **`/panel/espacio-moca`** con cualquiera de los tres usuarios del seed:
 |---|---|
 | `npm run dev` | servidor de desarrollo |
 | `npm run seed` | carga (o recarga) los datos del piloto |
-| `npm test` | tests puros del dominio, sin base (~125, corren en segundos) |
-| `npm run test:db` | tests de integración contra Postgres real (~91), incluida la concurrencia |
+| `npm test` | tests puros del dominio, sin base (~152, corren en segundos) |
+| `npm run test:db` | tests de integración contra Postgres real (~117), incluida la concurrencia |
 | `npm run typecheck` | TypeScript en modo estricto |
 | `npm run verify` | typecheck + tests puros |
 | `npm run humo` | prueba de humo en un browser real; deja capturas en `capturas/` |
