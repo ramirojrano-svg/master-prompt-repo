@@ -108,6 +108,11 @@ model Sala {
   operadorId  String
   sedeId      String
   nombre      String
+  color       String    @default("#2f6fe0")
+  orden       Int       @default(0) // el operador arrastra las columnas: el pasillo no es alfabético (§6.4)
+  equipamiento String[] @default([])
+  horarioJson Json? // apertura semanal; se sanea con parseHorarios (§4.4). null => default
+  bufferMin   Int       @default(15) @db.SmallInt // limpieza entre inquilinos distintos (§4.6)
   activa      Boolean   @default(true) // baja lógica: NUNCA borrar una sala con historia
   archivadaEl DateTime? @db.Timestamptz(6)
 

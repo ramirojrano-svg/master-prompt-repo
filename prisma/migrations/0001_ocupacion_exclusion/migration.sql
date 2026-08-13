@@ -85,6 +85,11 @@ CREATE TABLE "Sala" (
     "operadorId" TEXT NOT NULL,
     "sedeId" TEXT NOT NULL,
     "nombre" TEXT NOT NULL,
+    "color" TEXT NOT NULL DEFAULT '#2f6fe0',
+    "orden" INTEGER NOT NULL DEFAULT 0,
+    "equipamiento" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "horarioJson" JSONB,
+    "bufferMin" SMALLINT NOT NULL DEFAULT 15,
     "activa" BOOLEAN NOT NULL DEFAULT true,
     "archivadaEl" TIMESTAMPTZ(6),
 
