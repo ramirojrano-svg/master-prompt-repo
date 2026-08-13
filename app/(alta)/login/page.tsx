@@ -3,6 +3,7 @@
 // si el email existe (§6.11: nunca un oráculo de padrón).
 import { redirect } from "next/navigation";
 import { signIn } from "../../../src/lib/auth.ts";
+import { Logo } from "../../Logo.tsx";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; centro?: string }> }) {
   // En Next 16 searchParams es una Promise (§11.0).
@@ -22,25 +23,51 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   }
 
   return (
-    <main style={{ maxWidth: 420, margin: "60px auto", padding: "0 16px" }}>
-      <h1>EMOAPP</h1>
-      <form className="panel" action={entrar}>
-        <h2>Entrá a tu centro</h2>
+    <main
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: "24px 16px",
+        background: "linear-gradient(160deg, var(--agua-clara) 0%, var(--fondo) 46%, #fff 100%)",
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: 400 }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 22 }}>
+          <Logo alto={54} />
+        </div>
 
-        <label htmlFor="email">Email</label>
-        <input id="email" name="email" type="email" required autoComplete="email" />
+        <form className="panel" action={entrar} style={{ padding: 26 }}>
+          <h1 style={{ margin: 0, fontSize: 20 }}>Entrá a tu centro</h1>
+          <p className="tenue" style={{ margin: "6px 0 4px", fontSize: 13 }}>
+            Agenda, profesionales y facturación de Espacio Montes de Oca.
+          </p>
 
-        <label htmlFor="password">Contraseña</label>
-        <input id="password" name="password" type="password" required autoComplete="current-password" />
+          <label htmlFor="email">Email</label>
+          <input id="email" name="email" type="email" required autoComplete="email" placeholder="vos@email.com" />
 
-        <input type="hidden" name="centro" defaultValue={sp.centro ?? ""} />
+          <label htmlFor="password">Contraseña</label>
+          <input id="password" name="password" type="password" required autoComplete="current-password" />
 
-        {sp.error && <p className="error">Email o contraseña incorrectos.</p>}
+          <input type="hidden" name="centro" defaultValue={sp.centro ?? ""} />
 
-        <p style={{ marginTop: 18 }}>
-          <button type="submit">Entrar</button>
+          {sp.error && (
+            <p className="error" style={{ marginBottom: 0 }}>
+              Email o contraseña incorrectos.
+            </p>
+          )}
+
+          <p style={{ marginTop: 20, marginBottom: 0 }}>
+            <button type="submit" style={{ width: "100%" }}>
+              Entrar
+            </button>
+          </p>
+        </form>
+
+        <p className="tenue" style={{ textAlign: "center", fontSize: 12, marginTop: 18 }}>
+          Espacio Montes de Oca S.R.L. · espaciomontesdeoca@gmail.com
         </p>
-      </form>
+      </div>
     </main>
   );
 }

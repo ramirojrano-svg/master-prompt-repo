@@ -44,7 +44,7 @@ try {
 
   const bloques = await page.locator("[aria-label]").count();
   chequeo(bloques > 0, `la grilla muestra ${bloques} bloques`);
-  const kpi = (await page.locator("p.tenue").first().innerText()).replace(/\s+/g, " ");
+  const kpi = (await page.locator("#kpi").innerText()).replace(/\s+/g, " ");
   chequeo(/Ocupación .* de .*/.test(kpi), `KPI con denominador: "${kpi}"`);
   await page.screenshot({ path: `${OUT}/1-agenda-owner.png`, fullPage: true });
 
@@ -89,7 +89,7 @@ try {
   await entrar(page2, "maria@email.com");
   const html2 = await page2.content();
   chequeo(!/Ana Rodríguez|Carlos López|Pablo Sosa/.test(html2), "no ve nombres de otros inquilinos");
-  chequeo(!/Nueva reserva/.test(html2), "no ve el formulario de alta ajena");
+  chequeo(!/Crear turno/.test(html2), "no ve el formulario de alta ajena");
   const propias = await page2.locator('[aria-label*="María Gómez"]').count();
   chequeo(propias > 0, `sí ve sus propias reservas (${propias})`);
   await page2.screenshot({ path: `${OUT}/4-vista-inquilino.png`, fullPage: true });
@@ -112,7 +112,7 @@ try {
   await page.fill("#nombre", nombreSala);
   await page.fill("#desde", "09:00");
   await page.fill("#hasta", "18:00");
-  await Promise.all([page.waitForURL(/ok=1|error=/, { timeout: 20_000 }), page.click('button:has-text("Crear sala")')]);
+  await Promise.all([page.waitForURL(/ok=1|error=/, { timeout: 20_000 }), page.click('button:has-text("Crear consultorio")')]);
   const salasDespues = await page.locator("tbody tr").count();
   chequeo(salasDespues === salasAntes + 1, `salas: ${salasAntes} -> ${salasDespues}`);
   const resumen = await page.locator(`tbody tr:has-text("${nombreSala}")`).innerText();
@@ -177,12 +177,22 @@ try {
   chequeo(/Facturado en el mes/.test(cuerpo), "muestra lo facturado del mes");
   chequeo(/de .*abiertas/.test(cuerpo), "la ocupación muestra su DENOMINADOR");
   chequeo(!/no se pudieron atribuir/.test(cuerpo), "el detalle por profesional suma exacto el total");
-  chequeo(/Por sala/.test(cuerpo), "hay corte por sala");
+  chequeo(/Por consultorio/.test(cuerpo), "hay corte por consultorio");
   await page.screenshot({ path: `${OUT}/9-reportes.png`, fullPage: true });
 
-  await page.click('a:has-text("mes anterior")');
+  await page.click('a[aria-label="Mes anterior"]');
   await page.waitForURL(/periodo=/, { timeout: 20_000 });
-  chequeo(/Datos de/.test(await page.locator("h1").innerText()), "se puede navegar al mes anterior");
+  chequeo(/Métricas de/.test(await page.locator("h1").innerText()), "se puede navegar al mes anterior");
+
+  // El detalle por profesional: horas, días y horarios del mes (lo que pidió el operador).
+  await page.goto(`${BASE}/panel/${SLUG}/reportes`, { waitUntil: "domcontentloaded" });
+  await page.locator("tbody a").first().click();
+  await page.waitForURL(/reportes\/[^/?]+/, { timeout: 20_000 });
+  const det = (await page.locator("main").innerText()).replace(/\s+/g, " ");
+  chequeo(/Horas usadas/.test(det), "el detalle muestra las horas usadas");
+  chequeo(/Qué días usa el consultorio|No usó ningún consultorio/.test(det), "muestra qué días usa el consultorio");
+  chequeo(/Turno por turno|No usó ningún consultorio/.test(det), "muestra el detalle turno por turno");
+  await page.screenshot({ path: `${OUT}/10-detalle-profesional.png`, fullPage: true });
 
   console.log("\n[recepción] no puede administrar");
   const ctx4 = await browser.newContext({ viewport: { width: 1280, height: 900 } });

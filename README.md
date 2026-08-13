@@ -3,7 +3,7 @@
 SaaS para que un centro alquile sus consultorios a profesionales independientes: agenda que no
 vende la misma sala dos veces, cuenta corriente por inquilino y liquidación mensual.
 
-Piloto: **Espacio Montes de Oca** (1 sede, 3 salas, 50 profesionales, L-V 08–22).
+Piloto: **Espacio Montes de Oca** (1 sede, 3 consultorios, 50 profesionales, L-V 08–22).
 
 ---
 
@@ -63,7 +63,7 @@ psql "$DATABASE_URL" -f prisma/migrations/0001_ocupacion_exclusion/migration.sql
 npm run seed
 ```
 
-El seed carga el piloto real: 3 salas con su horario, 50 profesionales, la agenda de la semana,
+El seed carga el piloto real: 3 consultorios con su horario, 50 profesionales, la agenda de la semana,
 y a propósito los **casos feos** (una sala archivada con historia, un profesional de baja con
 horas facturadas, un bloque de 15', dos reservas pegadas 09-10 y 10-11).
 
@@ -89,11 +89,15 @@ Las pantallas, desde la agenda:
 
 | Pantalla | Para qué | Quién entra |
 |---|---|---|
-| `/panel/<slug>` | agenda del día, multi-sala, con alta de reserva | todos (cada uno ve lo suyo) |
-| `…/salas` | alta, edición y **archivado** de salas | owner y gestor |
+| `/panel/<slug>` | el calendario: vistas **día, semana y mes**, con alta de turno | todos (cada uno ve lo suyo) |
+| `…/salas` | alta, edición y **archivado** de consultorios | owner y gestor |
 | `…/inquilinos` | alta y baja de profesionales | owner y gestor |
-| `…/tarifas` | **precio de la hora**: general, por sala y por profesional | solo el owner |
+| `…/tarifas` | **precio de la hora**: general, por consultorio y por profesional | solo el owner |
 | `…/reportes` | facturado, cobrado, deuda y ocupación del mes | owner, gestor y soporte |
+| `…/reportes/<id>` | el mes de UN profesional: horas, qué días y a qué hora, y cuánto factura | owner, gestor y soporte |
+
+> El estado del calendario (día, vista, consultorios filtrados) vive en la URL: el botón "atrás"
+> funciona, y el link de un día concreto se puede mandar por WhatsApp.
 
 > El precio **no se edita**: ponés uno nuevo y el anterior queda cerrado. Por eso una reserva de
 > ayer sigue valiendo lo que valía aunque hoy subas la tarifa, y el resumen del mes pasado no
@@ -107,8 +111,8 @@ Las pantallas, desde la agenda:
 |---|---|
 | `npm run dev` | servidor de desarrollo |
 | `npm run seed` | carga (o recarga) los datos del piloto |
-| `npm test` | tests puros del dominio, sin base (~152, corren en segundos) |
-| `npm run test:db` | tests de integración contra Postgres real (~117), incluida la concurrencia |
+| `npm test` | tests puros del dominio, sin base (~164, corren en segundos) |
+| `npm run test:db` | tests de integración contra Postgres real (~133), incluida la concurrencia |
 | `npm run typecheck` | TypeScript en modo estricto |
 | `npm run verify` | typecheck + tests puros |
 | `npm run humo` | prueba de humo en un browser real; deja capturas en `capturas/` |

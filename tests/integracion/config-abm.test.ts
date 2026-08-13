@@ -17,7 +17,7 @@ const inquilinos = inquilinosCon(db);
 const owner: Actor = { usuarioId: "u1", operadorId: "op1", rol: "owner", inquilinoId: null };
 const recepcion: Actor = { usuarioId: "u3", operadorId: "op1", rol: "recepcion", inquilinoId: null };
 
-const salaBase = { nombre: "Consultorio 9", color: "#157f4a", dias: [1, 2, 3, 4, 5], desde: "08:00", hasta: "22:00", bufferMin: 15 };
+const salaBase = { nombre: "Consultorio 9", color: "#157f4a", dias: [1, 2, 3, 4, 5], desde: "08:00", hasta: "22:00" };
 
 before(async () => {
   await reiniciarEsquema(pgPool);
@@ -42,7 +42,7 @@ test("el owner crea una sala con su horario semanal", async () => {
   if (!(r.ok && r.data.ok)) return;
   const s = await db.sala.findUniqueOrThrow({ where: { id: r.data.id }, select: { nombre: true, bufferMin: true, horarioJson: true, orden: true } });
   assert.equal(s.nombre, "Consultorio 9");
-  assert.equal(s.bufferMin, 15);
+  assert.equal(s.bufferMin, 0, "el centro no usa tiempo de limpieza entre turnos");
   assert.equal(resumenHorarios(parseHorarios(s.horarioJson)), "Lun a Vie 08:00-22:00");
   assert.ok(s.orden > 0, "toma el siguiente orden (el pasillo no es alfabético)");
 });

@@ -28,7 +28,7 @@ export default async function SalasPage({
   const salas = await prisma.sala.findMany({
     where: { operadorId: actor.operadorId },
     orderBy: [{ activa: "desc" }, { orden: "asc" }],
-    select: { id: true, nombre: true, color: true, activa: true, bufferMin: true, horarioJson: true },
+    select: { id: true, nombre: true, color: true, activa: true, horarioJson: true },
   });
 
   const enEdicion = editar ? salas.find((s) => s.id === editar) : undefined;
@@ -48,7 +48,6 @@ export default async function SalasPage({
       dias: formData.getAll("dias"),
       desde: formData.get("desde"),
       hasta: formData.get("hasta"),
-      bufferMin: formData.get("bufferMin"),
     };
     const r = salaId ? await editarSala(a, { ...input, salaId }) : await crearSala(a, input);
 
@@ -72,24 +71,23 @@ export default async function SalasPage({
     error === "HORARIO_INVALIDO"
       ? "El horario no es válido: la hora de apertura tiene que ser anterior a la de cierre."
       : error === "SIN_PERMISO"
-        ? "Tu rol no puede administrar salas."
+        ? "Tu rol no puede administrar consultorios."
         : error === "ENTRADA_INVALIDA"
           ? "Revisá los datos: falta el nombre o algún día."
           : error
-            ? "No se pudo guardar la sala."
+            ? "No se pudo guardar el consultorio."
             : null;
 
   return (
     <main style={{ padding: 16, maxWidth: 900 }}>
       <p><Link href={`/panel/${slug}`}>‹ Agenda</Link></p>
-      <h1 style={{ fontSize: 20 }}>Salas</h1>
+      <h1>Consultorios</h1>
 
       <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
         <thead>
           <tr style={{ textAlign: "left", borderBottom: "1px solid var(--borde)" }}>
-            <th style={{ padding: "6px 4px" }}>Sala</th>
+            <th>Consultorio</th>
             <th style={{ padding: "6px 4px" }}>Horario</th>
-            <th style={{ padding: "6px 4px" }}>Limpieza</th>
             <th style={{ padding: "6px 4px" }} />
           </tr>
         </thead>
@@ -101,7 +99,6 @@ export default async function SalasPage({
                 {s.nombre} {!s.activa && <span className="tenue">(archivada)</span>}
               </td>
               <td style={{ padding: "8px 4px" }} className="tenue">{resumenHorarios(parseHorarios(s.horarioJson)) || "sin horario"}</td>
-              <td style={{ padding: "8px 4px" }} className="tenue">{s.bufferMin}′</td>
               <td style={{ padding: "8px 4px", textAlign: "right", whiteSpace: "nowrap" }}>
                 <Link href={`?editar=${s.id}`}>Editar</Link>{" "}
                 <form action={cambiarArchivo} style={{ display: "inline" }}>
@@ -119,7 +116,7 @@ export default async function SalasPage({
       </table>
 
       <form className="panel" action={guardar} style={{ marginTop: 20 }}>
-        <h2 style={{ marginTop: 0 }}>{enEdicion ? `Editar ${enEdicion.nombre}` : "Nueva sala"}</h2>
+        <h2 style={{ marginTop: 0 }}>{enEdicion ? `Editar ${enEdicion.nombre}` : "Nuevo consultorio"}</h2>
         {enEdicion && <input type="hidden" name="salaId" value={enEdicion.id} />}
 
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
@@ -129,7 +126,7 @@ export default async function SalasPage({
           </div>
           <div>
             <label htmlFor="color">Color</label>
-            <input id="color" name="color" type="color" defaultValue={enEdicion?.color ?? "#2f6fe0"} />
+            <input id="color" name="color" type="color" defaultValue={enEdicion?.color ?? "#1a8fc1"} />
           </div>
           <div>
             <label htmlFor="desde">Abre</label>
@@ -138,15 +135,6 @@ export default async function SalasPage({
           <div>
             <label htmlFor="hasta">Cierra</label>
             <input id="hasta" name="hasta" type="time" step={1800} required defaultValue={franjaEd?.hasta ?? "22:00"} />
-          </div>
-          <div>
-            <label htmlFor="bufferMin">Limpieza entre turnos</label>
-            <select id="bufferMin" name="bufferMin" defaultValue={String(enEdicion?.bufferMin ?? 15)}>
-              <option value="0">Sin buffer</option>
-              <option value="10">10 minutos</option>
-              <option value="15">15 minutos</option>
-              <option value="30">30 minutos</option>
-            </select>
           </div>
         </div>
 
@@ -164,7 +152,7 @@ export default async function SalasPage({
         {ok && <p style={{ marginTop: 12, color: "#157f4a" }}>Guardado.</p>}
 
         <p style={{ marginTop: 14 }}>
-          <button type="submit">{enEdicion ? "Guardar cambios" : "Crear sala"}</button>{" "}
+          <button type="submit">{enEdicion ? "Guardar cambios" : "Crear consultorio"}</button>{" "}
           {enEdicion && <Link href="?">Cancelar</Link>}
         </p>
       </form>

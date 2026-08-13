@@ -4,7 +4,7 @@
 import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
-import { reporteMensual } from "../../src/servicios/reportes/mensual.ts";
+import { detalleProfesional, reporteMensual } from "../../src/servicios/reportes/mensual.ts";
 import { prisma } from "../../src/db/prisma.ts";
 import type { Actor } from "../../src/lib/actor.ts";
 import { insertarOcupacion, nuevoPool, reiniciarEsquema, seedBase, TZ_SEDE, URL_DB } from "./db.ts";
@@ -198,4 +198,78 @@ test("otro operador no ve un solo peso de este (aislamiento explícito)", async 
   assert.equal(r.totales.facturadoCent, 0n);
   assert.equal(r.profesionales.length, 0);
   await pgPool.query(`DELETE FROM "Operador" WHERE "id"='op9'`);
+});
+
+// ── Detalle de un profesional ───────────────────────────────────────────────
+test("el detalle dice cuántas horas usó, qué días y a qué hora", async () => {
+  // Lunes 4/5 de 10 a 12, lunes 11/5 de 10 a 11, jueves 7/5 de 15 a 16:30 (horas AR).
+  await insertarOcupacion(pgPool, { id: "o1", salaId: "sa1", inquilinoId: "in1", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T15:00:00Z" });
+  await insertarOcupacion(pgPool, { id: "o2", salaId: "sa1", inquilinoId: "in1", inicio: "2026-05-11T13:00:00Z", fin: "2026-05-11T14:00:00Z" });
+  await insertarOcupacion(pgPool, { id: "o3", salaId: "sa2", inquilinoId: "in1", inicio: "2026-05-07T18:00:00Z", fin: "2026-05-07T19:30:00Z" });
+
+  const d = await detalleProfesional({ actor: owner, periodo: PERIODO, inquilinoId: "in1" }, db);
+  assert.ok(d);
+  assert.equal(d.totales.reservas, 3);
+  assert.equal(d.totales.minutos, 120 + 60 + 90);
+  assert.equal(d.totales.diasDistintos, 3);
+
+  assert.equal(d.turnos[0]!.fecha, "2026-05-04");
+  assert.equal(d.turnos[0]!.horaTexto, "10:00 – 12:00", "la hora es la del CENTRO, no UTC");
+  assert.equal(d.turnos[0]!.salaNombre, "Sala 1");
+  // Vienen ordenados por fecha: 4/5, 7/5, 11/5 — no en el orden en que se insertaron.
+  assert.equal(d.turnos[1]!.fecha, "2026-05-07");
+  assert.equal(d.turnos[1]!.horaTexto, "15:00 – 16:30");
+
+  const lunes = d.porDiaSemana.find((x) => x.dia === 1)!;
+  assert.equal(lunes.reservas, 2, "los dos lunes se agrupan: 'siempre los lunes' se ve de una");
+  assert.equal(lunes.minutos, 180);
+  assert.equal(d.porDiaSemana.find((x) => x.dia === 4)!.minutos, 90, "el jueves");
+  assert.equal(d.porDiaSemana.find((x) => x.dia === 3)!.reservas, 0, "el miércoles no vino");
+
+  assert.equal(d.porFranja.find((f) => f.franja === "mañana")!.minutos, 180);
+  assert.equal(d.porFranja.find((f) => f.franja === "tarde")!.minutos, 90);
+  assert.equal(d.porFranja.find((f) => f.franja === "noche")!.minutos, 0);
+});
+
+test("el detalle suma los importes ESTAMPADOS y los compara con el libro", async () => {
+  await insertarOcupacion(pgPool, { id: "o1", salaId: "sa1", inquilinoId: "in1", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T14:00:00Z" });
+  await pgPool.query(`UPDATE "Ocupacion" SET "importeCent"=800000 WHERE "id"='o1'`);
+  await asiento("in1", 800_000n, PERIODO, "a1");
+  await asiento("in1", 150_000n, PERIODO, "a2", "penalidad_noshow"); // no es una hora de consultorio
+  await asiento("in1", -500_000n, PERIODO, "a3", "pago");
+
+  const d = await detalleProfesional({ actor: owner, periodo: PERIODO, inquilinoId: "in1" }, db);
+  assert.ok(d);
+  assert.equal(d.totales.importeCent, 800_000n, "lo que suman los turnos");
+  assert.equal(d.totales.facturadoCent, 950_000n, "lo que dice el libro (turno + penalidad)");
+  assert.equal(d.totales.pagadoCent, 500_000n);
+  assert.equal(d.totales.saldoCent, 450_000n);
+});
+
+test("un turno sin precio muestra null, no cero", async () => {
+  await insertarOcupacion(pgPool, { id: "o1", salaId: "sa1", inquilinoId: "in1", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T14:00:00Z" });
+  const d = await detalleProfesional({ actor: owner, periodo: PERIODO, inquilinoId: "in1" }, db);
+  assert.equal(d!.turnos[0]!.importeCent, null);
+  assert.equal(d!.totales.importeCent, 0n);
+});
+
+test("un mes sin turnos igual muestra el saldo acumulado", async () => {
+  await asiento("in1", 300_000n, "2026-04", "viejo");
+  const d = await detalleProfesional({ actor: owner, periodo: PERIODO, inquilinoId: "in1" }, db);
+  assert.ok(d);
+  assert.equal(d.totales.reservas, 0);
+  assert.equal(d.totales.facturadoCent, 0n, "este mes no facturó nada");
+  assert.equal(d.totales.saldoCent, 300_000n, "pero la deuda vieja sigue ahí");
+});
+
+test("un profesional de OTRO operador no existe acá (pertenencia, no findUnique)", async () => {
+  await pgPool.query(`INSERT INTO "Operador"("id","nombre","slug") VALUES('op8','Otro','otro8')`);
+  await pgPool.query(`INSERT INTO "Inquilino"("id","operadorId","nombre") VALUES('inAjeno8','op8','Ajeno')`);
+  const d = await detalleProfesional({ actor: owner, periodo: PERIODO, inquilinoId: "inAjeno8" }, db);
+  assert.equal(d, null);
+  await pgPool.query(`DELETE FROM "Operador" WHERE "id"='op8'`);
+});
+
+test("un período inválido en el detalle devuelve null, no una pantalla rota", async () => {
+  assert.equal(await detalleProfesional({ actor: owner, periodo: "2026-99", inquilinoId: "in1" }, db), null);
 });

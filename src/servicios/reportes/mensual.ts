@@ -13,7 +13,8 @@
 import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { parseHorarios } from "../../dominio/motor/horarios.ts";
-import { diaSemanaDeFecha, rangoDiaEnZona } from "../../dominio/motor/zona.ts";
+import { diaSemanaDeFecha, fechaEnZona, minutosAHora, rangoDiaEnZona } from "../../dominio/motor/zona.ts";
+import { minutosDelDia } from "../../dominio/grilla.ts";
 import {
   aperturaDelPeriodoMin,
   diasDelPeriodo,
@@ -248,4 +249,137 @@ export async function reporteMensual(
 function hm(s: string): number {
   const m = /^(\d{2}):(\d{2})$/.exec(s);
   return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
+}
+
+// ── Detalle de UN profesional ───────────────────────────────────────────────
+// "Cuántas horas usó, qué días y a qué hora, y cuánto factura": las tres preguntas que el operador
+// hace cuando alguien discute su resumen. Se responden con las filas reales, no con un promedio.
+
+export type TurnoDelMes = {
+  id: string;
+  fecha: string; // 'YYYY-MM-DD' en la zona de la SEDE
+  diaSemana: number;
+  horaTexto: string; // "09:00 – 10:30"
+  salaNombre: string;
+  minutos: number;
+  importeCent: bigint | null; // null = se creó sin tarifa cargada (≠ $0)
+  estado: string;
+};
+
+export type DetalleProfesional = {
+  periodo: string;
+  tz: string;
+  moneda: string;
+  inquilino: { id: string; nombre: string; activo: boolean };
+  turnos: TurnoDelMes[];
+  /** Cuántas horas por día de la semana: "siempre martes y jueves" se ve de una. */
+  porDiaSemana: { dia: number; reservas: number; minutos: number }[];
+  /** En qué franjas horarias entra: mañana (<13), tarde (13-18), noche (>=18). */
+  porFranja: { franja: "mañana" | "tarde" | "noche"; reservas: number; minutos: number }[];
+  totales: {
+    reservas: number;
+    minutos: number;
+    /** Suma de los importes ESTAMPADOS en los turnos del mes. */
+    importeCent: bigint;
+    /** Lo facturado según el libro (puede diferir: ajustes, penalidades, notas de crédito). */
+    facturadoCent: bigint;
+    pagadoCent: bigint;
+    saldoCent: bigint;
+    diasDistintos: number;
+  };
+};
+
+export async function detalleProfesional(
+  a: { actor: Actor; periodo: string; inquilinoId: string },
+  db: PrismaClient = prisma,
+): Promise<DetalleProfesional | null> {
+  if (!esPeriodoValido(a.periodo)) return null;
+
+  const op = a.actor.operadorId;
+  // Pertenencia: el id vino de la URL. findFirst({id, operadorId}), nunca findUnique({id}).
+  const inq = await db.inquilino.findFirst({
+    where: { id: a.inquilinoId, operadorId: op },
+    select: { id: true, nombre: true, estado: true },
+  });
+  if (!inq) return null;
+
+  const sede = await db.sede.findFirst({ where: { operadorId: op, activa: true }, select: { zonaHoraria: true } });
+  if (!sede) return null;
+  const tz = sede.zonaHoraria;
+
+  const dias = diasDelPeriodo(a.periodo);
+  const primero = rangoDiaEnZona(dias[0]!, tz);
+  const ultimo = rangoDiaEnZona(dias.at(-1)!, tz);
+  if (!primero || !ultimo) return null;
+
+  const [operador, filas, movs, saldoFila] = await Promise.all([
+    db.operador.findUniqueOrThrow({ where: { id: op }, select: { moneda: true } }),
+    db.ocupacion.findMany({
+      where: {
+        operadorId: op,
+        inquilinoId: inq.id,
+        tipo: "reserva",
+        estado: { in: ESTADOS_VENDIDOS as never[] },
+        inicio: { gte: primero.inicio, lt: ultimo.fin },
+      },
+      select: { id: true, inicio: true, fin: true, estado: true, importeCent: true, sala: { select: { nombre: true } } },
+      orderBy: { inicio: "asc" },
+    }),
+    db.$queryRaw<{ debe: bigint; haber: bigint }[]>`
+      SELECT COALESCE(SUM(CASE WHEN "montoCent" > 0 THEN "montoCent" ELSE 0 END), 0)::bigint AS debe,
+             COALESCE(SUM(CASE WHEN "montoCent" < 0 THEN -"montoCent" ELSE 0 END), 0)::bigint AS haber
+      FROM "Asiento"
+      WHERE "operadorId" = ${op} AND "inquilinoId" = ${inq.id} AND "cuenta" = 'corriente' AND "periodo" = ${a.periodo}`,
+    db.asiento.aggregate({ where: { operadorId: op, inquilinoId: inq.id, cuenta: "corriente" }, _sum: { montoCent: true } }),
+  ]);
+
+  const turnos: TurnoDelMes[] = filas.map((f) => {
+    const fecha = fechaEnZona(f.inicio, tz);
+    const desdeMin = minutosDelDia(f.inicio, tz);
+    const hastaMin = minutosDelDia(f.fin, tz) || 24 * 60;
+    return {
+      id: f.id,
+      fecha,
+      diaSemana: diaSemanaDeFecha(fecha) ?? 0,
+      horaTexto: `${minutosAHora(desdeMin)} – ${minutosAHora(hastaMin % (24 * 60))}`,
+      salaNombre: f.sala?.nombre ?? "—",
+      minutos: Math.round((f.fin.getTime() - f.inicio.getTime()) / 60_000),
+      importeCent: f.importeCent,
+      estado: f.estado,
+    };
+  });
+
+  const porDiaSemana = [0, 1, 2, 3, 4, 5, 6].map((dia) => {
+    const del = turnos.filter((t) => t.diaSemana === dia);
+    return { dia, reservas: del.length, minutos: del.reduce((acc, t) => acc + t.minutos, 0) };
+  });
+
+  const franjaDe = (t: TurnoDelMes): "mañana" | "tarde" | "noche" => {
+    const h = Number(t.horaTexto.slice(0, 2));
+    return h < 13 ? "mañana" : h < 18 ? "tarde" : "noche";
+  };
+  const porFranja = (["mañana", "tarde", "noche"] as const).map((franja) => {
+    const del = turnos.filter((t) => franjaDe(t) === franja);
+    return { franja, reservas: del.length, minutos: del.reduce((acc, t) => acc + t.minutos, 0) };
+  });
+
+  const mov = movs[0] ?? { debe: 0n, haber: 0n };
+  return {
+    periodo: a.periodo,
+    tz,
+    moneda: operador.moneda,
+    inquilino: { id: inq.id, nombre: inq.nombre, activo: inq.estado === "activo" },
+    turnos,
+    porDiaSemana,
+    porFranja,
+    totales: {
+      reservas: turnos.length,
+      minutos: turnos.reduce((acc, t) => acc + t.minutos, 0),
+      importeCent: turnos.reduce((acc, t) => acc + (t.importeCent ?? 0n), 0n),
+      facturadoCent: mov.debe,
+      pagadoCent: mov.haber,
+      saldoCent: saldoFila._sum.montoCent ?? 0n,
+      diasDistintos: new Set(turnos.map((t) => t.fecha)).size,
+    },
+  };
 }

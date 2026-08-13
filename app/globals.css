@@ -1,35 +1,88 @@
-/* app/globals.css — estilos base mínimos. Tipografía de sistema, densidad media, radio 8px
-   (§6.16). Sin dark mode en v1: es superficie extra a testear y ningún operador lo pidió. */
+/* app/globals.css — sistema visual de EMOAPP.
+   Paleta MOCA: turquesa, azul, verde agua y blancos. Tipografía del stack de sistema (la misma
+   familia que usan las apps de Meta: SF Pro en Apple, Segoe UI en Windows, Roboto en Android),
+   pesos 400/500/600, títulos ajustados y letter-spacing negativo. Sin fuentes externas: una
+   @font-face remota agrega un pedido bloqueante y un tercero que no controlamos.
+   Sin dark mode en v1: es superficie extra a testear y ningún operador la pidió (§6.16). */
 
 :root {
-  --fondo: #f7f7f8;
+  /* ── Marca ─────────────────────────────────────────────────────────────── */
+  --marca-900: #10365c; /* azul profundo del logo */
+  --marca-700: #12608f;
+  --marca-500: #1a8fc1; /* azul MOCA */
+  --turquesa: #17b6c4;
+  --agua: #6fd3d6;
+  --agua-clara: #d3f0f2;
+  --verde: #149e8a;
+
+  /* ── Superficies ───────────────────────────────────────────────────────── */
+  --fondo: #f4f9fb;
   --panel: #ffffff;
-  --texto: #16181d;
-  --tenue: #5b6270;
-  --borde: #dfe2e8;
-  --acento: #2f6fe0;
-  --ok: #157f4a;
+  --panel-2: #f7fbfc;
+  --texto: #0f2c3f;
+  --tenue: #5c7382;
+  --borde: #dbe8ee;
+  --borde-fuerte: #c2d8e2;
+
+  --acento: var(--marca-500);
+  --acento-fuerte: var(--marca-700);
+  --ok: #0f8f6f;
   --alerta: #b45309;
-  --error: #b42318;
-  --radio: 8px;
+  --error: #c0342b;
+
+  --radio: 12px;
+  --radio-chico: 8px;
+  --sombra: 0 1px 2px rgba(16, 54, 92, 0.06), 0 4px 14px rgba(16, 54, 92, 0.06);
+  --sombra-alta: 0 8px 28px rgba(16, 54, 92, 0.14);
+
+  --barra: 60px; /* alto de la barra superior */
+  --sidebar: 244px;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
   background: var(--fondo);
   color: var(--texto);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+h1 {
+  font-size: 22px;
+}
+h2 {
+  font-size: 17px;
+}
+
+a {
+  color: var(--acento-fuerte);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
 }
 
 /* Foco visible de 2px siempre (accesibilidad AA, §6.16). */
 :focus-visible {
-  outline: 2px solid var(--acento);
+  outline: 2px solid var(--turquesa);
   outline-offset: 2px;
 }
 
@@ -38,28 +91,37 @@ body {
   border: 1px solid var(--borde);
   border-radius: var(--radio);
   padding: 20px;
+  box-shadow: var(--sombra);
 }
 
 label {
   display: block;
-  font-weight: 600;
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--tenue);
   margin: 14px 0 4px;
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
-  padding: 9px 10px;
-  border: 1px solid var(--borde);
-  border-radius: var(--radio);
+  padding: 10px 12px;
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio-chico);
   font: inherit;
+  color: var(--texto);
   background: #fff;
+}
+input:focus,
+select:focus {
+  border-color: var(--turquesa);
 }
 
 button {
   font: inherit;
-  padding: 10px 16px;
-  border-radius: var(--radio);
+  padding: 10px 18px;
+  border-radius: 999px;
   border: 1px solid transparent;
   background: var(--acento);
   color: #fff;
@@ -67,6 +129,35 @@ button {
   cursor: pointer;
   /* target táctil mínimo 44px (WCAG 2.5.5) */
   min-height: 44px;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+button:hover {
+  background: var(--acento-fuerte);
+}
+
+/* Botón secundario: mismo tamaño, sin peso visual. */
+.btn-suave {
+  background: var(--agua-clara);
+  color: var(--marca-900);
+}
+.btn-suave:hover {
+  background: var(--agua);
+}
+
+/* Acción escrita como texto (archivar, dar de baja): no es un botón primario. */
+.btn-texto {
+  background: none;
+  border: none;
+  color: var(--acento-fuerte);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  min-height: 0;
+}
+.btn-texto:hover {
+  background: none;
+  text-decoration: underline;
 }
 
 .tenue {
@@ -74,4 +165,218 @@ button {
 }
 .error {
   color: var(--error);
+}
+.exito {
+  color: var(--ok);
+}
+
+/* Píldora de estado / filtro. */
+.pildora {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--agua-clara);
+  color: var(--marca-900);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ── Tablas ──────────────────────────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+thead th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--tenue);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--borde);
+  white-space: nowrap;
+}
+tbody td {
+  padding: 11px 10px;
+  border-bottom: 1px solid var(--borde);
+}
+tbody tr:hover {
+  background: var(--panel-2);
+}
+tfoot td {
+  padding: 12px 10px;
+  border-top: 2px solid var(--borde-fuerte);
+  font-weight: 600;
+}
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Marco del calendario ────────────────────────────────────────────────── */
+.barra {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  height: var(--barra);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--borde);
+}
+
+.marco {
+  display: grid;
+  grid-template-columns: var(--sidebar) 1fr;
+  min-height: calc(100vh - var(--barra));
+}
+.lateral {
+  padding: 14px 12px;
+  border-right: 1px solid var(--borde);
+  background: var(--panel);
+}
+.lienzo {
+  min-width: 0; /* sin esto, un grid hijo ancho estira la columna y rompe el layout */
+  padding: 0;
+  background: var(--panel);
+}
+
+/* Chip de navegación circular (‹ › del calendario). */
+.nav-circ {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--tenue);
+  font-size: 18px;
+  border: none;
+}
+.nav-circ:hover {
+  background: var(--agua-clara);
+  color: var(--marca-900);
+}
+
+/* Selector de vista (Día / Semana / Mes). */
+.segmentado {
+  display: inline-flex;
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+}
+.segmentado a {
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tenue);
+  text-decoration: none;
+  border-right: 1px solid var(--borde);
+}
+.segmentado a:last-child {
+  border-right: none;
+}
+.segmentado a:hover {
+  background: var(--panel-2);
+  text-decoration: none;
+}
+.segmentado a[aria-current="page"] {
+  background: var(--marca-500);
+  color: #fff;
+}
+
+/* Mini calendario del lateral. */
+.mini {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.mini th {
+  padding: 4px 0;
+  text-align: center;
+  font-size: 10px;
+  border: none;
+  color: var(--tenue);
+}
+.mini td {
+  padding: 0;
+  border: none;
+  text-align: center;
+}
+.mini a {
+  display: block;
+  width: 26px;
+  height: 26px;
+  line-height: 26px;
+  margin: 1px auto;
+  border-radius: 50%;
+  color: var(--texto);
+  text-decoration: none;
+}
+.mini a:hover {
+  background: var(--agua-clara);
+  text-decoration: none;
+}
+.mini a.fuera {
+  color: #a9bcc7;
+}
+.mini a.hoy {
+  background: var(--marca-500);
+  color: #fff;
+  font-weight: 600;
+}
+.mini a.elegida {
+  background: var(--agua-clara);
+  color: var(--marca-900);
+  font-weight: 600;
+}
+
+/* Bloque de reserva en la grilla. */
+.evento {
+  display: block;
+  overflow: hidden;
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: #fff;
+  text-decoration: none;
+  user-select: none;
+}
+.evento:hover {
+  text-decoration: none;
+  filter: brightness(0.94);
+}
+.evento b {
+  font-weight: 600;
+}
+
+@media (max-width: 880px) {
+  :root {
+    --sidebar: 0px;
+  }
+  .marco {
+    grid-template-columns: 1fr;
+  }
+  .lateral {
+    display: none;
+  }
+  /* En un teléfono la barra no entra entera. Se esconde lo secundario (reloj, accesos) antes de
+     dejar que el <body> scrollee en horizontal: eso rompe TODA la pantalla, no solo la barra. */
+  .barra {
+    gap: 8px;
+    padding: 0 8px;
+  }
+  .oculta-mobile {
+    display: none !important;
+  }
 }

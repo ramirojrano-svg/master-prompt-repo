@@ -1,87 +1,138 @@
-// app/panel/[slug]/Grilla.tsx — la vista día multi-sala (§6.4). Columnas = salas, filas = tiempo.
-// El componente NO calcula posiciones: todo viene ubicado desde `ubicarBloques` (función pura y
-// testeada). CSS Grid con filas por paso; nada de `position:absolute` con top en píxeles, que se
-// desincroniza al hacer zoom.
+// app/panel/[slug]/Grilla.tsx — la grilla de tiempo: vista DÍA (columnas = salas) y vista SEMANA
+// (columnas = días). El componente NO calcula posiciones: todo viene ubicado desde `ubicarBloques`
+// (función pura y testeada). CSS Grid con filas por paso; nada de `position:absolute` con top en
+// píxeles, que se desincroniza al hacer zoom.
 
-import type { DiaVista } from "../../../src/servicios/agenda/dia.ts";
+import type { AgendaVista } from "../../../src/servicios/agenda/dia.ts";
 import { minutosAHora } from "../../../src/dominio/motor/zona.ts";
 import { formatearPesos } from "../../../src/dominio/tarifa.ts";
+import { DIA_CORTO, nombreCorto } from "../../../src/dominio/calendario.ts";
+import { diaSemanaDeFecha } from "../../../src/dominio/motor/zona.ts";
 
-const ALTO_CELDA = 32; // px por paso (30') en desktop
+const ALTO_CELDA = 30; // px por paso (30')
 
-function etiquetaHoras(aperturaMin: number, cierreMin: number, paso: number): { min: number; texto: string }[] {
-  const out: { min: number; texto: string }[] = [];
-  for (let m = aperturaMin; m < cierreMin; m += paso) {
-    out.push({ min: m, texto: m % 60 === 0 ? minutosAHora(m) : "" });
-  }
-  return out;
-}
-
-export function Grilla({ dia }: { dia: DiaVista }) {
-  const horas = etiquetaHoras(dia.aperturaMin, dia.cierreMin, dia.pasoMin);
-  const porId = new Map(dia.reservas.map((r) => [r.id, r]));
-
+export function Grilla({ dia, hoy }: { dia: AgendaVista; hoy: string }) {
   if (dia.salas.length === 0) {
     // Estado vacío con la acción que lo resuelve (§6.16): la grilla no se renderiza vacía.
     return (
-      <div className="panel">
-        <h3>Todavía no cargaste ninguna sala</h3>
-        <p className="tenue">Sin salas no hay agenda. Cargá tu primera sala para ver la grilla del día.</p>
+      <div className="panel" style={{ margin: 16 }}>
+        <h3 style={{ marginTop: 0 }}>Todavía no cargaste ninguna sala</h3>
+        <p className="tenue">Sin salas no hay agenda. Cargá tu primer consultorio para ver la grilla.</p>
       </div>
     );
   }
 
+  // Las columnas: salas en vista día, días en vista semana.
+  const columnas =
+    dia.vista === "semana"
+      ? dia.dias.map((f) => ({ id: f, titulo: `${DIA_CORTO[diaSemanaDeFecha(f) ?? 0]}`, sub: String(Number(f.slice(8, 10))), esHoy: f === hoy, color: null as string | null }))
+      : dia.salas
+          .filter((s) => dia.salasVisibles.includes(s.id))
+          .map((s) => ({ id: s.id, titulo: s.nombre, sub: s.activa ? "" : "archivada", esHoy: false, color: s.color }));
+
+  const horas: number[] = [];
+  for (let m = dia.aperturaMin; m < dia.cierreMin; m += 60) horas.push(m);
+  const porId = new Map(dia.reservas.map((r) => [r.id, r]));
+  const anchoEje = 56;
+
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div style={{ overflow: "auto", maxHeight: "calc(100vh - var(--barra) - 58px)" }}>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: `44px repeat(${dia.salas.length}, minmax(132px, 1fr))`,
-          minWidth: 44 + dia.salas.length * 132,
+          gridTemplateColumns: `${anchoEje}px repeat(${columnas.length}, minmax(120px, 1fr))`,
+          minWidth: anchoEje + columnas.length * 120,
         }}
       >
-        {/* Cabecera de salas (sticky arriba) */}
-        <div style={{ position: "sticky", top: 0, zIndex: 2, background: "var(--fondo)" }} />
-        {dia.salas.map((s) => (
+        {/* ── Cabecera (sticky) ──────────────────────────────────────────── */}
+        <div style={{ position: "sticky", top: 0, zIndex: 3, background: "var(--panel)", borderBottom: "1px solid var(--borde)" }} />
+        {columnas.map((c) => (
           <div
-            key={s.id}
+            key={c.id}
             style={{
-              position: "sticky", top: 0, zIndex: 2, background: "var(--fondo)",
-              padding: "6px 8px", fontWeight: 600, borderBottom: "1px solid var(--borde)",
-              borderLeft: `3px solid ${s.color}`,
+              position: "sticky",
+              top: 0,
+              zIndex: 3,
+              background: "var(--panel)",
+              borderBottom: "1px solid var(--borde)",
+              borderLeft: "1px solid var(--borde)",
+              padding: "8px 10px 6px",
+              textAlign: dia.vista === "semana" ? "center" : "left",
             }}
           >
-            {s.nombre} {!s.activa && <span className="tenue">(archivada)</span>}
+            {dia.vista === "semana" ? (
+              <>
+                <div className="tenue" style={{ fontSize: 11, letterSpacing: "0.04em" }}>{c.titulo}</div>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 34,
+                    height: 34,
+                    borderRadius: "50%",
+                    fontSize: 19,
+                    fontWeight: 500,
+                    marginTop: 2,
+                    background: c.esHoy ? "var(--marca-500)" : "transparent",
+                    color: c.esHoy ? "#fff" : "var(--texto)",
+                  }}
+                >
+                  {c.sub}
+                </div>
+              </>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, fontSize: 14 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: c.color ?? "var(--marca-500)" }} />
+                {c.titulo} {c.sub && <span className="tenue" style={{ fontWeight: 400 }}>({c.sub})</span>}
+              </div>
+            )}
           </div>
         ))}
 
-        {/* Eje horario (sticky a la izquierda) + una celda de fondo por sala/fila */}
+        {/* ── Eje horario (sticky a la izquierda) ────────────────────────── */}
         <div
           style={{
-            position: "sticky", left: 0, zIndex: 1, background: "var(--fondo)",
-            display: "grid", gridTemplateRows: `repeat(${dia.filas}, ${ALTO_CELDA}px)`,
+            position: "sticky",
+            left: 0,
+            zIndex: 2,
+            background: "var(--panel)",
+            display: "grid",
+            gridTemplateRows: `repeat(${dia.filas}, ${ALTO_CELDA}px)`,
           }}
         >
-          {horas.map((h, i) => (
-            <div
-              key={h.min}
-              style={{
-                fontSize: 11, color: "var(--tenue)", textAlign: "right", paddingRight: 6,
-                // la primera etiqueta NO se sube: se cortaría contra el borde de la grilla
-                transform: i === 0 ? undefined : "translateY(-6px)",
-              }}
-            >
-              {h.texto}
-            </div>
-          ))}
+          {Array.from({ length: dia.filas }, (_, i) => {
+            const min = dia.aperturaMin + i * dia.pasoMin;
+            return (
+              <div key={min} style={{ position: "relative" }}>
+                {min % 60 === 0 && (
+                  <span
+                    className="tenue"
+                    style={{
+                      position: "absolute",
+                      right: 8,
+                      // la primera etiqueta NO se sube: se cortaría contra el borde de la grilla
+                      top: i === 0 ? 0 : -7,
+                      fontSize: 11,
+                      background: "var(--panel)",
+                      paddingLeft: 4,
+                    }}
+                  >
+                    {minutosAHora(min)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
 
-        {dia.salas.map((sala) => {
-          const bloques = dia.ubicaciones.filter((u) => u.columnaId === sala.id);
+        {/* ── Una columna de bloques por sala (o por día) ─────────────────── */}
+        {columnas.map((col) => {
+          const bloques = dia.ubicaciones.filter((u) => u.columnaId === col.id);
           const carriles = bloques[0]?.carriles ?? 1;
           return (
             <div
-              key={sala.id}
+              key={col.id}
               style={{
                 display: "grid",
                 gridTemplateRows: `repeat(${dia.filas}, ${ALTO_CELDA}px)`,
@@ -93,19 +144,16 @@ export function Grilla({ dia }: { dia: DiaVista }) {
               {bloques.map((u) => {
                 const r = porId.get(u.id);
                 if (!r) return null;
-                const conIdentidad = "inquilinoNombre" in r ? r : null;
-                const esBloqueo = conIdentidad?.tipo === "mantenimiento" || conIdentidad?.tipo === "bloqueo";
-                const titulo = conIdentidad?.inquilinoNombre ?? conIdentidad?.motivo ?? "Ocupado";
                 // El importe ya viene PROYECTADO: si el que mira no puede ver plata, llega null.
                 // Acá no se decide nada de privacidad, solo se muestra lo que el servidor mandó.
-                const importe = conIdentidad?.importeCent
-                  ? formatearPesos(BigInt(conIdentidad.importeCent), dia.moneda)
-                  : null;
+                const conPlata = "importeCent" in r ? r.importeCent : null;
+                const importe = conPlata ? formatearPesos(BigInt(conPlata), dia.moneda) : null;
                 return (
                   <div
                     key={u.id}
-                    title={[titulo, importe, u.estirado ? `${u.duracionMin} min` : null].filter(Boolean).join(" · ")}
-                    aria-label={`${sala.nombre}, ${titulo}`}
+                    className="evento"
+                    title={[r.titulo, r.horaTexto, dia.vista === "semana" ? r.salaNombre : null, importe].filter(Boolean).join(" · ")}
+                    aria-label={`${r.salaNombre}, ${r.titulo}, ${r.horaTexto}`}
                     style={{
                       gridRow: `${u.fila} / span ${u.span}`,
                       // col/colSpan vienen calculados: un bloque solo ocupa TODO el ancho de la
@@ -114,26 +162,21 @@ export function Grilla({ dia }: { dia: DiaVista }) {
                       // altura mínima táctil (44px, WCAG 2.5.5) aunque el bloque sea de 15'
                       minHeight: 44,
                       margin: "1px 2px",
-                      padding: "3px 6px",
-                      borderRadius: 6,
-                      fontSize: 12,
-                      overflow: "hidden",
-                      color: "#fff",
-                      background: esBloqueo ? "var(--tenue)" : sala.color,
-                      backgroundImage: esBloqueo
+                      background: r.esBloqueo ? "var(--tenue)" : r.color,
+                      backgroundImage: r.esBloqueo
                         ? "repeating-linear-gradient(45deg, rgba(255,255,255,.25) 0 6px, transparent 6px 12px)"
                         : undefined,
                       borderTop: u.recortadoArriba ? "2px dotted #fff" : undefined,
                       // bloque corto dibujado más alto que su duración: borde punteado (§6.5)
                       borderBottom: u.recortadoAbajo || u.estirado ? "2px dotted #fff" : undefined,
-                      userSelect: "none",
                     }}
                   >
-                    {titulo}
-                    {/* El importe solo si el bloque es alto: en uno de 15' tapa el nombre. */}
-                    {importe && u.span > 1 && (
-                      <div style={{ fontSize: 11, opacity: 0.85 }}>{importe}</div>
-                    )}
+                    {/* Si el bloque comparte la columna con otro, el nombre entero no entra:
+                        se muestra corto y el completo queda en el tooltip y en el aria-label. */}
+                    <b>{u.colSpan < u.carriles ? nombreCorto(r.titulo) : r.titulo}</b>
+                    {u.span > 1 && <div style={{ opacity: 0.9, fontSize: 11 }}>{r.horaTexto}</div>}
+                    {u.span > 2 && dia.vista === "semana" && <div style={{ opacity: 0.9, fontSize: 11 }}>{r.salaNombre}</div>}
+                    {u.span > 2 && importe && <div style={{ opacity: 0.9, fontSize: 11 }}>{importe}</div>}
                   </div>
                 );
               })}

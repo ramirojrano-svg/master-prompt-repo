@@ -1,8 +1,8 @@
-// app/panel/[slug]/reportes/page.tsx — el panel de datos del mes (§6.8).
+// app/panel/[slug]/reportes/page.tsx — el panel de métricas del mes (§6.8).
 //
 // Todo número grande muestra su DENOMINADOR y su detalle: un "82% de ocupación" sin decir sobre
 // qué, o un "facturado $3.200.000" que no se puede abrir por profesional, no sirve para decidir
-// nada y menos para discutir con el contador.
+// nada y menos para discutir con el contador. Cada profesional es un link a su detalle.
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -13,15 +13,16 @@ import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
 import { esPeriodoValido, horasYMinutos, periodoAnterior } from "../../../../src/dominio/reporte.ts";
 import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
+import { Logo } from "../../../Logo.tsx";
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
-function nombreDePeriodo(p: string): string {
+export function nombreDePeriodo(p: string): string {
   const mes = MESES[Number(p.slice(5, 7)) - 1] ?? p;
   return `${mes} de ${p.slice(0, 4)}`;
 }
 
-function siguiente(p: string): string {
+export function periodoSiguiente(p: string): string {
   const anio = Number(p.slice(0, 4));
   const mes = Number(p.slice(5, 7));
   return mes === 12 ? `${anio + 1}-01` : `${anio}-${String(mes + 1).padStart(2, "0")}`;
@@ -58,142 +59,146 @@ export default async function ReportesPage({
   const conActividad = r.profesionales.filter((p) => p.reservas > 0 || p.facturadoCent !== 0n || p.pagadoCent !== 0n || p.saldoCent !== 0n);
   const quietos = r.profesionales.length - conActividad.length;
 
-  return (
-    <main style={{ padding: 16, maxWidth: 1000 }}>
-      <p><Link href={`/panel/${slug}`}>‹ Agenda</Link></p>
+  const tarjetas = [
+    { titulo: "Facturado en el mes", valor: plata(r.totales.facturadoCent), pie: `${r.totales.reservas} turnos · ${r.totales.profesionalesConActividad} profesionales` },
+    { titulo: "Cobrado en el mes", valor: plata(r.totales.cobradoCent), pie: "pagos con fecha de este mes" },
+    { titulo: "Deuda al día de hoy", valor: plata(r.totales.deudaCent), pie: "suma de los que deben, de todos los meses" },
+    { titulo: "Ocupación", valor: `${r.totales.ocupacionPct}%`, pie: `${horasYMinutos(r.totales.minutos)} vendidas de ${horasYMinutos(r.totales.aperturaMin)} abiertas` },
+  ];
 
-      <header style={{ display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Datos de {nombreDePeriodo(periodo)}</h1>
-        <nav style={{ display: "flex", gap: 8 }}>
-          <Link href={`?periodo=${periodoAnterior(periodo)}`}>‹ mes anterior</Link>
-          {periodo < hoyPeriodo && <Link href={`?periodo=${siguiente(periodo)}`}>mes siguiente ›</Link>}
+  return (
+    <>
+      <header className="barra">
+        <Link href={`/panel/${slug}`} style={{ display: "flex", alignItems: "center" }} aria-label="Volver a la agenda">
+          <Logo alto={26} variante="compacto" />
+        </Link>
+        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 500 }}>Métricas de {nombreDePeriodo(periodo)}</h1>
+        <nav style={{ display: "flex", gap: 2 }}>
+          <Link className="nav-circ" href={`?periodo=${periodoAnterior(periodo)}`} aria-label="Mes anterior">
+            ‹
+          </Link>
+          {periodo < hoyPeriodo && (
+            <Link className="nav-circ" href={`?periodo=${periodoSiguiente(periodo)}`} aria-label="Mes siguiente">
+              ›
+            </Link>
+          )}
         </nav>
+        <Link href={`/panel/${slug}`} style={{ marginLeft: "auto", color: "var(--tenue)", fontWeight: 500, fontSize: 14 }}>
+          ‹ Agenda
+        </Link>
       </header>
 
-      {/* ── Los cuatro números ──────────────────────────────────────────── */}
-      <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", marginTop: 16 }}>
-        <div className="panel">
-          <p className="tenue" style={{ margin: 0 }}>Facturado en el mes</p>
-          <p style={{ fontSize: 24, margin: "4px 0 0" }}><strong>{plata(r.totales.facturadoCent)}</strong></p>
-          <p className="tenue" style={{ margin: 0, fontSize: 12 }}>
-            {r.totales.reservas} reserva{r.totales.reservas === 1 ? "" : "s"} · {r.totales.profesionalesConActividad} profesional{r.totales.profesionalesConActividad === 1 ? "" : "es"}
-          </p>
-        </div>
-        <div className="panel">
-          <p className="tenue" style={{ margin: 0 }}>Cobrado en el mes</p>
-          <p style={{ fontSize: 24, margin: "4px 0 0" }}><strong>{plata(r.totales.cobradoCent)}</strong></p>
-          <p className="tenue" style={{ margin: 0, fontSize: 12 }}>pagos registrados con fecha de este mes</p>
-        </div>
-        <div className="panel">
-          <p className="tenue" style={{ margin: 0 }}>Deuda al día de hoy</p>
-          <p style={{ fontSize: 24, margin: "4px 0 0" }}><strong>{plata(r.totales.deudaCent)}</strong></p>
-          {/* Netear con los que tienen saldo a favor esconde la deuda real (§5.6). */}
-          <p className="tenue" style={{ margin: 0, fontSize: 12 }}>suma de los que deben, acumulada de todos los meses</p>
-        </div>
-        <div className="panel">
-          <p className="tenue" style={{ margin: 0 }}>Ocupación</p>
-          <p style={{ fontSize: 24, margin: "4px 0 0" }}><strong>{r.totales.ocupacionPct}%</strong></p>
-          <p className="tenue" style={{ margin: 0, fontSize: 12 }}>
-            {horasYMinutos(r.totales.minutos)} vendidas de {horasYMinutos(r.totales.aperturaMin)} abiertas
-          </p>
-        </div>
-      </section>
+      <main style={{ padding: 20, maxWidth: 1120, margin: "0 auto" }}>
+        <section style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" }}>
+          {tarjetas.map((t) => (
+            <div key={t.titulo} className="panel" style={{ padding: 18 }}>
+              <p className="tenue" style={{ margin: 0, fontSize: 13 }}>{t.titulo}</p>
+              <p style={{ fontSize: 26, margin: "6px 0 2px", fontWeight: 600, letterSpacing: "-0.02em" }}>{t.valor}</p>
+              <p className="tenue" style={{ margin: 0, fontSize: 12 }}>{t.pie}</p>
+            </div>
+          ))}
+        </section>
 
-      {r.sinDetallarCent !== 0n && (
-        <p className="error" style={{ marginTop: 12 }}>
-          Atención: {plata(r.sinDetallarCent)} facturados no se pudieron atribuir a ningún profesional del detalle.
+        {r.sinDetallarCent !== 0n && (
+          <p className="error" style={{ marginTop: 14 }}>
+            Atención: {plata(r.sinDetallarCent)} facturados no se pudieron atribuir a ningún profesional del detalle.
+          </p>
+        )}
+
+        {/* ── Por profesional ───────────────────────────────────────────── */}
+        <h2 style={{ marginTop: 26 }}>Por profesional</h2>
+        <p className="tenue" style={{ marginTop: 2, fontSize: 13 }}>
+          Tocá un nombre para ver qué días y a qué hora usó los consultorios.
         </p>
-      )}
+        {conActividad.length === 0 ? (
+          <p className="tenue">Este mes no hubo movimiento.</p>
+        ) : (
+          <div className="panel" style={{ padding: 0, marginTop: 10, overflowX: "auto" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Profesional</th>
+                  <th className="num">Turnos</th>
+                  <th className="num">Horas</th>
+                  <th className="num">Facturado</th>
+                  <th className="num">Pagó</th>
+                  <th className="num">Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {conActividad.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <Link href={`/panel/${slug}/reportes/${p.id}?periodo=${periodo}`}>{p.nombre}</Link>{" "}
+                      {!p.activo && <span className="tenue">(de baja)</span>}
+                    </td>
+                    <td className="num">{p.reservas}</td>
+                    <td className="num">{horasYMinutos(p.minutos)}</td>
+                    <td className="num">{plata(p.facturadoCent)}</td>
+                    <td className="num">{plata(p.pagadoCent)}</td>
+                    <td className="num" style={{ color: p.saldoCent > 0n ? "var(--error)" : undefined, fontWeight: 600 }}>
+                      {plata(p.saldoCent)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td>Total</td>
+                  <td className="num">{r.totales.reservas}</td>
+                  <td className="num">{horasYMinutos(r.totales.minutos)}</td>
+                  <td className="num">{plata(r.totales.facturadoCent)}</td>
+                  <td className="num">{plata(r.totales.cobradoCent)}</td>
+                  <td className="num">{plata(r.totales.deudaCent)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+        {quietos > 0 && (
+          <p className="tenue" style={{ fontSize: 12, marginTop: 8 }}>
+            {quietos} profesional{quietos === 1 ? "" : "es"} sin movimiento este mes (no se listan, pero siguen en el centro).
+          </p>
+        )}
 
-      {/* ── Por profesional ─────────────────────────────────────────────── */}
-      <h2 style={{ fontSize: 16, marginTop: 24 }}>Por profesional</h2>
-      {conActividad.length === 0 ? (
-        <p className="tenue">Este mes no hubo movimiento.</p>
-      ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
+        {/* ── Por consultorio ───────────────────────────────────────────── */}
+        <h2 style={{ marginTop: 26 }}>Por consultorio</h2>
+        <div className="panel" style={{ padding: 0, marginTop: 10, overflowX: "auto" }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--borde)" }}>
-                <th style={{ padding: "6px 4px" }}>Profesional</th>
-                <th style={{ padding: "6px 4px", textAlign: "right" }}>Reservas</th>
-                <th style={{ padding: "6px 4px", textAlign: "right" }}>Horas</th>
-                <th style={{ padding: "6px 4px", textAlign: "right" }}>Facturado</th>
-                <th style={{ padding: "6px 4px", textAlign: "right" }}>Pagó</th>
-                <th style={{ padding: "6px 4px", textAlign: "right" }}>Saldo</th>
+              <tr>
+                <th>Consultorio</th>
+                <th className="num">Turnos</th>
+                <th className="num">Horas vendidas</th>
+                <th className="num">Horas abiertas</th>
+                <th className="num">Ocupación</th>
+                <th className="num">Importe</th>
               </tr>
             </thead>
             <tbody>
-              {conActividad.map((p) => (
-                <tr key={p.id} style={{ borderBottom: "1px solid var(--borde)" }}>
-                  <td style={{ padding: "8px 4px" }}>
-                    {p.nombre} {!p.activo && <span className="tenue">(de baja)</span>}
+              {r.salas.map((s) => (
+                <tr key={s.id} style={{ opacity: s.activa ? 1 : 0.65 }}>
+                  <td>
+                    {s.nombre} {!s.activa && <span className="tenue">(archivado)</span>}
                   </td>
-                  <td style={{ padding: "8px 4px", textAlign: "right" }}>{p.reservas}</td>
-                  <td style={{ padding: "8px 4px", textAlign: "right" }}>{horasYMinutos(p.minutos)}</td>
-                  <td style={{ padding: "8px 4px", textAlign: "right" }}>{plata(p.facturadoCent)}</td>
-                  <td style={{ padding: "8px 4px", textAlign: "right" }}>{plata(p.pagadoCent)}</td>
-                  <td style={{ padding: "8px 4px", textAlign: "right", color: p.saldoCent > 0n ? "#b23b3b" : undefined }}>
-                    <strong>{plata(p.saldoCent)}</strong>
-                  </td>
+                  <td className="num">{s.reservas}</td>
+                  <td className="num">{horasYMinutos(s.minutos)}</td>
+                  <td className="num">{s.aperturaMin > 0 ? horasYMinutos(s.aperturaMin) : "—"}</td>
+                  {/* Sin denominador se muestra un guion, no un porcentaje inventado. */}
+                  <td className="num">{s.aperturaMin > 0 ? `${s.ocupacionPct}%` : "—"}</td>
+                  <td className="num">{plata(s.importeCent)}</td>
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              <tr>
-                <td style={{ padding: "8px 4px" }}><strong>Total</strong></td>
-                <td style={{ padding: "8px 4px", textAlign: "right" }}><strong>{r.totales.reservas}</strong></td>
-                <td style={{ padding: "8px 4px", textAlign: "right" }}><strong>{horasYMinutos(r.totales.minutos)}</strong></td>
-                <td style={{ padding: "8px 4px", textAlign: "right" }}><strong>{plata(r.totales.facturadoCent)}</strong></td>
-                <td style={{ padding: "8px 4px", textAlign: "right" }}><strong>{plata(r.totales.cobradoCent)}</strong></td>
-                <td style={{ padding: "8px 4px", textAlign: "right" }}><strong>{plata(r.totales.deudaCent)}</strong></td>
-              </tr>
-            </tfoot>
           </table>
         </div>
-      )}
-      {quietos > 0 && (
-        <p className="tenue" style={{ fontSize: 12 }}>
-          {quietos} profesional{quietos === 1 ? "" : "es"} sin movimiento este mes (no se listan, pero siguen en el centro).
+
+        <p className="tenue" style={{ fontSize: 12, marginTop: 22 }}>
+          Un turno cuenta en el mes en que empieza, con la hora del centro ({r.tz}). Lo facturado
+          sale del libro de cuenta corriente, no de multiplicar horas por precio: si hubo un ajuste
+          o una nota de crédito, acá está.
         </p>
-      )}
-
-      {/* ── Por sala ────────────────────────────────────────────────────── */}
-      <h2 style={{ fontSize: 16, marginTop: 24 }}>Por sala</h2>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid var(--borde)" }}>
-              <th style={{ padding: "6px 4px" }}>Sala</th>
-              <th style={{ padding: "6px 4px", textAlign: "right" }}>Reservas</th>
-              <th style={{ padding: "6px 4px", textAlign: "right" }}>Horas vendidas</th>
-              <th style={{ padding: "6px 4px", textAlign: "right" }}>Horas abiertas</th>
-              <th style={{ padding: "6px 4px", textAlign: "right" }}>Ocupación</th>
-              <th style={{ padding: "6px 4px", textAlign: "right" }}>Importe</th>
-            </tr>
-          </thead>
-          <tbody>
-            {r.salas.map((s) => (
-              <tr key={s.id} style={{ borderBottom: "1px solid var(--borde)", opacity: s.activa ? 1 : 0.6 }}>
-                <td style={{ padding: "8px 4px" }}>
-                  {s.nombre} {!s.activa && <span className="tenue">(archivada)</span>}
-                </td>
-                <td style={{ padding: "8px 4px", textAlign: "right" }}>{s.reservas}</td>
-                <td style={{ padding: "8px 4px", textAlign: "right" }}>{horasYMinutos(s.minutos)}</td>
-                <td style={{ padding: "8px 4px", textAlign: "right" }}>{s.aperturaMin > 0 ? horasYMinutos(s.aperturaMin) : "—"}</td>
-                {/* Sin denominador se muestra un guion, no un porcentaje inventado. */}
-                <td style={{ padding: "8px 4px", textAlign: "right" }}>{s.aperturaMin > 0 ? `${s.ocupacionPct}%` : "—"}</td>
-                <td style={{ padding: "8px 4px", textAlign: "right" }}>{plata(s.importeCent)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <p className="tenue" style={{ fontSize: 12, marginTop: 20 }}>
-        Una reserva cuenta en el mes en que empieza, con la hora del centro ({r.tz}). Lo facturado
-        sale del libro de cuenta corriente, no de multiplicar horas por precio: si hubo un ajuste o
-        una nota de crédito, acá está. El mantenimiento no cuenta como hora vendida.
-      </p>
-    </main>
+      </main>
+    </>
   );
 }

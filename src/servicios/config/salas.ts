@@ -9,7 +9,6 @@ import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
 import { sanitizarHorarios } from "../../dominio/motor/horarios.ts";
 import { horaAMinutos } from "../../dominio/motor/zona.ts";
-import { BUFFER_MAX_MIN } from "../../dominio/motor/limites.ts";
 import type { Dia, HorarioSemanal } from "../../dominio/motor/tipos.ts";
 import type { Actor } from "../../lib/actor.ts";
 
@@ -17,14 +16,18 @@ const DIAS = [0, 1, 2, 3, 4, 5, 6] as const;
 
 export const SalaInput = z.object({
   nombre: z.string().trim().min(1).max(60),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#2f6fe0"),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#1a8fc1"),
   // Horario simple: qué días abre y en qué franja. Cubre el caso real (L-V 08-22); un editor
   // por día con varias franjas es una mejora posterior, y el blob ya lo soporta.
   dias: z.array(z.coerce.number().int().min(0).max(6)).min(1),
   desde: z.string().regex(/^\d{2}:\d{2}$/),
   hasta: z.string().regex(/^\d{2}:\d{2}$/),
-  bufferMin: z.coerce.number().int().min(0).max(BUFFER_MAX_MIN),
 });
+
+// Sin tiempo de limpieza entre turnos: el centro no lo usa, así que las salas se crean y se
+// editan con buffer 0. La columna sigue existiendo porque cada ocupación tiene el suyo ESTAMPADO
+// al nacer (§8.8) — borrarla reescribiría lo que ya pasó.
+const SIN_BUFFER = 0;
 
 export type SalaInputT = z.infer<typeof SalaInput>;
 
@@ -57,7 +60,7 @@ async function crear(actor: Actor, input: SalaInputT, db: PrismaClient): Promise
       color: input.color,
       orden: (ultima._max.orden ?? 0) + 1,
       horarioJson: horario,
-      bufferMin: input.bufferMin,
+      bufferMin: SIN_BUFFER,
     },
     select: { id: true },
   });
@@ -70,7 +73,7 @@ async function editar(actor: Actor, input: SalaInputT & { salaId: string }, db: 
   // updateMany + operadorId: la fila se resuelve DENTRO del tenant (nunca update por id solo).
   const r = await db.sala.updateMany({
     where: { id: input.salaId, operadorId: actor.operadorId },
-    data: { nombre: input.nombre, color: input.color, horarioJson: horario, bufferMin: input.bufferMin },
+    data: { nombre: input.nombre, color: input.color, horarioJson: horario, bufferMin: SIN_BUFFER },
   });
   return r.count === 1 ? { ok: true, id: input.salaId } : { ok: false, error: "NO_ENCONTRADA" };
 }

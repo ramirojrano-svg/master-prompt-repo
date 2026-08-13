@@ -11,7 +11,7 @@
 import { randomUUID } from "node:crypto";
 import { EstadoInquilino, EstadoOcupacion, PrismaClient, Rol, TipoOcupacion } from "@prisma/client";
 import { hashPassword } from "../src/lib/password.ts";
-import { instanteDeHoraLocal, sumarDiasLocal, fechaEnZona, periodoDeInstante } from "../src/dominio/motor/zona.ts";
+import { diaSemanaDeFecha, instanteDeHoraLocal, sumarDiasLocal, fechaEnZona, periodoDeInstante } from "../src/dominio/motor/zona.ts";
 import { zonaDePais } from "../src/dominio/paises.ts";
 import { cotizar, resolverTarifa } from "../src/dominio/tarifa.ts";
 
@@ -82,19 +82,19 @@ async function main() {
   // 3 salas activas (las reales) + 1 archivada CON historia (caso feo §11.8).
   const salas = await Promise.all(
     [
-      { nombre: "Consultorio 1", color: "#2f6fe0", orden: 1, equipamiento: ["camilla", "wifi"] },
-      { nombre: "Consultorio 2", color: "#157f4a", orden: 2, equipamiento: ["sillón odontológico", "wifi"] },
-      { nombre: "Consultorio 3", color: "#b45309", orden: 3, equipamiento: ["camilla", "espejo", "wifi"] },
+      { nombre: "Consultorio 1", color: "#1a8fc1", orden: 1, equipamiento: ["camilla", "wifi"] },
+      { nombre: "Consultorio 2", color: "#17b6c4", orden: 2, equipamiento: ["sillón odontológico", "wifi"] },
+      { nombre: "Consultorio 3", color: "#149e8a", orden: 3, equipamiento: ["camilla", "espejo", "wifi"] },
     ].map((s) =>
       prisma.sala.create({
-        data: { ...s, operadorId: operador.id, sedeId: sede.id, horarioJson: HORARIO, bufferMin: 15 },
+        data: { ...s, operadorId: operador.id, sedeId: sede.id, horarioJson: HORARIO, bufferMin: 0 },
       }),
     ),
   );
 
   const salaArchivada = await prisma.sala.create({
     data: {
-      operadorId: operador.id, sedeId: sede.id, nombre: "Consultorio 4 (cerrado)", color: "#5b6270",
+      operadorId: operador.id, sedeId: sede.id, nombre: "Consultorio 4 (cerrado)", color: "#63788a",
       orden: 4, horarioJson: HORARIO, activa: false, archivadaEl: new Date("2026-06-30T00:00:00Z"),
     },
   });
@@ -164,7 +164,7 @@ async function main() {
     return {
       id: randomUUID(),
       operadorId: operador.id, sedeId: sede.id, salaId, inquilinoId, tipo, estado,
-      inicio, fin, bufferMin: 15, tzSede: TZ,
+      inicio, fin, bufferMin: 0, tzSede: TZ,
       bloqueaProfesional: tipo === TipoOcupacion.reserva,
       tarifaId: cot?.tarifaId ?? null,
       precioHoraCent: cot?.tarifaId ? cot.precioHoraCent : null,
@@ -188,12 +188,16 @@ async function main() {
     reserva(s3, inquilinos[9]!.id, hoy, "13:00", "14:00", EstadoOcupacion.no_show),
     reserva(s3, inquilinos[10]!.id, hoy, "19:00", "21:00"),
     // mantenimiento (se pinta distinto y bloquea la sala)
-    { ...reserva(s3, null, hoy, "12:00", "13:00", EstadoOcupacion.confirmada, TipoOcupacion.mantenimiento), motivo: "Limpieza profunda" },
+    { ...reserva(s3, null, hoy, "12:00", "13:00", EstadoOcupacion.confirmada, TipoOcupacion.mantenimiento), motivo: "Mantenimiento técnico" },
   );
 
-  // Resto de la semana (que la agenda no se vea vacía al navegar).
-  for (let d = 1; d <= 5; d++) {
+  // Resto de la semana (que la agenda no se vea vacía al navegar). Se saltean sábado y domingo:
+  // el centro abre L-V, y un turno cargado con el centro cerrado es un dato que la app jamás
+  // habría aceptado por el camino real — un seed que miente confunde más que un seed vacío.
+  for (let d = 1; d <= 9; d++) {
     const f = sumarDiasLocal(hoy, d)!;
+    const dow = diaSemanaDeFecha(f);
+    if (dow === 0 || dow === 6) continue;
     filas.push(
       reserva(s1, inquilinos[(d * 3) % 50]!.id, f, "09:00", "10:00"),
       reserva(s2, inquilinos[(d * 5) % 50]!.id, f, "15:00", "16:30"),
