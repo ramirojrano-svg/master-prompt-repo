@@ -1,0 +1,12 @@
+{
+  "//": "Typecheck del BACKEND PURO en el mismo modo en que `node --test` lo ejecuta (nodenext + imports con extensión .ts). No incluye app/: las páginas se typechequean con el tsconfig.json de Next (bundler), porque `next/link` y compañía no resuelven en nodenext.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "jsx": "react-jsx",
+    "plugins": []
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules"]
+}

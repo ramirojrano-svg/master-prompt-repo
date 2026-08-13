@@ -105,28 +105,38 @@ PROVEEDOR_MAIL:      RESEND
 REPO:                ramirojrano-svg/master-prompt-repo
 ```
 
-### PENDIENTE — hechos que solo vos podés completar (no los invento)
+### Completado por el dueño (2026-08-13)
 ```yaml
-PRODUCTO:            {{PENDIENTE — nombre del producto}}
-DOMINIO:             {{PENDIENTE}}
-EMAIL_SOPORTE:       {{PENDIENTE}}
-RAZON_SOCIAL:        {{PENDIENTE — quién firma los Términos}}
-TIPO_CENTRO:         {{PENDIENTE — ODONTOLOGICO | MEDICO | PSICO | BIENESTAR | MIXTO}}
-ESPECIALIDADES:      {{PENDIENTE — lista}}
-SEDES_PILOTO:        {{PENDIENTE}}
-SALAS_PILOTO:        {{PENDIENTE}}
-INQUILINOS_PILOTO:   {{PENDIENTE}}
-HORARIO_TIPICO:      {{PENDIENTE — ej: L-V 08-21, Sáb 09-14}}
-TARIFA_HORA_REF:     {{PENDIENTE — monto de una hora de sala en ARS}}
-MERCADOS_SIGUIENTES: {{PENDIENTE — ej: UY, CL, MX}}
-OPERADOR_PILOTO_1:   {{PENDIENTE — nombre / salas / contacto}}
-OPERADOR_PILOTO_2:   {{PENDIENTE}}
-OPERADOR_PILOTO_3:   {{PENDIENTE}}
-CLIENTE_CERO_PAGA:   {{PENDIENTE — SÍ/NO + quién}}
+PRODUCTO:            EMOAPP
+DOMINIO:             app.espaciomoca.com
+EMAIL_SOPORTE:       espaciomontesdeoca@gmail.com
+RAZON_SOCIAL:        Espacio Montes de Oca S.R.L.
+TIPO_CENTRO:         MIXTO
+ESPECIALIDADES:      Odontología general, Psicología, Kinesiología, Médico PAMI, Pediatría,
+                     Cosmiatría, Estética, Urología, Dermatología, Psiquiatría, Neumonología,
+                     Alergia, Perito, otros
+SEDES_PILOTO:        1
+SALAS_PILOTO:        3
+INQUILINOS_PILOTO:   50
+HORARIO_TIPICO:      Lun a Vie 08:00–22:00
+TARIFA_HORA_REF:     8000 ARS
+MERCADOS_SIGUIENTES: (sin definir aún — AR primero)
+CLIENTE_CERO_PAGA:   SÍ — Espacio MOCA S.R.L. (paga desde el mes 1)
 ```
 
-Ninguno de estos bloquea el **diseño** de F1 (el esquema y el motor no dependen del nombre
-del producto). Sí bloquean el **criterio de aceptación** de F0/F1, que exige datos reales.
+**Piloto = un solo centro (Espacio MOCA), con estos usuarios en distintos roles:**
+```yaml
+# El "operador" (tenant) es Espacio Montes de Oca S.R.L. Los tres son USUARIOS de ese centro:
+USUARIO_1 (owner):            Ramiro Raño — ramirojrano@gmail.com   # admin del centro
+USUARIO_2 (inquilino_titular): Dra. María Gómez — maria@email.com   # profesional que alquila
+USUARIO_3 (recepcion):        Ana Torres — ana@email.com           # mostrador
+```
+
+> **Nota sobre el criterio de aceptación (§5):** el piloto ya tiene **un centro real
+> comprometido y pagando** (Espacio MOCA), lo que cubre el filtro "intención con costo". El
+> filtro de "3 operadores reales que validen las 8 decisiones" (para solapamiento de requisitos
+> entre centros distintos) sigue siendo recomendación abierta: se valida con Espacio MOCA en
+> producción y, si querés medir generalidad, con 2 centros más antes de escalar.
 
 ---
 

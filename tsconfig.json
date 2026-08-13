@@ -1,9 +1,14 @@
 {
+  "//": "Config de la APP (Next). moduleResolution 'bundler' resuelve los subpaths de Next (next/link, next/server) y los imports con extensión .ts que usa el backend — Turbopack los resuelve igual (verificado con next build). El typecheck del backend puro usa tsconfig.node.json (nodenext), que es el modo en que node --test los ejecuta.",
   "compilerOptions": {
     "target": "es2023",
-    "lib": ["es2023"],
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+    "lib": [
+      "es2023",
+      "dom",
+      "dom.iterable"
+    ],
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": false,
@@ -12,7 +17,32 @@
     "noEmit": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "allowJs": true,
+    "incremental": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "proxy.ts",
+    "next.config.ts",
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

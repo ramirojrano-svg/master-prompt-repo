@@ -9,14 +9,18 @@
   "scripts": {
     "test": "node --test \"src/**/*.test.ts\"",
     "test:db": "node --test --test-concurrency=1 \"tests/integracion/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.json",
     "verify": "npm run typecheck && npm test",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "build": "next build",
+    "dev": "next dev"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22",
     "@types/pg": "^8.21.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "pg": "^8.23.0",
     "prisma": "^6.19.3",
     "typescript": "^5.9"
@@ -24,6 +28,9 @@
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
+    "next": "^16.2.9",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "zod": "^4.4.3"
   }
 }
