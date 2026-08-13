@@ -44,6 +44,7 @@ export type NuevoAsiento = {
   clave: string;
   cuenta?: CuentaTipo;
   reservaId?: string;
+  pagoId?: string;
   motivo?: string;
   creadoPorUserId?: string;
   revierteAId?: string;
@@ -67,6 +68,7 @@ export async function asentarIdempotente(
         fechaHecho: a.fechaHecho,
         clave: a.clave,
         reservaId: a.reservaId ?? null,
+        pagoId: a.pagoId ?? null,
         motivo: a.motivo ?? null,
         creadoPorUserId: a.creadoPorUserId ?? null,
         revierteAId: a.revierteAId ?? null,
