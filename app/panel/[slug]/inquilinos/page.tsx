@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import { Cabecera } from "../Cabecera.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
@@ -63,9 +64,9 @@ export default async function InquilinosPage({
     : error ? "No se pudo guardar." : null;
 
   return (
-    <main style={{ padding: 16, maxWidth: 900 }}>
-      <p><Link href={`/panel/${slug}`}>‹ Agenda</Link></p>
-      <h1 style={{ fontSize: 20 }}>Profesionales</h1>
+    <>
+      <Cabecera slug={slug} rol={actor.rol} actual="inquilinos" titulo="Profesionales" />
+      <main style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>
       <p className="tenue">
         {inquilinos.length} listados
         {deBaja > 0 && (verTodos ? <> · <Link href="?">ocultar los de baja</Link></> : <> · {deBaja} de baja (<Link href="?ver=todos">ver</Link>)</>)}
@@ -106,6 +107,7 @@ export default async function InquilinosPage({
           {enEdicion && <Link href="?">Cancelar</Link>}
         </p>
       </form>
-    </main>
+      </main>
+    </>
   );
 }

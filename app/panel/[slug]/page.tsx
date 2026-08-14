@@ -28,9 +28,9 @@ import { fechaEnZona, formatHora } from "../../../src/dominio/motor/zona.ts";
 import { formatearPesos } from "../../../src/dominio/tarifa.ts";
 import { esVista, fechaDeParam, navegar, type Vista } from "../../../src/dominio/calendario.ts";
 import { horasYMinutos } from "../../../src/dominio/reporte.ts";
-import type { ReactNode } from "react";
 import { Logo } from "../../Logo.tsx";
-import { IconoConsultorio, IconoMas, IconoMetrica, IconoPrecio, IconoProfesional } from "../../Iconos.tsx";
+import { IconoMas } from "../../Iconos.tsx";
+import { BarraNav } from "./BarraNav.tsx";
 import { Grilla } from "./Grilla.tsx";
 import { VistaMes } from "./VistaMes.tsx";
 import { MiniCalendario } from "./MiniCalendario.tsx";
@@ -215,11 +215,6 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
   // la lista y el panel no se abre. No hay una segunda consulta que se saltee la privacidad.
   const turnoAbierto = sp.turno ? agenda.reservas.find((r) => r.id === sp.turno) : undefined;
 
-  const links: { href: string; texto: string; icono: ReactNode }[] = [];
-  if (puede(actor.rol, "sala.administrar")) links.push({ href: `/panel/${slug}/salas`, texto: "Consultorios", icono: <IconoConsultorio /> });
-  if (puede(actor.rol, "inquilino.administrar")) links.push({ href: `/panel/${slug}/inquilinos`, texto: "Profesionales", icono: <IconoProfesional /> });
-  if (puede(actor.rol, "tarifa.administrar")) links.push({ href: `/panel/${slug}/tarifas`, texto: "Precios", icono: <IconoPrecio /> });
-  if (puede(actor.rol, "finanzas.ver.agregada")) links.push({ href: `/panel/${slug}/reportes`, texto: "Métricas", icono: <IconoMetrica /> });
 
   return (
     <>
@@ -263,14 +258,7 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           </Link>
         </nav>
 
-        <nav className="oculta-mobile" style={{ display: "flex", gap: 8 }}>
-          {links.map((l) => (
-            <Link key={l.href} href={l.href} className="pastilla">
-              {l.icono}
-              {l.texto}
-            </Link>
-          ))}
-        </nav>
+        <BarraNav slug={slug} rol={actor.rol} actual="agenda" />
       </header>
 
       <div className="marco">

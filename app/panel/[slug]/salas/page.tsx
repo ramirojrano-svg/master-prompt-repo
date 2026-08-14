@@ -2,6 +2,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import { Cabecera } from "../Cabecera.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
@@ -79,9 +80,9 @@ export default async function SalasPage({
             : null;
 
   return (
-    <main style={{ padding: 16, maxWidth: 900 }}>
-      <p><Link href={`/panel/${slug}`}>‹ Agenda</Link></p>
-      <h1>Consultorios</h1>
+    <>
+      <Cabecera slug={slug} rol={actor.rol} actual="salas" titulo="Consultorios" />
+      <main style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>
 
       <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
         <thead>
@@ -156,6 +157,7 @@ export default async function SalasPage({
           {enEdicion && <Link href="?">Cancelar</Link>}
         </p>
       </form>
-    </main>
+      </main>
+    </>
   );
 }

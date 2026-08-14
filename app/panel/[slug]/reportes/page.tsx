@@ -6,6 +6,7 @@
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { BarraNav } from "../BarraNav.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { reporteMensual } from "../../../../src/servicios/reportes/mensual.ts";
@@ -83,9 +84,8 @@ export default async function ReportesPage({
             </Link>
           )}
         </nav>
-        <Link href={`/panel/${slug}`} style={{ marginLeft: "auto", color: "var(--tenue)", fontWeight: 500, fontSize: 14 }}>
-          ‹ Agenda
-        </Link>
+        <span style={{ marginLeft: "auto" }} />
+        <BarraNav slug={slug} rol={actor.rol} actual="reportes" />
       </header>
 
       <main style={{ padding: 20, maxWidth: 1120, margin: "0 auto" }}>

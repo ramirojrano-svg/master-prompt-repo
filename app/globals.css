@@ -319,6 +319,12 @@ tfoot td {
   color: var(--marca-900);
   text-decoration: none;
 }
+/* La pantalla en la que ya estás: llena, como el día activo del selector de vista. */
+.pastilla[aria-current="page"] {
+  background: var(--marca-500);
+  border-color: var(--marca-500);
+  color: #fff;
+}
 .pastilla svg {
   flex-shrink: 0;
 }
