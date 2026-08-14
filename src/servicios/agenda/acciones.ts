@@ -10,13 +10,18 @@ import { z } from "zod";
 import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
-import { crearOcupacion, type CtxReserva, type ResultadoCrear } from "../reservas/crear.ts";
+import { crearOcupacion, type CtxReserva } from "../reservas/crear.ts";
 import { moverOcupacion, type ResultadoMover } from "../reservas/mover.ts";
 import { cancelarOcupacion } from "../reservas/cancelar.ts";
 import { marcarNoShow, revertirNoShow } from "../reservas/no-show.ts";
 import { parseHorarios } from "../../dominio/motor/horarios.ts";
 import { instanteDeHoraLocal } from "../../dominio/motor/zona.ts";
 import { PASO_DEFAULT, DURACION_MAX_MIN, DURACION_MIN_MIN } from "../../dominio/motor/limites.ts";
+import { OCURRENCIAS_MAX, REPETICIONES, type Repeticion } from "../../dominio/repeticion.ts";
+import { expandirSerie } from "../reservas/expandir-serie.ts";
+
+// z.enum pide una tupla no vacía; la lista canónica vive en el módulo de repetición.
+const REPETICIONES_TUPLA = REPETICIONES as unknown as [string, ...string[]];
 import type { Actor } from "../../lib/actor.ts";
 
 export const NuevaReservaInput = z.object({
@@ -25,6 +30,10 @@ export const NuevaReservaInput = z.object({
   hora: z.string().regex(/^\d{2}:\d{2}$/),
   duracionMin: z.coerce.number().int().min(DURACION_MIN_MIN).max(DURACION_MAX_MIN),
   inquilinoId: z.string().min(1),
+  // Repetición: por defecto "no", así un formulario viejo (o un POST sin el campo) sigue
+  // creando UN turno y nunca una serie por accidente.
+  repeticion: z.enum(REPETICIONES_TUPLA).default("no"),
+  veces: z.coerce.number().int().min(1).max(OCURRENCIAS_MAX).default(1),
 });
 
 export type NuevaReserva = z.infer<typeof NuevaReservaInput>;
@@ -61,7 +70,11 @@ function politicaDelPanel(bufferMin: number): CtxReserva["politica"] {
  * la sala) y delega en crearOcupacion, que es el ÚNICO camino de escritura — con sus advisory
  * locks, su re-chequeo contra el tx y el constraint de exclusión como red final.
  */
-async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClient = prisma): Promise<ResultadoCrear> {
+export type ResultadoAlta =
+  | { ok: true; creadas: number; conflictos: { fecha: string; codigo: string }[] }
+  | { ok: false; error: string };
+
+async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClient = prisma): Promise<ResultadoAlta> {
   const sala = await db.sala.findFirst({
     where: { id: input.salaId, operadorId: actor.operadorId },
     select: { id: true, bufferMin: true, horarioJson: true, activa: true, sede: { select: { zonaHoraria: true } } },
@@ -80,11 +93,36 @@ async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClie
     bloqueaProfesional: true,
   };
 
-  return crearOcupacion(
-    { salaId: sala.id, fecha: input.fecha, inicioISO: inicio.toISOString(), duracionMin: input.duracionMin },
+  // Un turno suelto sigue yendo por crearOcupacion, que es EL camino de escritura. Una serie va
+  // por expandirSerie, que escribe las N en una sola transacción tomando todos los locks: crear
+  // N veces en un for se deadlockearía contra otra serie que empiece por el otro extremo.
+  if (input.repeticion === "no" || input.veces <= 1) {
+    const r = await crearOcupacion(
+      { salaId: sala.id, fecha: input.fecha, inicioISO: inicio.toISOString(), duracionMin: input.duracionMin },
+      ctx,
+      db,
+    );
+    return r.ok ? { ok: true, creadas: 1, conflictos: [] } : { ok: false, error: r.error };
+  }
+
+  // Modo `parcial`: se crean las que entran y se INFORMA cuáles no. El modo silencioso no existe
+  // (§4.9) — una ocurrencia que desaparece sin avisar es un profesional que llega a la puerta
+  // cerrada. La pantalla muestra cuántas quedaron afuera.
+  const serie = await expandirSerie(
+    {
+      salaId: sala.id,
+      hora: input.hora,
+      duracionMin: input.duracionMin,
+      fechaInicio: input.fecha,
+      repeticion: input.repeticion as Repeticion,
+      cantidad: input.veces,
+      modo: "parcial",
+    },
     ctx,
     db,
   );
+  if (!serie.ok) return { ok: false, error: serie.error };
+  return { ok: true, creadas: serie.creadas.length, conflictos: serie.conflictos };
 }
 
 /**

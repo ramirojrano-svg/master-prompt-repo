@@ -10,8 +10,8 @@ import { prisma } from "../../db/prisma.ts";
 import { clavesDeLock } from "../../dominio/locks.ts";
 import { evaluarReserva, type CodigoReserva } from "../../dominio/motor/reserva.ts";
 import { LOOKBACK_MIN, DURACION_MAX_MIN, DURACION_MIN_MIN } from "../../dominio/motor/limites.ts";
-import { instanteDeHoraLocal, sumarDiasLocal } from "../../dominio/motor/zona.ts";
-import { SEMANAS_MAX } from "../../dominio/motor/serie.ts";
+import { instanteDeHoraLocal } from "../../dominio/motor/zona.ts";
+import { fechasDeSerie, OCURRENCIAS_MAX, type Repeticion } from "../../dominio/repeticion.ts";
 import type { CtxReserva } from "./crear.ts";
 import { aMotor, OCUPAN } from "./comun.ts";
 
@@ -22,7 +22,10 @@ export type ParamsSerie = {
   hora: string; // 'HH:MM'
   duracionMin: number;
   fechaInicio: string; // 'YYYY-MM-DD'
-  semanas: number;
+  /** Qué patrón repite: diaria, hábiles, semanal, mensual ("el segundo viernes") o anual. */
+  repeticion: Repeticion;
+  /** Cuántas ocurrencias. Los meses que no tienen la fecha se saltean SIN gastar cupo. */
+  cantidad: number;
   modo: ModoSerie;
   motivo?: string;
 };
@@ -43,19 +46,17 @@ class AbortarSerie extends Error {
 
 export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaClient = prisma): Promise<ResultadoSerie> {
   const ahora = ctx.ahora ?? new Date();
-  const semanas = Math.floor(p.semanas);
-  if (semanas < 1 || semanas > SEMANAS_MAX) return { ok: false, error: "DATOS_INVALIDOS" };
+  if (p.cantidad < 1 || p.cantidad > OCURRENCIAS_MAX) return { ok: false, error: "DATOS_INVALIDOS" };
   if (p.duracionMin < DURACION_MIN_MIN || p.duracionMin > DURACION_MAX_MIN) return { ok: false, error: "DATOS_INVALIDOS" };
 
   const sala = await db.sala.findFirst({ where: { id: p.salaId, operadorId: ctx.operadorId }, include: { sede: true } });
   if (!sala || !sala.activa) return { ok: false, error: "SALA_INEXISTENTE" };
   const tz = sala.sede.zonaHoraria;
 
-  // Grilla de ocurrencias (cada una desde SU fecha local; nunca +7*24h a un instante).
+  // Las FECHAS las decide el módulo puro de repetición (calendario, sin horas ni zonas). Acá
+  // solo se les pone la hora, cada una en la zona de SU sede: nunca +7*24h sobre un instante.
   const ocurrencias: { fecha: string; inicio: Date; fin: Date }[] = [];
-  for (let k = 0; k < semanas; k++) {
-    const fecha = sumarDiasLocal(p.fechaInicio, k * 7);
-    if (!fecha) continue;
+  for (const fecha of fechasDeSerie(p.fechaInicio, p.repeticion, p.cantidad)) {
     const inicio = instanteDeHoraLocal(fecha, p.hora, tz);
     if (!inicio) continue;
     ocurrencias.push({ fecha, inicio, fin: new Date(inicio.getTime() + p.duracionMin * 60_000) });

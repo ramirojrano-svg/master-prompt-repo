@@ -51,7 +51,7 @@ const SEMANAS_CHOQUE = [0, 5, 11];
 test("T-40 · expandir serie (parcial): 12 semanas, 3 chocan => 9 creadas + reporte de las 3", async () => {
   for (const k of SEMANAS_CHOQUE) await bloquear(sumarDiasLocal("2026-08-12", k * 7)!, `b${k}`);
 
-  const r = await expandirSerie({ salaId: "sa1", hora: "10:00", duracionMin: 60, fechaInicio: "2026-08-12", semanas: 12, modo: "parcial" }, ctx("in1"), db);
+  const r = await expandirSerie({ salaId: "sa1", hora: "10:00", duracionMin: 60, fechaInicio: "2026-08-12", repeticion: "semanal", cantidad: 12, modo: "parcial" }, ctx("in1"), db);
   assert.ok(r.ok);
   if (r.ok) {
     assert.equal(r.creadas.length, 9);
@@ -64,7 +64,7 @@ test("T-40 · expandir serie (parcial): 12 semanas, 3 chocan => 9 creadas + repo
 test("T-41 · todo_o_nada: 1 de 12 choca => 0 filas creadas, tx abortada", async () => {
   await bloquear(sumarDiasLocal("2026-08-12", 5 * 7)!, "b5");
 
-  const r = await expandirSerie({ salaId: "sa1", hora: "10:00", duracionMin: 60, fechaInicio: "2026-08-12", semanas: 12, modo: "todo_o_nada" }, ctx("in1"), db);
+  const r = await expandirSerie({ salaId: "sa1", hora: "10:00", duracionMin: 60, fechaInicio: "2026-08-12", repeticion: "semanal", cantidad: 12, modo: "todo_o_nada" }, ctx("in1"), db);
   assert.deepEqual(r.ok, false);
   if (!r.ok) assert.equal(r.error, "SERIE_ABORTADA");
   // solo queda el bloqueante; ninguna fila de serie
@@ -73,7 +73,7 @@ test("T-41 · todo_o_nada: 1 de 12 choca => 0 filas creadas, tx abortada", async
 });
 
 test("una serie sin conflictos crea las N ocurrencias", async () => {
-  const r = await expandirSerie({ salaId: "sa1", hora: "10:00", duracionMin: 60, fechaInicio: "2026-08-12", semanas: 4, modo: "parcial" }, ctx("in1"), db);
+  const r = await expandirSerie({ salaId: "sa1", hora: "10:00", duracionMin: 60, fechaInicio: "2026-08-12", repeticion: "semanal", cantidad: 4, modo: "parcial" }, ctx("in1"), db);
   assert.ok(r.ok && r.creadas.length === 4);
 });
 

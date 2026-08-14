@@ -38,7 +38,7 @@ import { NuevaReserva } from "./NuevaReserva.tsx";
 import { DetalleTurno } from "./DetalleTurno.tsx";
 
 type Params = { slug: string };
-type Query = { fecha?: string; vista?: string; mes?: string; salas?: string; error?: string; creada?: string; turno?: string; errorTurno?: string };
+type Query = { fecha?: string; vista?: string; mes?: string; salas?: string; error?: string; creada?: string; chocaron?: string; turno?: string; errorTurno?: string };
 
 /**
  * El cuerpo compartido de las acciones sobre un turno. Vive FUERA del componente a propósito:
@@ -171,12 +171,19 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
       hora: formData.get("hora"),
       duracionMin: formData.get("duracionMin"),
       inquilinoId: formData.get("inquilinoId"),
+      repeticion: formData.get("repeticion") ?? "no",
+      veces: formData.get("veces") ?? 1,
     });
 
     const q = new URLSearchParams({ fecha: fechaForm, vista });
     if (!r.ok) q.set("error", r.error); // SIN_PERMISO / ENTRADA_INVALIDA (del envoltorio)
     else if (!r.data.ok) q.set("error", r.data.error); // SLOT_OCUPADO, FUERA_DE_HORARIO, …
-    else q.set("creada", "1");
+    else {
+      q.set("creada", String(r.data.creadas));
+      // Las ocurrencias que no entraron se CUENTAN en la URL: una serie que crea 6 de 8 sin
+      // decirlo son dos profesionales que llegan a la puerta cerrada (§4.9).
+      if (r.data.conflictos.length > 0) q.set("chocaron", String(r.data.conflictos.length));
+    }
 
     revalidatePath(`/panel/${slug}`);
     redirect(`/panel/${slug}?${q.toString()}`);
@@ -317,7 +324,7 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
               {agenda.reservas.filter((r) => !r.esBloqueo).length} turno
               {agenda.reservas.filter((r) => !r.esBloqueo).length === 1 ? "" : "s"}
             </span>
-            {sp.creada === "1" && <span className="exito">Reserva creada.</span>}
+            {sp.creada && <span className="exito">{Number(sp.creada) === 1 ? "Turno creado." : `${sp.creada} turnos creados.`}</span>}
             {sp.error && !puedeCargar && <span className="error">{mensajeDeError(sp.error)}</span>}
           </p>
 
@@ -355,7 +362,7 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           desaparecer en un teléfono. Sigue siendo <details>/<summary>, o sea que abre y cierra
           sin una línea de JavaScript. */}
       {puedeCargar && (
-        <details className="crear-flotante" open={Boolean(sp.error) || sp.creada === "1"}>
+        <details className="crear-flotante" open={Boolean(sp.error) || Boolean(sp.creada)}>
           <summary aria-label="Crear turno" title="Crear turno">
             <IconoMas />
           </summary>
@@ -366,7 +373,7 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
               fecha={agenda.fecha}
               accion={crear}
               error={sp.error ? mensajeDeError(sp.error) : undefined}
-              creada={sp.creada === "1"}
+              creada={sp.creada ? { creadas: Number(sp.creada), conflictos: Number(sp.chocaron ?? 0) } : undefined}
               precios={precios}
             />
           </div>
