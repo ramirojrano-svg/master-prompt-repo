@@ -14,9 +14,18 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import pg from "pg";
 import { cargarEnv } from "../src/lib/entorno.ts";
-import { verificarPassword } from "../src/lib/password.ts";
+import { autorizar } from "../src/lib/auth-core.ts";
 
 const CLAVE_DEMO = process.env.SEED_PASSWORD ?? "emoapp-2026";
+
+// Las cuentas que este script promete que funcionan. Se usan para PROBAR y para IMPRIMIR al
+// final: una sola lista, así el cartel de "entrá con esto" no puede quedar prometiendo una cuenta
+// que nadie verificó.
+const CUENTAS = [
+  { rol: "Dueño", email: "ramirojrano@gmail.com" },
+  { rol: "Profesional", email: "maria@email.com" },
+  { rol: "Recepción", email: "ana@email.com" },
+];
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRACION = join(RAIZ, "prisma/migrations/0001_ocupacion_exclusion/migration.sql");
@@ -102,7 +111,13 @@ try {
   morirPorConexion(e);
 }
 const { rows: [fila] } = await cliente.query("SHOW server_version");
-ok(`Postgres responde (v${fila.server_version})`);
+// QUÉ base, dicho en voz alta. Todo lo que sigue habla de ESTA, y la app tiene que hablar de la
+// misma: cuando no coinciden, doctor dice "todo en orden" y el login rechaza la contraseña, sin
+// que nada en pantalla insinúe que son dos bases distintas. Con el nombre acá, comparar es mirar.
+const { rows: [dondeEstoy] } = await cliente.query(
+  "SELECT current_database() AS base, host(inet_server_addr()) AS host, inet_server_port() AS puerto",
+);
+ok(`Postgres responde (v${fila.server_version}) — base "${dondeEstoy.base}" en ${dondeEstoy.host ?? "localhost"}:${dondeEstoy.puerto}`);
 
 // ── 3. Esquema ──────────────────────────────────────────────────────────────
 const sql = readFileSync(MIGRACION, "utf8");
@@ -216,32 +231,70 @@ if (accesos === 0) {
 }
 ok(`${accesos} accesos activos al centro`);
 
-// Y lo último: que la contraseña ENTRE de verdad. Es el chequeo que faltaba — "hay un usuario
-// con un hash guardado" no es lo mismo que "esa contraseña abre", y la diferencia entre las dos
-// es exactamente el "email o contraseña incorrectos" que no se explica de ninguna otra forma.
-const { rows: [dueño] } = await cliente.query(
-  `SELECT u."passwordHash" FROM "Usuario" u
-   JOIN "UsuarioOperador" uo ON uo."usuarioId" = u.id AND uo.activo = true
-   WHERE uo.rol = 'owner' LIMIT 1`,
-);
-if (!dueño) {
-  await cliente.end();
-  morir("No hay ningún usuario con rol de dueño.", "npm run acceso");
+/**
+ * Prueba cada cuenta con `autorizar`, la función que corre el provider de Auth.js. Devuelve true
+ * si TODAS entran; si alguna no, explica cuál de los dos motivos posibles fue y sale con 1.
+ *
+ * La forma que se le pasa es la mínima que `autorizar` consume, respaldada por pg y no por el
+ * cliente de Prisma: el cliente generado puede estar viejo —es justo lo que se revisó unas líneas
+ * más arriba— y un diagnóstico no puede depender de la pieza que está tratando de auditar.
+ */
+async function cuentasQueEntran() {
+  const comoPrisma = {
+    usuario: {
+      async findUnique({ where }) {
+        const { rows: [u] } = await cliente.query(
+          `SELECT id, email, nombre, "passwordHash", "sessionVersion" FROM "Usuario" WHERE email = $1`,
+          [where.email],
+        );
+        return u ?? null;
+      },
+    },
+  };
+
+  for (const { rol, email } of CUENTAS) {
+    if (await autorizar(comoPrisma, { email, password: CLAVE_DEMO })) continue;
+
+    // Falló. `autorizar` devuelve el MISMO null para "ese email no existe" y "la contraseña no
+    // coincide" — deliberado en el login, para no filtrar qué emails están registrados. Acá esa
+    // discreción no sirve de nada y cuesta caro: se vuelve a preguntar para poder decir cuál de
+    // los dos fue, porque se arreglan distinto.
+    const { rows: [u] } = await cliente.query('SELECT email FROM "Usuario" WHERE email = $1', [email]);
+    const { rows: cargados } = await cliente.query('SELECT email FROM "Usuario" ORDER BY email LIMIT 10');
+    await cliente.end();
+
+    if (!u) {
+      morir(
+        `No existe ningún usuario con el email ${email} (${rol}).`,
+        // Los emails REALES de la base. Si lo que falla es una mayúscula o un dominio distinto,
+        // se ve acá al lado y no hay nada más que deducir.
+        `Los emails cargados en esta base son: ${cargados.map((r) => r.email).join(", ") || "(ninguno)"}`,
+        "npm run acceso",
+      );
+    }
+    morir(
+      `La contraseña "${CLAVE_DEMO}" NO abre la cuenta ${email} (${rol}).`,
+      "El usuario existe: lo que no coincide es la contraseña guardada.",
+      "npm run acceso",
+    );
+  }
+  ok(`las ${CUENTAS.length} cuentas entran (probado con la misma función que corre el login)`);
+  return true;
 }
-if (!(await verificarPassword(CLAVE_DEMO, dueño.passwordHash))) {
-  await cliente.end();
-  morir(
-    `La contraseña "${CLAVE_DEMO}" NO abre la cuenta del dueño.`,
-    "El usuario existe; lo que no coincide es la contraseña guardada.",
-    "npm run acceso",
-  );
-}
-ok(`la contraseña del dueño verifica correctamente`);
+
+// ── 5. La puerta ────────────────────────────────────────────────────────────
+// El chequeo que más caro salió, y por qué está escrito así: se prueban las credenciales POR LA
+// MISMA FUNCIÓN QUE USA EL LOGIN. La versión anterior verificaba a mano, con su propia consulta,
+// el hash del primer dueño que apareciera — y eso NO es lo que hace la app: la app busca por el
+// email TIPEADO, normalizado (trim + minúsculas). Dos caminos distintos pueden discrepar, y
+// cuando discrepan el doctor dice "la contraseña verifica" mientras el login contesta
+// "incorrecta", sin una sola pista de por qué. Un diagnóstico que no ejecuta el camino real no
+// está diagnosticando: está adivinando en paralelo.
+if (!(await cuentasQueEntran())) process.exit(1);
 
 await cliente.end();
 
 console.log("\n  Todo en orden. Arrancá con:  npm run dev");
 console.log("  y entrá a  http://localhost:3000/panel/espacio-moca\n");
-console.log("    Dueño        ramirojrano@gmail.com   emoapp-2026");
-console.log("    Profesional  maria@email.com         emoapp-2026");
-console.log("    Recepción    ana@email.com           emoapp-2026\n");
+for (const { rol, email } of CUENTAS) console.log(`    ${rol.padEnd(12)} ${email.padEnd(24)} ${CLAVE_DEMO}`);
+console.log();
