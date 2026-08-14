@@ -122,7 +122,7 @@ Las pantallas, desde la agenda:
 
 | Pantalla | Para qué | Quién entra |
 |---|---|---|
-| `/panel/<slug>` | el calendario: vistas **día, semana y mes**, con alta de turno | todos (cada uno ve lo suyo) |
+| `/panel/<slug>` | el calendario: vistas **día, semana y mes**, alta de turno y **arrastrar para mover** | todos (cada uno ve lo suyo) |
 | `…/salas` | alta, edición y **archivado** de consultorios | owner y gestor |
 | `…/inquilinos` | alta y baja de profesionales | owner y gestor |
 | `…/tarifas` | **precio de la hora**: general, por consultorio y por profesional | solo el owner |
@@ -131,6 +131,12 @@ Las pantallas, desde la agenda:
 
 > El estado del calendario (día, vista, consultorios filtrados) vive en la URL: el botón "atrás"
 > funciona, y el link de un día concreto se puede mandar por WhatsApp.
+
+> **Arrastrar un turno** lo mueve de horario y de consultorio (en la vista semana, de día). La
+> duración viaja con él y el precio NO se recotiza: mover un turno no es volverlo a vender. El
+> cargo de la cuenta corriente se muda con el turno, así que cruzar de mes no lo factura dos veces
+> ni lo deja en el mes viejo. Si el destino está ocupado o el consultorio no abre a esa hora, el
+> turno vuelve a su lugar y la grilla dice por qué. Necesita mouse: es arrastre de escritorio.
 
 > El precio **no se edita**: ponés uno nuevo y el anterior queda cerrado. Por eso una reserva de
 > ayer sigue valiendo lo que valía aunque hoy subas la tarifa, y el resumen del mes pasado no
@@ -144,8 +150,8 @@ Las pantallas, desde la agenda:
 |---|---|
 | `npm run dev` | servidor de desarrollo |
 | `npm run seed` | carga (o recarga) los datos del piloto |
-| `npm test` | tests puros del dominio, sin base (~164, corren en segundos) |
-| `npm run test:db` | tests de integración contra Postgres real (~133), incluida la concurrencia |
+| `npm test` | tests puros del dominio, sin base (~175, corren en segundos) |
+| `npm run test:db` | tests de integración contra Postgres real (~148), incluida la concurrencia |
 | `npm run typecheck` | TypeScript en modo estricto |
 | `npm run verify` | typecheck + tests puros |
 | `npm run humo` | prueba de humo en un browser real; deja capturas en `capturas/` |

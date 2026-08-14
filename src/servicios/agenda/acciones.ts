@@ -11,6 +11,7 @@ import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
 import { crearOcupacion, type CtxReserva, type ResultadoCrear } from "../reservas/crear.ts";
+import { moverOcupacion, type ResultadoMover } from "../reservas/mover.ts";
 import { parseHorarios } from "../../dominio/motor/horarios.ts";
 import { instanteDeHoraLocal } from "../../dominio/motor/zona.ts";
 import { PASO_DEFAULT, DURACION_MAX_MIN, DURACION_MIN_MIN } from "../../dominio/motor/limites.ts";
@@ -25,6 +26,33 @@ export const NuevaReservaInput = z.object({
 });
 
 export type NuevaReserva = z.infer<typeof NuevaReservaInput>;
+
+/** Arrastrar un bloque de la grilla: a qué sala cae y en qué horario. La duración no viaja —
+ *  mover no estira: la conserva el servicio a partir de la fila original. */
+export const MoverReservaInput = z.object({
+  ocupacionId: z.string().min(1),
+  salaDestinoId: z.string().min(1),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  hora: z.string().regex(/^\d{2}:\d{2}$/),
+});
+
+export type MoverReserva = z.infer<typeof MoverReservaInput>;
+
+/**
+ * La política del panel, compartida por el alta y por el movimiento. Una sola definición: si el
+ * alta admite una duración y el arrastre otra, un turno válido se vuelve inmovible sin motivo.
+ */
+function politicaDelPanel(bufferMin: number): CtxReserva["politica"] {
+  return {
+    pasoMin: PASO_DEFAULT,
+    duracionMinMin: DURACION_MIN_MIN,
+    duracionMaxMin: DURACION_MAX_MIN,
+    bufferMin,
+    bufferMismoInquilino: 0,
+    antelacionMinMin: 0, // el operador puede cargar una reserva para ahora mismo
+    horizonteDias: 400, // horizonte del OPERADOR (§4.7.2), no el del portal
+  };
+}
 
 /**
  * Crea una reserva desde el panel. NO reimplementa nada: arma el contexto (política y horario de
@@ -46,15 +74,7 @@ async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClie
     operadorId: actor.operadorId,
     inquilinoId: input.inquilinoId,
     horario: parseHorarios(sala.horarioJson),
-    politica: {
-      pasoMin: PASO_DEFAULT,
-      duracionMinMin: DURACION_MIN_MIN,
-      duracionMaxMin: DURACION_MAX_MIN,
-      bufferMin: sala.bufferMin,
-      bufferMismoInquilino: 0,
-      antelacionMinMin: 0, // el operador puede cargar una reserva para ahora mismo
-      horizonteDias: 400, // horizonte del OPERADOR (§4.7.2), no el del portal
-    },
+    politica: politicaDelPanel(sala.bufferMin),
     bloqueaProfesional: true,
   };
 
@@ -64,6 +84,35 @@ async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClie
     db,
   );
 }
+
+/**
+ * Mueve una reserva arrastrándola. El horario que manda es el de la sala DESTINO: soltar un
+ * bloque en un consultorio que ese día abre más tarde tiene que dar FUERA_DE_HORARIO, no colarse
+ * con la apertura de la sala de la que salió.
+ */
+async function moverDesdePanel(actor: Actor, input: MoverReserva, db: PrismaClient = prisma): Promise<ResultadoMover> {
+  const sala = await db.sala.findFirst({
+    where: { id: input.salaDestinoId, operadorId: actor.operadorId },
+    select: { bufferMin: true, horarioJson: true, activa: true },
+  });
+  if (!sala || !sala.activa) return { ok: false, error: "SALA_INEXISTENTE" };
+
+  return moverOcupacion(
+    input,
+    { operadorId: actor.operadorId, horario: parseHorarios(sala.horarioJson), politica: politicaDelPanel(sala.bufferMin) },
+    db,
+  );
+}
+
+/** Mover el turno de OTRO: el mismo permiso que editarlo, porque cambiarle la hora es editarlo. */
+export const moverReservaAjena = definirAccion(
+  { permiso: "reserva.editar.ajena", schema: MoverReservaInput },
+  (actor, input) => moverDesdePanel(actor, input),
+);
+
+/** Misma lógica, para tests: permite inyectar el cliente de base. */
+export const moverReservaAjenaCon = (db: PrismaClient) =>
+  definirAccion({ permiso: "reserva.editar.ajena", schema: MoverReservaInput }, (actor, input) => moverDesdePanel(actor, input, db));
 
 /** Reserva a nombre de OTRO inquilino: es lo que hace el operador desde el panel. */
 export const crearReservaAjena = definirAccion(
@@ -97,5 +146,42 @@ export function mensajeDeError(codigo: string): string {
       return "Revisá los datos: falta algo o la duración no es válida.";
     default:
       return "No se pudo crear la reserva.";
+  }
+}
+
+/**
+ * Mensajes del ARRASTRE. Van aparte de los del alta a propósito: los códigos se comparten pero
+ * la frase no. "Ese horario se acaba de ocupar. Elegí otro." es un buen texto cuando alguien está
+ * llenando un formulario, y uno inútil cuando acaba de soltar un bloque en un lugar que ve en
+ * pantalla — ahí lo que hay que decir es que el turno NO se movió y sigue donde estaba.
+ */
+export function mensajeDeMovimiento(codigo: string): string {
+  switch (codigo) {
+    case "SLOT_OCUPADO":
+      return "Ahí ya hay otro turno. El turno quedó donde estaba.";
+    case "SOLAPA_INQUILINO":
+      return "Ese profesional ya tiene otra sala reservada a esa hora. El turno quedó donde estaba.";
+    case "FUERA_DE_HORARIO":
+      return "Ese consultorio no abre a esa hora. El turno quedó donde estaba.";
+    case "SALA_INEXISTENTE":
+      return "Ese consultorio ya no está disponible.";
+    case "CONGELADA":
+      return "Ese turno ya se usó o se marcó como ausente: no se puede mover.";
+    case "NO_MOVIBLE":
+      return "Los bloqueos y el mantenimiento no se arrastran.";
+    case "MES_CERRADO":
+      return "Ese turno ya está en un mes liquidado: moverlo cambiaría plata ya cerrada.";
+    case "FECHA_PASADA":
+      return "No se puede mover un turno a una fecha que ya pasó.";
+    case "FUERA_DE_HORIZONTE":
+      return "Esa fecha está fuera del plazo que se puede agendar.";
+    case "NO_ENCONTRADA":
+      return "Ese turno ya no existe. Recargá la agenda.";
+    case "SIN_PERMISO":
+      return "Tu rol no puede mover turnos de otros profesionales.";
+    case "SIN_CAMBIOS":
+      return ""; // soltar el bloque donde ya estaba no es un error: no se dice nada
+    default:
+      return "No se pudo mover el turno.";
   }
 }

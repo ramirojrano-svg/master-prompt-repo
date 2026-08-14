@@ -13,6 +13,23 @@ mkdirSync(OUT, { recursive: true });
 
 const log = (...a) => console.log("  ", ...a);
 
+/**
+ * Espera a que una condición del DOM se cumpla, y devuelve si se cumplió.
+ *
+ * Reemplaza a `waitForURL(/ok=1/)` después de una acción. Ese patrón resolvía AL INSTANTE cuando
+ * la URL ya traía `ok=1` de la acción anterior, y entonces la aserción de abajo leía el DOM viejo:
+ * el chequeo fallaba por una carrera y no porque la app estuviera mal. Esperar el resultado que se
+ * va a afirmar sirve igual con recarga completa que con navegación del lado del cliente.
+ */
+async function esperar(fn, ms = 15_000) {
+  const hasta = Date.now() + ms;
+  do {
+    if (await fn()) return true;
+    await new Promise((r) => setTimeout(r, 200));
+  } while (Date.now() < hasta);
+  return false;
+}
+
 /** Abre el <details> del alta sin togglear: si ya está abierto, un click lo CERRARÍA. */
 async function abrirAlta(page) {
   await page.evaluate(() => document.querySelector("details")?.setAttribute("open", ""));
@@ -64,7 +81,15 @@ try {
     await page.selectOption("#salaId", sala);
     await page.fill("#hora", h);
     await page.selectOption("#duracionMin", "60");
-    await Promise.all([page.waitForURL(/creada=1|error=/, { timeout: 20_000 }), page.click('button[type="submit"]')]);
+    // Se espera a que la URL CAMBIE, no a que matchee /creada=1|error=/: después del primer
+    // intento fallido la URL ya trae `error=`, el waitForURL resolvía al instante sin esperar la
+    // navegación, y a partir de ahí el bucle leía siempre la URL vieja. Con eso, un alta que
+    // funcionaba perfecto se reportaba como fallada.
+    const urlPrevia = page.url();
+    await Promise.all([
+      page.waitForURL((u) => u.toString() !== urlPrevia, { timeout: 20_000 }),
+      page.click('form button[type="submit"]'),
+    ]);
     if (page.url().includes("creada=1")) { hora = h; break; }
   }
   chequeo(hora !== null, `reserva creada a las ${hora ?? "—"} (url: ${page.url().split("?")[1]})`);
@@ -81,6 +106,53 @@ try {
   const err = await page.locator("p.error").innerText().catch(() => "");
   chequeo(/ocupar|ocupado|otra sala|fuera de/i.test(err), `error honesto: "${err}"`);
   await page.screenshot({ path: `${OUT}/3-slot-ocupado.png`, fullPage: true });
+
+  // ── 3-bis. Arrastrar un turno ─────────────────────────────────────────────
+  // Se disparan DragEvent de verdad en vez de mover el mouse: Chromium entra en un bucle de
+  // arrastre nativo con el que Playwright se queda esperando para siempre. Los handlers que se
+  // ejercitan son exactamente los mismos, y con ellos la server action y el motor.
+  console.log("\n[owner] arrastrar un turno");
+  await page.goto(`${BASE}/panel/${SLUG}`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(1200); // hidratación: sin ella el arrastre no hace nada
+  const arrastrables = await page.locator('.evento[draggable="true"]').count();
+  chequeo(arrastrables > 0, `${arrastrables} turnos arrastrables en la grilla`);
+
+  const etiquetaAntes = await page.locator('.evento[draggable="true"]').first().getAttribute("aria-label");
+  const movido = await page.evaluate(() => {
+    const blk = document.querySelector('.evento[draggable="true"]');
+    const col = blk.parentElement;
+    const dt = new DataTransfer();
+    const rb = blk.getBoundingClientRect(), rc = col.getBoundingClientRect();
+    const x = rc.left + rc.width / 2, y = rb.top + 5 + 120; // 4 filas de 30' = +2 h
+    const mk = (t, cx, cy) => new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: dt, clientX: cx, clientY: cy });
+    blk.dispatchEvent(mk("dragstart", rb.left + 10, rb.top + 5));
+    col.dispatchEvent(mk("dragover", x, y));
+    // dispatchEvent devuelve false cuando el handler llamó preventDefault, que es EXACTAMENTE lo
+    // que tiene que pasar: sin ese preventDefault el navegador descarta el drop.
+    return col.dispatchEvent(mk("drop", x, y)) === false;
+  });
+  chequeo(movido, "la grilla toma el drop (preventDefault)");
+  await page.waitForTimeout(3500);
+
+  // Se sigue al turno CONCRETO por su etiqueta, no "el primer bloque de la grilla": al moverse
+  // cambia el orden y el primero pasa a ser otro turno, con lo que la comparación daría distinto
+  // aunque no se hubiera movido nada.
+  const aviso = await page.locator('[role="status"]').first().innerText().catch(() => "");
+  const sigueEnElLugar = await page.locator(`[aria-label="${etiquetaAntes}"]`).count();
+  // +120px = 4 filas de 30' = dos horas más tarde, con la misma duración.
+  const masDosHoras = etiquetaAntes.replace(/(\d\d):(\d\d) – (\d\d):(\d\d)$/, (_, h1, m1, h2, m2) =>
+    `${String(+h1 + 2).padStart(2, "0")}:${m1} – ${String(+h2 + 2).padStart(2, "0")}:${m2}`);
+  const llegó = await page.locator(`[aria-label="${masDosHoras}"]`).count();
+
+  if (sigueEnElLugar === 0 && llegó === 1) {
+    chequeo(true, `el turno se movió dos horas: "${etiquetaAntes}" -> "${masDosHoras}"`);
+  } else {
+    // Rebotar es un desenlace válido (el destino puede estar ocupado), pero tiene que DECIRLO.
+    // El bug que se busca acá es el tercer caso: que soltar el turno no haga nada, en silencio.
+    chequeo(/ocupado|otro turno|no abre|liquidado|ausente/i.test(aviso), `rebotó diciendo por qué: "${aviso}"`);
+    chequeo(sigueEnElLugar === 1, "si rebota, el turno sigue donde estaba (no se pierde)");
+  }
+  await page.screenshot({ path: `${OUT}/3b-arrastre.png`, fullPage: true });
 
   // ── 4. El inquilino: sin identidad ajena ni formulario ────────────────────
   console.log("\n[inquilino] privacidad");
@@ -121,10 +193,11 @@ try {
 
   console.log("\n[owner] archivar sala (no borrar)");
   await page.locator(`tbody tr:has-text("${nombreSala}")`).locator('button:has-text("Archivar")').click();
-  await page.waitForURL(/ok=1/, { timeout: 20_000 });
+  const rotulada = page.locator(`tbody tr:has-text("${nombreSala}"):has-text("(archivada)")`);
+  const seRotulo = await esperar(async () => (await rotulada.count()) === 1);
   const filas = await page.locator("tbody tr").count();
   chequeo(filas === salasDespues, "la sala archivada SIGUE en la lista (no se borró)");
-  chequeo(await page.locator(`tbody tr:has-text("${nombreSala}"):has-text("(archivada)")`).count() === 1, "la sala archivada se muestra rotulada, sin desaparecer");
+  chequeo(seRotulo, "la sala archivada se muestra rotulada, sin desaparecer");
 
   console.log("\n[owner] ABM de profesionales");
   await page.goto(`${BASE}/panel/${SLUG}/inquilinos`, { waitUntil: "domcontentloaded" });
@@ -145,26 +218,27 @@ try {
   const profesional = (await page.locator("#inquilinoId option").nth(1).innerText()).trim();
   await page.selectOption("#inquilinoId", { index: 1 });
   await page.fill("#precioHora", "11000");
-  await Promise.all([page.waitForURL(/ok=1|error=/, { timeout: 20_000 }), page.click('button:has-text("Guardar precio")')]);
+  await page.click('button:has-text("Guardar precio")');
+  const seCargo = await esperar(async () => /11\.000/.test(await page.locator("table").last().innerText()));
   const preciosDespues = await filasPrecios();
   chequeo(preciosDespues === preciosAntes + 1, `precios vigentes: ${preciosAntes} -> ${preciosDespues} (${profesional})`);
-  const cuadro = await page.locator("table").last().innerText();
-  chequeo(/11\.000/.test(cuadro), "el cuadro muestra el precio nuevo resuelto por profesional");
+  chequeo(seCargo, "el cuadro muestra el precio nuevo resuelto por profesional");
   await page.screenshot({ path: `${OUT}/8-precios.png`, fullPage: true });
 
   // Cambiar el precio no edita: cierra el anterior y crea otro. Se ve en que la lista NO crece.
   const antesDeCambiar = await filasPrecios();
   await page.selectOption("#inquilinoId", { index: 1 });
   await page.fill("#precioHora", "12500");
-  await Promise.all([page.waitForURL(/ok=1|error=/, { timeout: 20_000 }), page.click('button:has-text("Guardar precio")')]);
+  await page.click('button:has-text("Guardar precio")');
+  const seActualizo = await esperar(async () => /12\.500/.test(await page.locator("table").last().innerText()));
   const trasCambiar = await filasPrecios();
   chequeo(trasCambiar === antesDeCambiar, "cambiar un precio no duplica la fila vigente (cierra + crea)");
-  chequeo(/12\.500/.test(await page.locator("table").last().innerText()), "el cuadro ya muestra el precio nuevo");
+  chequeo(seActualizo, "el cuadro ya muestra el precio nuevo");
 
   // Dar de baja el precio de prueba: el alcance vuelve a caer en la general. Además deja la base
   // como estaba, así el script se puede correr dos veces seguidas.
   await page.locator("table").first().locator(`tbody tr:has-text("${profesional}")`).locator('button:has-text("Dar de baja")').click();
-  await page.waitForURL(/ok=1/, { timeout: 20_000 });
+  await esperar(async () => (await filasPrecios()) === preciosAntes);
   chequeo(await filasPrecios() === preciosAntes, `dar de baja un precio lo saca de los vigentes (${preciosAntes} otra vez)`);
   chequeo(/8\.000/.test(await page.locator("table").last().innerText()), "sin precio propio, el profesional vuelve a la tarifa general");
 

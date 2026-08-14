@@ -13,14 +13,16 @@ import { actorDeSesion } from "../../../src/lib/sesion.ts";
 import { intentar } from "../../../src/lib/db-salud.ts";
 import { BaseNoLista } from "../../BaseNoLista.tsx";
 import { cargarAgenda } from "../../../src/servicios/agenda/dia.ts";
-import { crearReservaAjena, mensajeDeError } from "../../../src/servicios/agenda/acciones.ts";
+import { crearReservaAjena, mensajeDeError, mensajeDeMovimiento, moverReservaAjena } from "../../../src/servicios/agenda/acciones.ts";
 import { prisma } from "../../../src/db/prisma.ts";
 import { puede } from "../../../src/lib/permisos.ts";
 import { fechaEnZona, formatHora } from "../../../src/dominio/motor/zona.ts";
 import { formatearPesos } from "../../../src/dominio/tarifa.ts";
 import { esVista, fechaDeParam, navegar, type Vista } from "../../../src/dominio/calendario.ts";
 import { horasYMinutos } from "../../../src/dominio/reporte.ts";
+import type { ReactNode } from "react";
 import { Logo } from "../../Logo.tsx";
+import { IconoConsultorio, IconoMas, IconoMetrica, IconoPrecio, IconoProfesional } from "../../Iconos.tsx";
 import { Grilla } from "./Grilla.tsx";
 import { VistaMes } from "./VistaMes.tsx";
 import { MiniCalendario } from "./MiniCalendario.tsx";
@@ -138,11 +140,27 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
     redirect(`/panel/${slug}?${q.toString()}`);
   }
 
-  const links: { href: string; texto: string }[] = [];
-  if (puede(actor.rol, "sala.administrar")) links.push({ href: `/panel/${slug}/salas`, texto: "Consultorios" });
-  if (puede(actor.rol, "inquilino.administrar")) links.push({ href: `/panel/${slug}/inquilinos`, texto: "Profesionales" });
-  if (puede(actor.rol, "tarifa.administrar")) links.push({ href: `/panel/${slug}/tarifas`, texto: "Precios" });
-  if (puede(actor.rol, "finanzas.ver.agregada")) links.push({ href: `/panel/${slug}/reportes`, texto: "Métricas" });
+  // Mover un turno arrastrándolo. A diferencia de `crear`, NO redirige: la grilla ya movió el
+  // bloque en pantalla y un redirect volvería a montar todo. Devuelve el resultado y la grilla
+  // decide si avisa; el revalidate deja la agenda del servidor como fuente de verdad.
+  async function mover(input: { ocupacionId: string; salaDestinoId: string; fecha: string; hora: string }) {
+    "use server";
+    const actorAccion = await actorDeSesion(slug);
+    if (!actorAccion) return { ok: false, mensaje: mensajeDeMovimiento("SIN_PERMISO") };
+
+    const r = await moverReservaAjena(actorAccion, input);
+    const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
+    if (codigo) return { ok: false, mensaje: mensajeDeMovimiento(codigo) };
+
+    revalidatePath(`/panel/${slug}`);
+    return { ok: true, mensaje: "" };
+  }
+
+  const links: { href: string; texto: string; icono: ReactNode }[] = [];
+  if (puede(actor.rol, "sala.administrar")) links.push({ href: `/panel/${slug}/salas`, texto: "Consultorios", icono: <IconoConsultorio /> });
+  if (puede(actor.rol, "inquilino.administrar")) links.push({ href: `/panel/${slug}/inquilinos`, texto: "Profesionales", icono: <IconoProfesional /> });
+  if (puede(actor.rol, "tarifa.administrar")) links.push({ href: `/panel/${slug}/tarifas`, texto: "Precios", icono: <IconoPrecio /> });
+  if (puede(actor.rol, "finanzas.ver.agregada")) links.push({ href: `/panel/${slug}/reportes`, texto: "Métricas", icono: <IconoMetrica /> });
 
   return (
     <>
@@ -186,9 +204,10 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           </Link>
         </nav>
 
-        <nav className="oculta-mobile" style={{ display: "flex", gap: 14, fontSize: 14 }}>
+        <nav className="oculta-mobile" style={{ display: "flex", gap: 8 }}>
           {links.map((l) => (
-            <Link key={l.href} href={l.href} style={{ color: "var(--tenue)", fontWeight: 500 }}>
+            <Link key={l.href} href={l.href} className="pastilla">
+              {l.icono}
               {l.texto}
             </Link>
           ))}
@@ -198,40 +217,6 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
       <div className="marco">
         {/* ── Lateral ───────────────────────────────────────────────────── */}
         <aside className="lateral">
-          {puedeCargar && (
-            <details className="panel" style={{ padding: 0, border: "none", boxShadow: "none", marginBottom: 14 }} open={Boolean(sp.error)}>
-              <summary
-                style={{
-                  listStyle: "none",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "12px 20px",
-                  borderRadius: 999,
-                  background: "#fff",
-                  boxShadow: "var(--sombra)",
-                  border: "1px solid var(--borde)",
-                  fontWeight: 600,
-                  color: "var(--marca-900)",
-                }}
-              >
-                <span style={{ fontSize: 20, lineHeight: 1, color: "var(--turquesa)" }}>+</span> Crear
-              </summary>
-              <div style={{ marginTop: 12 }}>
-                <NuevaReserva
-                  salas={agenda.salas.filter((s) => s.activa).map((s) => ({ id: s.id, nombre: s.nombre }))}
-                  inquilinos={inquilinos}
-                  fecha={agenda.fecha}
-                  accion={crear}
-                  error={sp.error ? mensajeDeError(sp.error) : undefined}
-                  creada={sp.creada === "1"}
-                  precios={precios}
-                />
-              </div>
-            </details>
-          )}
-
           <MiniCalendario mes={mesLateral} elegida={agenda.fecha} hoy={hoy} vista={vista} href={href} />
 
           {/* Filtro de salas: las "casillas de calendarios". Prender y apagar es solo un link. */}
@@ -289,9 +274,38 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
             {sp.error && !puedeCargar && <span className="error">{mensajeDeError(sp.error)}</span>}
           </p>
 
-          {vista === "mes" ? <VistaMes dia={agenda} hoy={hoy} href={href} /> : <Grilla dia={agenda} hoy={hoy} />}
+          {vista === "mes" ? (
+            <VistaMes dia={agenda} hoy={hoy} href={href} />
+          ) : (
+            // Sin permiso para editar turnos ajenos no se pasa la acción: la grilla no ofrece el
+            // gesto en vez de ofrecerlo y que el servidor lo rechace después.
+            <Grilla dia={agenda} hoy={hoy} mover={puede(actor.rol, "reserva.editar.ajena") ? mover : undefined} />
+          )}
         </section>
       </div>
+
+      {/* ── Crear turno: redondo, abajo a la izquierda ────────────────────────
+          Fuera del <aside>: el lateral se esconde abajo de 880px y el botón de crear no puede
+          desaparecer en un teléfono. Sigue siendo <details>/<summary>, o sea que abre y cierra
+          sin una línea de JavaScript. */}
+      {puedeCargar && (
+        <details className="crear-flotante" open={Boolean(sp.error) || sp.creada === "1"}>
+          <summary aria-label="Crear turno" title="Crear turno">
+            <IconoMas />
+          </summary>
+          <div className="globo">
+            <NuevaReserva
+              salas={agenda.salas.filter((s) => s.activa).map((s) => ({ id: s.id, nombre: s.nombre }))}
+              inquilinos={inquilinos}
+              fecha={agenda.fecha}
+              accion={crear}
+              error={sp.error ? mensajeDeError(sp.error) : undefined}
+              creada={sp.creada === "1"}
+              precios={precios}
+            />
+          </div>
+        </details>
+      )}
     </>
   );
 }

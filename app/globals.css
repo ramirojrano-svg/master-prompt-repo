@@ -294,6 +294,82 @@ tfoot td {
   color: #fff;
 }
 
+/* Acceso de la barra (Consultorios, Profesionales, Precios, Métricas).
+   Son DESTINOS distintos, no las opciones de una misma elección: por eso cada uno es su propia
+   pastilla y no un `.segmentado`, que agrupado leería como "elegí uno de estos cuatro". Comparte
+   la forma y el alto del selector de vista para que se lea como botón. */
+.pastilla {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--borde-fuerte);
+  background: #fff;
+  color: var(--tenue);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.pastilla:hover {
+  background: var(--agua-clara);
+  border-color: var(--agua);
+  color: var(--marca-900);
+  text-decoration: none;
+}
+.pastilla svg {
+  flex-shrink: 0;
+}
+
+/* Botón redondo de crear, abajo a la izquierda, flotando sobre la grilla. */
+.crear-flotante {
+  position: fixed;
+  left: 18px;
+  bottom: 18px;
+  z-index: 40;
+}
+.crear-flotante > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--marca-500);
+  color: #fff;
+  box-shadow: var(--sombra-alta);
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+.crear-flotante > summary::-webkit-details-marker {
+  display: none;
+}
+.crear-flotante > summary:hover {
+  background: var(--acento-fuerte);
+}
+/* Abierto: el "+" gira a "×" para que el mismo botón se lea como cerrar. */
+.crear-flotante[open] > summary {
+  background: var(--marca-900);
+  transform: rotate(45deg);
+}
+/* El formulario sale HACIA ARRIBA: abajo no hay lugar, el botón ya está pegado al borde. */
+.crear-flotante > .globo {
+  position: absolute;
+  bottom: 68px;
+  left: 0;
+  width: min(340px, calc(100vw - 36px));
+  max-height: calc(100vh - var(--barra) - 110px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra-alta);
+  padding: 18px;
+}
+
 /* Mini calendario del lateral. */
 .mini {
   width: 100%;
