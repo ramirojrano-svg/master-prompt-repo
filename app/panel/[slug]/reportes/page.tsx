@@ -7,6 +7,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { BarraNav } from "../BarraNav.tsx";
+import { AnilloVolumen, BarrasVolumen } from "./Graficos.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { reporteMensual } from "../../../../src/servicios/reportes/mensual.ts";
@@ -60,6 +61,12 @@ export default async function ReportesPage({
   const conActividad = r.profesionales.filter((p) => p.reservas > 0 || p.facturadoCent !== 0n || p.pagadoCent !== 0n || p.saldoCent !== 0n);
   const quietos = r.profesionales.length - conActividad.length;
 
+  // Los conjuntos que alimentan los gráficos. Se filtra lo que no tiene nada que mostrar: una
+  // barra en cero no informa, solo empuja la escala y achica a las demás.
+  const conFacturacion = r.salas.filter((s) => s.importeCent > 0n);
+  const conApertura = r.salas.filter((s) => s.aperturaMin > 0);
+  const topHoras = [...conActividad].filter((p) => p.minutos > 0).sort((a, b) => b.minutos - a.minutos).slice(0, 6);
+
   const tarjetas = [
     { titulo: "Facturado en el mes", valor: plata(r.totales.facturadoCent), pie: `${r.totales.reservas} turnos · ${r.totales.profesionalesConActividad} profesionales` },
     { titulo: "Cobrado en el mes", valor: plata(r.totales.cobradoCent), pie: "pagos con fecha de este mes" },
@@ -103,6 +110,58 @@ export default async function ReportesPage({
           <p className="error" style={{ marginTop: 14 }}>
             Atención: {plata(r.sinDetallarCent)} facturados no se pudieron atribuir a ningún profesional del detalle.
           </p>
+        )}
+
+        {/* ── Gráficos ──────────────────────────────────────────────────── */}
+        {conFacturacion.length > 0 && (
+          <section style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", marginTop: 22 }}>
+            {/* Facturado / cobrado / deuda y no "facturado por consultorio": eso último ya lo
+                cuenta el anillo de al lado, y con tres consultorios parecidos daban tres barras
+                casi iguales, que no dicen nada. Estas tres SÍ se separan, y la distancia entre
+                lo facturado y lo cobrado es la pregunta que el dueño mira primero. */}
+            <div className="panel">
+              <h2 style={{ marginTop: 0, fontSize: 15 }}>Facturado, cobrado y deuda</h2>
+              <BarrasVolumen
+                datos={[
+                  { etiqueta: "Facturado", valor: Number(r.totales.facturadoCent), texto: plata(r.totales.facturadoCent) },
+                  { etiqueta: "Cobrado", valor: Number(r.totales.cobradoCent), texto: plata(r.totales.cobradoCent) },
+                  { etiqueta: "Deuda", valor: Number(r.totales.deudaCent), texto: plata(r.totales.deudaCent) },
+                ]}
+              />
+              <p className="tenue" style={{ margin: "6px 0 0", fontSize: 12 }}>
+                La deuda es acumulada de todos los meses; lo facturado y lo cobrado son de este mes.
+              </p>
+            </div>
+
+            <div className="panel">
+              <h2 style={{ marginTop: 0, fontSize: 15 }}>Participación en la facturación</h2>
+              <AnilloVolumen
+                datos={conFacturacion.map((s) => ({
+                  etiqueta: s.nombre,
+                  valor: Number(s.importeCent),
+                  texto: formatearPesos(s.importeCent, r.moneda),
+                }))}
+              />
+            </div>
+
+            <div className="panel">
+              <h2 style={{ marginTop: 0, fontSize: 15 }}>Ocupación por consultorio</h2>
+              <BarrasVolumen datos={conApertura.map((s) => ({ etiqueta: s.nombre, valor: s.ocupacionPct, texto: `${s.ocupacionPct}%` }))} />
+              <p className="tenue" style={{ margin: "6px 0 0", fontSize: 12 }}>
+                Sobre las horas que ese consultorio ABRIÓ en el mes, no sobre un mes teórico.
+              </p>
+            </div>
+
+            {/* A lo ancho: seis barras en una tarjeta de un tercio dejan los nombres ilegibles. */}
+            <div className="panel" style={{ gridColumn: "1 / -1" }}>
+              <h2 style={{ marginTop: 0, fontSize: 15 }}>Horas usadas · los 6 que más</h2>
+              <BarrasVolumen
+                // Sin la especialidad entre paréntesis: al pie de una barra entra el nombre o
+                // entra el paréntesis, y cortado a la mitad no se entiende ninguno de los dos.
+                datos={topHoras.map((x) => ({ etiqueta: x.nombre.replace(/\s*\(.*\)$/, ""), valor: x.minutos, texto: horasYMinutos(x.minutos) }))}
+              />
+            </div>
+          </section>
         )}
 
         {/* ── Por profesional ───────────────────────────────────────────── */}

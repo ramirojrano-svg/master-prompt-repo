@@ -11,10 +11,11 @@ import { actorDeSesion } from "../../../../../src/lib/sesion.ts";
 import { puede } from "../../../../../src/lib/permisos.ts";
 import { detalleProfesional } from "../../../../../src/servicios/reportes/mensual.ts";
 import { formatearPesos } from "../../../../../src/dominio/tarifa.ts";
-import { esPeriodoValido, horasYMinutos, periodoAnterior, porcentaje } from "../../../../../src/dominio/reporte.ts";
+import { esPeriodoValido, horasYMinutos, periodoAnterior } from "../../../../../src/dominio/reporte.ts";
 import { fechaEnZona } from "../../../../../src/dominio/motor/zona.ts";
 import { prisma } from "../../../../../src/db/prisma.ts";
 import { Logo } from "../../../../Logo.tsx";
+import { AnilloVolumen, BarrasVolumen } from "../Graficos.tsx";
 import { nombreDePeriodo, periodoSiguiente } from "../page.tsx";
 
 const DIA_LARGO = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -46,7 +47,6 @@ export default async function DetalleProfesionalPage({
   if (!d) redirect(`/panel/${slug}/reportes?periodo=${periodo}`);
 
   const plata = (c: bigint) => formatearPesos(c, d.moneda);
-  const maxDia = Math.max(1, ...d.porDiaSemana.map((x) => x.minutos));
   const conUso = d.porDiaSemana.filter((x) => x.minutos > 0);
 
   return (
@@ -105,34 +105,20 @@ export default async function DetalleProfesionalPage({
         ) : (
           <>
             {/* ── Qué días viene ─────────────────────────────────────────── */}
-            <h2 style={{ marginTop: 26 }}>Qué días usa el consultorio</h2>
-            <div className="panel" style={{ marginTop: 10 }}>
-              {conUso.map((x) => (
-                <div key={x.dia} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                  <span style={{ width: 84, fontSize: 13 }}>{DIA_LARGO[x.dia]}</span>
-                  <span style={{ flex: 1, background: "var(--agua-clara)", borderRadius: 999, height: 12, overflow: "hidden" }}>
-                    <span
-                      style={{
-                        display: "block",
-                        height: "100%",
-                        width: `${porcentaje(x.minutos, maxDia)}%`,
-                        background: "linear-gradient(90deg, var(--turquesa), var(--marca-500))",
-                      }}
-                    />
-                  </span>
-                  <span className="tenue num" style={{ fontSize: 12, width: 130 }}>
-                    {horasYMinutos(x.minutos)} · {x.reservas} turno{x.reservas === 1 ? "" : "s"}
-                  </span>
-                </div>
-              ))}
-              <p className="tenue" style={{ margin: "12px 0 0", fontSize: 12 }}>
-                Franjas:{" "}
-                {d.porFranja
-                  .filter((f) => f.reservas > 0)
-                  .map((f) => `${f.franja} ${horasYMinutos(f.minutos)}`)
-                  .join(" · ")}
-              </p>
-            </div>
+            <section style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", marginTop: 26 }}>
+              <div className="panel">
+                <h2 style={{ marginTop: 0, fontSize: 15 }}>Qué días usa el consultorio</h2>
+                <BarrasVolumen datos={conUso.map((x) => ({ etiqueta: DIA_LARGO[x.dia]!, valor: x.minutos, texto: horasYMinutos(x.minutos) }))} alto={190} />
+              </div>
+
+              <div className="panel">
+                <h2 style={{ marginTop: 0, fontSize: 15 }}>En qué franja del día</h2>
+                <AnilloVolumen
+                  datos={d.porFranja.filter((f) => f.minutos > 0).map((f) => ({ etiqueta: f.franja, valor: f.minutos, texto: horasYMinutos(f.minutos) }))}
+                  alto={190}
+                />
+              </div>
+            </section>
 
             {/* ── Turno por turno ────────────────────────────────────────── */}
             <h2 style={{ marginTop: 26 }}>Turno por turno</h2>
