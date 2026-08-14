@@ -158,6 +158,11 @@ model Inquilino {
   operadorId String
   nombre     String
   estado     EstadoInquilino @default(activo)
+  // Quién ABONA por este profesional, cuando no es él mismo. Es TEXTO y no una relación a otro
+  // inquilino a propósito: el que paga puede no alquilar en el centro (no tiene ficha), y la
+  // deuda NO se muda — sigue siendo de quien usó la hora. Esto es un dato para facturar y cobrar,
+  // no un cambio de titular de la cuenta: mover el saldo a otro rompería el suyo.
+  pagador    String?
 
   operador    Operador    @relation(fields: [operadorId], references: [id], onDelete: Cascade)
   ocupaciones Ocupacion[]

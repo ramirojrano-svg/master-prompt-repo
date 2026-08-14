@@ -31,7 +31,7 @@ export default async function InquilinosPage({
   const inquilinos = await prisma.inquilino.findMany({
     where: { operadorId: actor.operadorId, ...(verTodos ? {} : { estado: { not: "baja" } }) },
     orderBy: [{ estado: "asc" }, { nombre: "asc" }],
-    select: { id: true, nombre: true, estado: true },
+    select: { id: true, nombre: true, estado: true, pagador: true },
   });
   const deBaja = await prisma.inquilino.count({ where: { operadorId: actor.operadorId, estado: "baja" } });
 
@@ -43,7 +43,8 @@ export default async function InquilinosPage({
     if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
     const inquilinoId = String(formData.get("inquilinoId") ?? "");
     const nombre = formData.get("nombre");
-    const r = inquilinoId ? await editarInquilino(a, { nombre, inquilinoId }) : await crearInquilino(a, { nombre });
+    const pagador = formData.get("pagador");
+    const r = inquilinoId ? await editarInquilino(a, { nombre, pagador, inquilinoId }) : await crearInquilino(a, { nombre, pagador });
     revalidatePath(`/panel/${slug}/inquilinos`);
     const qs = !r.ok ? `?error=${r.error}` : !r.data.ok ? `?error=${r.data.error}` : "?ok=1";
     redirect(`/panel/${slug}/inquilinos${qs}`);
@@ -76,7 +77,12 @@ export default async function InquilinosPage({
         <tbody>
           {inquilinos.map((i) => (
             <tr key={i.id} style={{ borderBottom: "1px solid var(--borde)", opacity: i.estado === "baja" ? 0.6 : 1 }}>
-              <td style={{ padding: "8px 4px" }}>{i.nombre}</td>
+              <td style={{ padding: "8px 4px" }}>
+                {i.nombre}
+                {/* Quién abona se ve en la lista: es lo que hace falta saber al momento de
+                    facturar, y buscarlo abriendo cada ficha no sirve para eso. */}
+                {i.pagador && <span className="tenue" style={{ fontSize: 12 }}> · abona {i.pagador}</span>}
+              </td>
               <td style={{ padding: "8px 4px" }} className="tenue">{ETIQUETA[i.estado]}</td>
               <td style={{ padding: "8px 4px", textAlign: "right", whiteSpace: "nowrap" }}>
                 <Link href={`?editar=${i.id}${verTodos ? "&ver=todos" : ""}`}>Editar</Link>{" "}
@@ -97,7 +103,14 @@ export default async function InquilinosPage({
         <h2 style={{ marginTop: 0 }}>{enEdicion ? "Editar profesional" : "Nuevo profesional"}</h2>
         {enEdicion && <input type="hidden" name="inquilinoId" value={enEdicion.id} />}
         <label htmlFor="nombre">Nombre y especialidad</label>
-        <input id="nombre" name="nombre" required maxLength={120} defaultValue={enEdicion?.nombre ?? ""} placeholder="María Gómez (Psicología)" />
+        <input id="nombre" name="nombre" required maxLength={120} defaultValue={enEdicion?.nombre ?? ""} placeholder="Marta Terrón (Alergista)" />
+
+        <label htmlFor="pagador">Quién abona (si no es el mismo profesional)</label>
+        <input id="pagador" name="pagador" maxLength={120} defaultValue={enEdicion?.pagador ?? ""} placeholder="Federico Terrón" />
+        <p className="tenue" style={{ margin: "4px 0 0", fontSize: 12 }}>
+          Solo para facturar y cobrar. La deuda sigue siendo de quien usó el consultorio: pasarla a
+          otra cuenta descuadraría las dos.
+        </p>
 
         {mensaje && <p className="error" style={{ marginTop: 12 }}>{mensaje}</p>}
         {ok && <p style={{ marginTop: 12, color: "#157f4a" }}>Guardado.</p>}

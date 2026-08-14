@@ -209,10 +209,23 @@ try {
   const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page2 = await ctx2.newPage();
   await entrar(page2, "maria@email.com");
+  // La vista SEMANA y no el día: los pasos de arriba (arrastrar, cancelar) juegan con los turnos
+  // de HOY, y en una segunda corrida seguida el profesional puede quedarse sin ninguno hoy. En la
+  // semana el seed le garantiza turnos, y la regla que se prueba —qué ve y qué no— es la misma.
+  await page2.goto(`${BASE}/panel/${SLUG}?vista=semana`, { waitUntil: "domcontentloaded" });
   const html2 = await page2.content();
-  chequeo(!/Ana Rodríguez|Carlos López|Pablo Sosa/.test(html2), "no ve nombres de otros inquilinos");
   chequeo(!/Crear turno/.test(html2), "no ve el formulario de alta ajena");
-  const propias = await page2.locator('[aria-label*="María Gómez"]').count();
+
+  // Sin clavar ningún nombre: los bloques propios llevan el nombre del profesional y los ajenos
+  // dicen "Ocupado". Así el chequeo sigue valiendo cuando cambia la lista de profesionales, y de
+  // paso es MÁS fuerte que buscar tres nombres concretos: si se filtrara el nombre de cualquier
+  // otro, aparecerían dos nombres distintos y esto lo caza.
+  const etiquetas = await page2.locator(".evento").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") ?? ""));
+  const nombresVisibles = new Set(
+    etiquetas.map((t) => t.split(",")[1]?.trim()).filter((n) => n && !/^Ocupado$/i.test(n)),
+  );
+  chequeo(nombresVisibles.size <= 1, `no ve nombres de otros profesionales (nombres distintos a la vista: ${nombresVisibles.size})`);
+  const propias = etiquetas.filter((t) => !/Ocupado/i.test(t)).length;
   chequeo(propias > 0, `sí ve sus propias reservas (${propias})`);
   await page2.screenshot({ path: `${OUT}/4-vista-inquilino.png`, fullPage: true });
 

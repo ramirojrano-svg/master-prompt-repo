@@ -3,7 +3,7 @@
 SaaS para que un centro alquile sus consultorios a profesionales independientes: agenda que no
 vende la misma sala dos veces, cuenta corriente por inquilino y liquidación mensual.
 
-Piloto: **Espacio Montes de Oca** (1 sede, 3 consultorios, 50 profesionales, L-D 08–22).
+Piloto: **Espacio Montes de Oca** (1 sede, 3 consultorios, 29 profesionales, L-D 08–22).
 
 ---
 
@@ -96,9 +96,12 @@ rehacerla —**se pierden los datos**, son de prueba—:
 npm run db:reset && npm run seed
 ```
 
-El seed carga el piloto real: 3 consultorios con su horario, 50 profesionales, la agenda de la semana,
-y a propósito los **casos feos** (una sala archivada con historia, un profesional de baja con
-horas facturadas, un bloque de 15', dos reservas pegadas 09-10 y 10-11).
+El seed carga el piloto real: 3 consultorios con su horario, los 29 profesionales del centro, la
+agenda de la semana, y a propósito los **casos feos** (una sala archivada con historia, un bloque
+de 15', dos reservas pegadas 09-10 y 10-11).
+
+> **`npm run seed` REHACE los datos**: borra el centro y lo vuelve a crear. Sirve para arrancar o
+> para volver al punto de partida, pero se lleva puesto lo que hayas cargado a mano.
 
 ### 4. Arrancar
 
@@ -114,8 +117,8 @@ Entrá a **`/panel/espacio-moca`** con cualquiera de los tres usuarios del seed:
 | Profesional (inquilino) | `maria@email.com` | `emoapp-2026` |
 | Recepción | `ana@email.com` | `emoapp-2026` |
 
-> Probá entrar como **María**: tiene que ver su propia reserva con nombre y todas las demás como
-> "Ocupado", indistinguibles de un mantenimiento. Eso no es cosmético, es la regla de privacidad
+> Probá entrar con el usuario del **profesional**: tiene que ver su propia reserva con nombre y
+> todas las demás como "Ocupado", indistinguibles de un mantenimiento. Eso no es cosmético, es la regla de privacidad
 > (§6.3): la agenda de un psicólogo es información de salud por contexto.
 
 Las pantallas, desde la agenda:
@@ -125,7 +128,7 @@ Las pantallas, desde la agenda:
 | `/panel/<slug>` | el calendario: vistas **día, semana y mes**, alta de turno, **arrastrar para mover** y detalle con **cancelar / no vino** | todos (cada uno ve lo suyo) |
 | `…/salas` | alta, edición y **archivado** de consultorios | owner y gestor |
 | `…/inquilinos` | alta y baja de profesionales | owner y gestor |
-| `…/tarifas` | **precio de la hora**: general del centro o por profesional | solo el owner |
+| `…/tarifas` | **precio de la hora** (general o por profesional) y **abonos mensuales** | solo el owner |
 | `…/reportes` | facturado, cobrado, deuda y ocupación del mes | owner, gestor y soporte |
 | `…/reportes/<id>` | el mes de UN profesional: horas, qué días y a qué hora, y cuánto factura | owner, gestor y soporte |
 
@@ -148,6 +151,12 @@ Las pantallas, desde la agenda:
 > ni lo deja en el mes viejo. Si el destino está ocupado o el consultorio no abre a esa hora, el
 > turno vuelve a su lugar y la grilla dice por qué. Necesita mouse: es arrastre de escritorio.
 
+> **Los que no alquilan por hora** pagan un **abono mensual** (una membresía con 0 horas
+> incluidas). El cargo de cada mes lo dispara el operador desde Precios y es idempotente: apretar
+> dos veces no cobra dos veces. Y cuando por un profesional **abona otra persona**, se guarda
+> quién — es un dato para facturar y cobrar: la deuda NO se muda de cuenta, sigue siendo de quien
+> usó la hora.
+
 > El precio **no se edita**: ponés uno nuevo y el anterior queda cerrado. Por eso una reserva de
 > ayer sigue valiendo lo que valía aunque hoy subas la tarifa, y el resumen del mes pasado no
 > cambia solo (§8.8).
@@ -161,7 +170,7 @@ Las pantallas, desde la agenda:
 | `npm run dev` | servidor de desarrollo |
 | `npm run seed` | carga (o recarga) los datos del piloto |
 | `npm test` | tests puros del dominio, sin base (~191, corren en segundos) |
-| `npm run test:db` | tests de integración contra Postgres real (~163), incluida la concurrencia |
+| `npm run test:db` | tests de integración contra Postgres real (~171), incluida la concurrencia |
 | `npm run typecheck` | TypeScript en modo estricto |
 | `npm run verify` | typecheck + tests puros |
 | `npm run humo` | prueba de humo en un browser real; deja capturas en `capturas/` |

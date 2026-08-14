@@ -2,7 +2,6 @@
 //
 // Incluye a propósito los CASOS FEOS (§11.8): el dataset lindo no encuentra nada.
 //   · una sala ARCHIVADA con reservas históricas (tiene que seguir apareciendo en reportes)
-//   · un inquilino DE BAJA con horas facturadas del mes pasado
 //   · una reserva de 15' (altura mínima del bloque) y una que arranca antes de la apertura
 //   · dos reservas pegadas 09-10 / 10-11 (bordes exactos: NO chocan)
 //
@@ -36,25 +35,48 @@ const TARIFA_HORA_CENT = 800_000n; // $8.000 ARS
 const FRANJA = [{ desde: "08:00", hasta: "22:00" }];
 const HORARIO = { 0: FRANJA, 1: FRANJA, 2: FRANJA, 3: FRANJA, 4: FRANJA, 5: FRANJA, 6: FRANJA };
 
-const ESPECIALIDADES = [
-  "Odontología general", "Psicología", "Kinesiología", "Médico PAMI", "Pediatría",
-  "Cosmiatría", "Estética", "Urología", "Dermatología", "Psiquiatría", "Neumonología",
-  "Alergia", "Perito",
-];
+// Los profesionales REALES del centro. `pagador` es quién abona cuando no es el mismo
+// profesional; `abonoMensualCent` marca a los que NO alquilan por hora sino que pagan un fijo.
+type Profesional = { nombre: string; pagador?: string; abonoMensualCent?: bigint };
 
-const APELLIDOS = [
-  "Gómez", "Fernández", "Rodríguez", "López", "Martínez", "Pérez", "García", "Sánchez",
-  "Romero", "Sosa", "Torres", "Álvarez", "Ruiz", "Benítez", "Acosta", "Medina", "Herrera",
-  "Aguirre", "Pereyra", "Gutiérrez", "Molina", "Silva", "Castro", "Ortiz", "Núñez",
-];
-const NOMBRES = ["María", "Juan", "Ana", "Carlos", "Laura", "Diego", "Sofía", "Martín", "Lucía", "Pablo"];
+const ABONO_FIJO = 25_000_000n; // $250.000 por mes
 
-function nombreProfesional(i: number): string {
-  const n = NOMBRES[i % NOMBRES.length]!;
-  const a = APELLIDOS[i % APELLIDOS.length]!;
-  const esp = ESPECIALIDADES[i % ESPECIALIDADES.length]!;
-  return `${n} ${a} (${esp})`;
-}
+const PROFESIONALES: Profesional[] = [
+  { nombre: "Laila (PAMI)" },
+  { nombre: "Irene Troilo (PAMI)" },
+  { nombre: "Mariano Farías (PAMI)" },
+  { nombre: "Eliana Cella (Pediatra)" },
+  { nombre: "Natalia Huamani (Pediatra)" },
+  { nombre: "Patricia Guerrero (PAMI)" },
+  { nombre: "Verónica Sorasio - Guillermina Inés Ortega (Dermatología)" },
+  { nombre: "Melina Caccia Leotta (Dermatología)" },
+  { nombre: "Federico Terrón (Neumonología)" },
+  // Marta no abona lo suyo: lo paga Federico Terrón. La deuda sigue siendo de ella (usó la hora);
+  // el pagador es un dato para facturar y cobrar, no un cambio de titular de la cuenta.
+  { nombre: "Marta Terrón (Alergista)", pagador: "Federico Terrón" },
+  { nombre: "Gustavo Bogdanoff (Perito)" },
+  { nombre: "Gastón Peso (Estética)", pagador: "Irma Vanesa Olmedo" },
+  { nombre: "Inés Galvagno (Pediatra)" },
+  { nombre: "Daniel Guerra (Pediatra)" },
+  { nombre: "Marcela Bianculli (Psiquiatra)" },
+  { nombre: "Marta Gil (PAMI)" },
+  { nombre: "Nancy Pint (Cosmiatría)" },
+
+  // Estos tres NO usan consultorio: pagan un abono mensual fijo.
+  { nombre: "Macrogroup SRL - Carolina", abonoMensualCent: ABONO_FIJO },
+  { nombre: "Megafreigth SRL - Silvana", abonoMensualCent: ABONO_FIJO },
+  { nombre: "VGF Meats and Services SRL - Víctor", abonoMensualCent: ABONO_FIJO },
+
+  { nombre: "Carolina Uz Garay (Perito)" },
+  { nombre: "Andrea Horikian (Perito)" },
+  { nombre: "Jorge Trento (Perito)" },
+  { nombre: "Paula Cocha (Perito)" },
+  { nombre: "Laura Klein (Perito)" },
+  { nombre: "Lorena Skiljan (Perito)" },
+  { nombre: "Jorgelina Stepanenko (Perito)" },
+  { nombre: "Patricia Loianno (Perito)" },
+  { nombre: "Emilce Braverman (Perito)" },
+];
 
 /** Instante UTC de una hora de pared en la zona del centro. */
 function T(fecha: string, hm: string): Date {
@@ -101,27 +123,45 @@ async function main() {
     },
   });
 
-  // 50 inquilinos (el número real del piloto). El #7 va DE BAJA con historia (caso feo).
   const inquilinos = [];
-  for (let i = 0; i < 50; i++) {
+  for (const p of PROFESIONALES) {
     inquilinos.push(
       await prisma.inquilino.create({
-        data: {
-          operadorId: operador.id,
-          nombre: nombreProfesional(i),
-          estado: i === 7 ? EstadoInquilino.baja : EstadoInquilino.activo,
-        },
+        data: { operadorId: operador.id, nombre: p.nombre, pagador: p.pagador ?? null, estado: EstadoInquilino.activo },
       }),
     );
   }
-  // La Dra. María Gómez es el inquilino 0 (tiene usuario propio).
+
+  // Los tres que pagan un fijo mensual llevan una MEMBRESÍA (§4.12) con 0 minutos incluidos:
+  // "0 incluidos" es exactamente su caso — no alquilan horas, pagan el abono y listo. El cobro
+  // de cada mes se postea desde la pantalla de precios, con clave idempotente por período.
+  const desdeAbonos = new Date(Date.now() - 365 * 86_400_000);
+  for (const [i, p] of PROFESIONALES.entries()) {
+    if (!p.abonoMensualCent) continue;
+    await prisma.membresia.create({
+      data: {
+        operadorId: operador.id,
+        inquilinoId: inquilinos[i]!.id,
+        nombre: "Abono mensual",
+        precioMensualCent: p.abonoMensualCent,
+        minutosIncluidos: 0,
+        vigenteDesde: desdeAbonos,
+        vigenteHasta: new Date(Date.now() + 3650 * 86_400_000),
+      },
+    });
+  }
+
+  // El profesional con usuario propio, para poder probar la vista del inquilino.
   const maria = inquilinos[0]!;
-  await prisma.inquilino.update({ where: { id: maria.id }, data: { nombre: "María Gómez (Psicología)" } });
+
+  // Los que SÍ alquilan consultorio. Los del abono mensual quedan afuera de toda la agenda: no
+  // usan sala, y cargarles un turno en el seed sería inventar un dato que la app no aceptaría.
+  const conSala = inquilinos.filter((_, i) => !PROFESIONALES[i]!.abonoMensualCent);
 
   // Usuarios del centro: los tres roles reales.
   const hash = await hashPassword(PASSWORD_DEMO);
   const ramiro = await prisma.usuario.create({ data: { email: "ramirojrano@gmail.com", nombre: "Ramiro Raño", passwordHash: hash } });
-  const gomez = await prisma.usuario.create({ data: { email: "maria@email.com", nombre: "María Gómez", passwordHash: hash } });
+  const gomez = await prisma.usuario.create({ data: { email: "maria@email.com", nombre: PROFESIONALES[0]!.nombre, passwordHash: hash } });
   const ana = await prisma.usuario.create({ data: { email: "ana@email.com", nombre: "Ana Torres", passwordHash: hash } });
 
   await prisma.usuarioOperador.createMany({
@@ -140,8 +180,8 @@ async function main() {
   const tarifas = await Promise.all(
     [
       { nombre: "General", salaId: null, inquilinoId: null, precioHoraCent: TARIFA_HORA_CENT },
-      { nombre: "María Gómez", salaId: null, inquilinoId: maria.id, precioHoraCent: 700_000n },
-      { nombre: inquilinos[3]!.nombre, salaId: null, inquilinoId: inquilinos[3]!.id, precioHoraCent: 950_000n },
+      { nombre: conSala[0]!.nombre, salaId: null, inquilinoId: conSala[0]!.id, precioHoraCent: 700_000n },
+      { nombre: conSala[3]!.nombre, salaId: null, inquilinoId: conSala[3]!.id, precioHoraCent: 950_000n },
     ].map((t) =>
       prisma.tarifa.create({
         data: { operadorId: operador.id, vigenteDesde: desdeTarifas, ...t },
@@ -178,47 +218,44 @@ async function main() {
   const s1 = salas[0]!.id, s2 = salas[1]!.id, s3 = salas[2]!.id;
   filas.push(
     // bordes exactos: 09-10 y 10-11 conviven (NO chocan)
-    reserva(s1, inquilinos[1]!.id, hoy, "09:00", "10:00"),
-    reserva(s1, inquilinos[2]!.id, hoy, "10:00", "11:00"),
-    reserva(s1, inquilinos[3]!.id, hoy, "14:00", "16:00"),
+    reserva(s1, conSala[1]!.id, hoy, "09:00", "10:00"),
+    reserva(s1, conSala[2]!.id, hoy, "10:00", "11:00"),
+    reserva(s1, conSala[3]!.id, hoy, "14:00", "16:00"),
     reserva(s1, maria.id, hoy, "18:00", "19:00"),
     // bloque de 15' (altura mínima del bloque en la grilla)
-    reserva(s2, inquilinos[4]!.id, hoy, "08:30", "08:45"),
-    reserva(s2, inquilinos[5]!.id, hoy, "11:00", "12:30"),
-    reserva(s2, inquilinos[6]!.id, hoy, "16:00", "17:00", EstadoOcupacion.usada),
-    reserva(s3, inquilinos[8]!.id, hoy, "09:30", "11:00"),
-    reserva(s3, inquilinos[9]!.id, hoy, "13:00", "14:00", EstadoOcupacion.no_show),
-    reserva(s3, inquilinos[10]!.id, hoy, "19:00", "21:00"),
+    reserva(s2, conSala[4]!.id, hoy, "08:30", "08:45"),
+    reserva(s2, conSala[5]!.id, hoy, "11:00", "12:30"),
+    reserva(s2, conSala[6]!.id, hoy, "16:00", "17:00", EstadoOcupacion.usada),
+    reserva(s3, conSala[8]!.id, hoy, "09:30", "11:00"),
+    reserva(s3, conSala[9]!.id, hoy, "13:00", "14:00", EstadoOcupacion.no_show),
+    reserva(s3, conSala[10]!.id, hoy, "19:00", "21:00"),
     // mantenimiento (se pinta distinto y bloquea la sala)
     { ...reserva(s3, null, hoy, "12:00", "13:00", EstadoOcupacion.confirmada, TipoOcupacion.mantenimiento), motivo: "Mantenimiento técnico" },
   );
 
-  // Resto de la semana (que la agenda no se vea vacía al navegar). Se saltean sábado y domingo:
-  // el centro abre L-V, y un turno cargado con el centro cerrado es un dato que la app jamás
-  // habría aceptado por el camino real — un seed que miente confunde más que un seed vacío.
+  // Resto de la semana, para que la agenda no se vea vacía al navegar. Los consultorios abren
+  // los siete días, así que no se saltea ninguno.
   for (let d = 1; d <= 9; d++) {
     const f = sumarDiasLocal(hoy, d)!;
-    const dow = diaSemanaDeFecha(f);
-    if (dow === 0 || dow === 6) continue;
     filas.push(
-      reserva(s1, inquilinos[(d * 3) % 50]!.id, f, "09:00", "10:00"),
-      reserva(s2, inquilinos[(d * 5) % 50]!.id, f, "15:00", "16:30"),
+      reserva(s1, conSala[(d * 3) % conSala.length]!.id, f, "09:00", "10:00"),
+      reserva(s2, conSala[(d * 5) % conSala.length]!.id, f, "15:00", "16:30"),
       reserva(s3, maria.id, f, "17:00", "18:00"),
     );
   }
 
-  // Historia del mes pasado, incluida la SALA ARCHIVADA y el INQUILINO DE BAJA.
+  // Historia del mes pasado, incluida la SALA ARCHIVADA: tiene que seguir apareciendo en los
+  // reportes aunque ya no se pueda reservar en ella (§11.8).
   const mesPasado = sumarDiasLocal(hoy, -35)!;
   filas.push(
-    reserva(salaArchivada.id, inquilinos[11]!.id, mesPasado, "10:00", "11:00", EstadoOcupacion.usada),
-    reserva(s1, inquilinos[7]!.id, mesPasado, "16:00", "17:00", EstadoOcupacion.usada), // el de baja
+    reserva(salaArchivada.id, conSala[11]!.id, mesPasado, "10:00", "11:00", EstadoOcupacion.usada),
+    reserva(s1, conSala[7]!.id, mesPasado, "16:00", "17:00", EstadoOcupacion.usada),
   );
 
   await prisma.ocupacion.createMany({ data: filas });
 
   // Plata: cada reserva con precio deja su cargo en la cuenta corriente, con la MISMA clave
-  // idempotente que usa el alta real (`cargo_uso:<ocupacionId>`). El de baja conserva los suyos:
-  // la historia no desaparece porque el profesional se haya ido (§3.6).
+  // idempotente que usa el alta real (`cargo_uso:<ocupacionId>`).
   await prisma.asiento.createMany({
     data: filas
       .filter((f) => f.inquilinoId && f.importeCent && f.importeCent > 0n)
@@ -239,13 +276,13 @@ async function main() {
   await prisma.asiento.createMany({
     data: [
       { operadorId: operador.id, inquilinoId: maria.id, concepto: "pago" as const, montoCent: -1_400_000n, moneda: operador.moneda, periodo: periodoDeInstante(T(hoy, "10:00"), TZ), fechaHecho: T(hoy, "10:00"), clave: "pago:seed-maria" },
-      { operadorId: operador.id, inquilinoId: inquilinos[7]!.id, concepto: "pago" as const, montoCent: -800_000n, moneda: operador.moneda, periodo: periodoDeInstante(T(mesPasado, "18:00"), TZ), fechaHecho: T(mesPasado, "18:00"), clave: "pago:seed-baja" },
+      { operadorId: operador.id, inquilinoId: conSala[7]!.id, concepto: "pago" as const, montoCent: -800_000n, moneda: operador.moneda, periodo: periodoDeInstante(T(mesPasado, "18:00"), TZ), fechaHecho: T(mesPasado, "18:00"), clave: "pago:seed-viejo" },
     ],
   });
 
   console.log(`  operador  : ${operador.nombre} (${SLUG})`);
   console.log(`  salas     : 3 activas + 1 archivada con historia`);
-  console.log(`  inquilinos: 50 (uno de baja, con historia)`);
+  console.log(`  profesionales: ${PROFESIONALES.length} (${PROFESIONALES.filter((p) => p.abonoMensualCent).length} con abono mensual, sin consultorio)`);
   console.log(`  ocupaciones: ${filas.length}`);
   console.log("");
   console.log(`  Entrá en /panel/${SLUG} con:`);

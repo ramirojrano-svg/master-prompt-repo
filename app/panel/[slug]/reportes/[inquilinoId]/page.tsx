@@ -58,6 +58,8 @@ export default async function DetalleProfesionalPage({
         <h1 style={{ margin: 0, fontSize: 19, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {d.inquilino.nombre}
           {!d.inquilino.activo && <span className="tenue" style={{ fontWeight: 400 }}> · de baja</span>}
+          {/* Quién abona, junto al nombre: es la pantalla desde la que se factura y se cobra. */}
+          {d.inquilino.pagador && <span className="tenue" style={{ fontWeight: 400, fontSize: 14 }}> · abona {d.inquilino.pagador}</span>}
         </h1>
         <nav style={{ display: "flex", gap: 2 }}>
           <Link className="nav-circ" href={`?periodo=${periodoAnterior(periodo)}`} aria-label="Mes anterior">

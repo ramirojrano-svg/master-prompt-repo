@@ -117,6 +117,7 @@ CREATE TABLE "Inquilino" (
     "operadorId" TEXT NOT NULL,
     "nombre" TEXT NOT NULL,
     "estado" "EstadoInquilino" NOT NULL DEFAULT 'activo',
+    "pagador" TEXT,
 
     CONSTRAINT "Inquilino_pkey" PRIMARY KEY ("id")
 );

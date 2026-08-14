@@ -11,24 +11,27 @@ import type { Actor } from "../../lib/actor.ts";
 
 export const InquilinoInput = z.object({
   nombre: z.string().trim().min(1).max(120),
+  // Quién ABONA, cuando no es el mismo profesional. Vacío = paga él. Es un dato de facturación:
+  // la deuda NO se muda de cuenta (ver el comentario del campo en schema.prisma).
+  pagador: z.string().trim().max(120).optional(),
 });
 
 export type ResultadoInquilino = { ok: true; id: string } | { ok: false; error: "NO_ENCONTRADO" };
 
-async function crear(actor: Actor, input: { nombre: string }, db: PrismaClient): Promise<ResultadoInquilino> {
+async function crear(actor: Actor, input: { nombre: string; pagador?: string }, db: PrismaClient): Promise<ResultadoInquilino> {
   const i = await db.inquilino.create({
-    data: { operadorId: actor.operadorId, nombre: input.nombre, estado: EstadoInquilino.activo },
+    data: { operadorId: actor.operadorId, nombre: input.nombre, pagador: input.pagador || null, estado: EstadoInquilino.activo },
     select: { id: true },
   });
   return { ok: true, id: i.id };
 }
 
-async function editar(actor: Actor, input: { inquilinoId: string; nombre: string }, db: PrismaClient): Promise<ResultadoInquilino> {
+async function editar(actor: Actor, input: { inquilinoId: string; nombre: string; pagador?: string }, db: PrismaClient): Promise<ResultadoInquilino> {
   // Editar el nombre NO reescribe ninguna fila de plata ya emitida (§6.7): la liquidación
   // estampó sus datos al emitirse.
   const r = await db.inquilino.updateMany({
     where: { id: input.inquilinoId, operadorId: actor.operadorId },
-    data: { nombre: input.nombre },
+    data: { nombre: input.nombre, pagador: input.pagador || null },
   });
   return r.count === 1 ? { ok: true, id: input.inquilinoId } : { ok: false, error: "NO_ENCONTRADO" };
 }
