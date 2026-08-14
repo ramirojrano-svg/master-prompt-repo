@@ -39,6 +39,10 @@ npm run dev
 
 Si preferís hacerlo paso a paso, o algo falla, seguí abajo.
 
+> **En Windows, `prisma generate` falla con `EPERM` si el servidor está corriendo.** El motor de
+> Prisma es un `.dll` y Windows no deja reemplazar un archivo que otro proceso tiene abierto:
+> frená `npm run dev` con Ctrl+C, regenerá, y volvé a arrancarlo.
+
 ### Si algo no anda: `npm run doctor`
 
 ```bash

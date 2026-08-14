@@ -102,8 +102,20 @@ try {
   // Sale con 1 para FRENAR la cadena (`npm run instalar` es esquema && seed && doctor): sin el
   // cliente regenerado el seed va a morir igual, y es mejor parar acá —en la causa— que dejarlo
   // fallar dos pasos más adelante con otro mensaje.
+  const detalle = String(e.stderr || e.message);
   err("El esquema SÍ se aplicó, pero no se pudo regenerar el cliente de Prisma.");
-  err("Corré a mano:   npx prisma generate");
-  err(String(e.stderr || e.message).split("\n").filter(Boolean).slice(0, 2).join(" "));
+
+  // EPERM al renombrar el motor: en Windows el .dll no se puede reemplazar mientras un proceso
+  // lo tiene abierto, y el que lo tiene abierto es SIEMPRE el servidor de desarrollo. El mensaje
+  // de Prisma habla de un rename fallido y no menciona esto por ningún lado.
+  if (/EPERM|EBUSY|operation not permitted/i.test(detalle)) {
+    err("El archivo está en uso: `npm run dev` lo tiene abierto y Windows no lo deja reemplazar.");
+    err("1) Frená el servidor con Ctrl+C en su ventana");
+    err("2) npx prisma generate");
+    err("3) volvé a arrancar con npm run dev");
+  } else {
+    err("Corré a mano:   npx prisma generate");
+  }
+  err(detalle.split("\n").filter(Boolean).slice(0, 2).join(" "));
   process.exit(1);
 }
