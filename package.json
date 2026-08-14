@@ -15,6 +15,10 @@
     "build": "next build",
     "dev": "next dev",
     "seed": "node prisma/seed.ts",
+    "db:esquema": "node scripts/esquema.mjs",
+    "db:reset": "node scripts/esquema.mjs --reset",
+    "doctor": "node scripts/doctor.mjs",
+    "instalar": "npm run db:esquema && npm run seed && npm run doctor",
     "humo": "node scripts/humo.mjs"
   },
   "devDependencies": {

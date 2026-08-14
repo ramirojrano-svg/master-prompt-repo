@@ -15,18 +15,40 @@ los que impiden que dos profesionales reserven la misma sala a la misma hora.
 
 ### Camino rápido (un comando)
 
+En macOS o Linux, `setup.sh` hace todo —incluido levantar el Postgres en Docker—:
+
 ```bash
 git clone -b claude/saas-alquiler-consultorios-master-1fxts1 \
   https://github.com/ramirojrano-svg/master-prompt-repo.git emoapp
 cd emoapp
-bash scripts/setup.sh     # Postgres en Docker + .env.local + migración + datos
+bash scripts/setup.sh     # Postgres en Docker + .env.local + esquema + datos
 npm run dev               # → http://localhost:3000/panel/espacio-moca
 ```
 
 `setup.sh` es idempotente: si ya tenés un Postgres, exportá `DATABASE_URL` antes de correrlo y
 lo usa en vez de levantar uno en Docker.
 
-Si preferís hacerlo a mano, o algo falla, seguí los pasos de abajo.
+**En Windows** `setup.sh` no corre (es bash). Levantá el Postgres a mano —el `docker run` del
+paso 1— y después, con `.env.local` ya completo (paso 2):
+
+```powershell
+npm install
+npm run instalar     # esquema + datos + revisión, todo con Node
+npm run dev
+```
+
+Si preferís hacerlo paso a paso, o algo falla, seguí abajo.
+
+### Si algo no anda: `npm run doctor`
+
+```bash
+npm run doctor
+```
+
+Revisa la cadena entera —variables de entorno, conexión, esquema, constraints, datos— y se
+frena en el primer eslabón roto diciendo qué comando lo arregla. **Corrélo antes que nada si el
+login rechaza una contraseña que sabés que está bien**: con la base vacía o caída la app no puede
+verificar a nadie, y ese es el síntoma.
 
 ### 1. Postgres
 
@@ -55,12 +77,23 @@ DIRECT_URL="postgresql://postgres:emoapp@127.0.0.1:55432/motor"
 AUTH_SECRET="<generá uno: openssl rand -base64 32>"
 ```
 
-### 3. Instalar, migrar y cargar datos
+### 3. Instalar, aplicar el esquema y cargar datos
 
 ```bash
 npm install
-psql "$DATABASE_URL" -f prisma/migrations/0001_ocupacion_exclusion/migration.sql
-npm run seed
+npm run db:esquema    # crea las tablas, los EXCLUDE y btree_gist
+npm run seed          # carga el piloto (toma la conexión de .env.local)
+```
+
+`db:esquema` aplica `prisma/migrations/0001_ocupacion_exclusion/migration.sql` usando Node, sin
+depender de tener `psql` instalado (en Windows no viene). Es idempotente: si el esquema ya está,
+avisa y no toca nada.
+
+Si la base quedó de una versión anterior del código, `db:esquema` te lo dice y te frena. Para
+rehacerla —**se pierden los datos**, son de prueba—:
+
+```bash
+npm run db:reset && npm run seed
 ```
 
 El seed carga el piloto real: 3 consultorios con su horario, 50 profesionales, la agenda de la semana,

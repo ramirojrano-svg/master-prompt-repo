@@ -92,25 +92,11 @@ else
 fi
 
 # ── 5. Esquema ──────────────────────────────────────────────────────────────
-# La migración crea todo desde cero; si ya está aplicada, no se vuelve a correr.
-YA=$(node -e "
-  const {Client}=require('pg'); const c=new Client({connectionString:process.argv[1]});
-  c.connect().then(()=>c.query(\"SELECT to_regclass('public.\\\"Ocupacion\\\"') IS NOT NULL AS existe\"))
-   .then(r=>{console.log(r.rows[0].existe?'si':'no');return c.end()}).catch(()=>{console.log('no')});
-" "$URL")
-if [ "$YA" = "si" ]; then
-  info "El esquema ya estaba aplicado"
-else
-  node -e "
-    const {Client}=require('pg'); const fs=require('fs');
-    const c=new Client({connectionString:process.argv[1]});
-    c.connect()
-     .then(()=>c.query(fs.readFileSync('prisma/migrations/0001_ocupacion_exclusion/migration.sql','utf8')))
-     .then(()=>c.end())
-     .catch(e=>{console.error(e.message);process.exit(1)});
-  " "$URL"
-  ok "Esquema aplicado (tablas, constraints de exclusión y btree_gist)"
-fi
+# Delegado a scripts/esquema.mjs para no tener dos versiones del mismo chequeo. La anterior
+# miraba SOLO si existía la tabla Ocupacion: una base creada con una versión anterior del código
+# pasaba como "ya aplicada" aunque le faltaran tablas nuevas, y el error recién aparecía al abrir
+# la pantalla que las usaba. El script compara contra TODAS las tablas de la migración.
+DATABASE_URL="$URL" node scripts/esquema.mjs
 
 # ── 6. Datos del piloto ─────────────────────────────────────────────────────
 DATABASE_URL="$URL" npm run seed 2>&1 | grep -E "operador|salas|inquilinos|ocupaciones" | sed 's/^/  /'

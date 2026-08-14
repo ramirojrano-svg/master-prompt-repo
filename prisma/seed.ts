@@ -6,14 +6,23 @@
 //   · una reserva de 15' (altura mínima del bloque) y una que arranca antes de la apertura
 //   · dos reservas pegadas 09-10 / 10-11 (bordes exactos: NO chocan)
 //
-// Correr:  DATABASE_URL=... npm run seed
+// Correr:  npm run seed          (toma la conexión de .env.local)
+//          DATABASE_URL=... npm run seed   (para apuntar a otra base; lo explícito manda)
 
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { EstadoInquilino, EstadoOcupacion, PrismaClient, Rol, TipoOcupacion } from "@prisma/client";
+import { cargarEnv } from "../src/lib/entorno.ts";
 import { hashPassword } from "../src/lib/password.ts";
 import { diaSemanaDeFecha, instanteDeHoraLocal, sumarDiasLocal, fechaEnZona, periodoDeInstante } from "../src/dominio/motor/zona.ts";
 import { zonaDePais } from "../src/dominio/paises.ts";
 import { cotizar, resolverTarifa } from "../src/dominio/tarifa.ts";
+
+// ANTES de instanciar el cliente: Prisma lee DATABASE_URL en el constructor, y .env.local lo
+// levanta Next, no un `node` suelto. Sin esta línea `npm run seed` —el comando del README—
+// muere con "Environment variable not found: DATABASE_URL" con el archivo ahí al lado.
+// fileURLToPath y no .pathname: en Windows .pathname devuelve "/C:/Users/..." y no existe.
+cargarEnv(fileURLToPath(new URL("..", import.meta.url)));
 
 const prisma = new PrismaClient();
 

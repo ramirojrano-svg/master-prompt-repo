@@ -1,6 +1,12 @@
 // app/(alta)/login/page.tsx — login del operador.
 // El mensaje de error es UNO SOLO para email inexistente y contraseña incorrecta: no se filtra
 // si el email existe (§6.11: nunca un oráculo de padrón).
+//
+// Pero "no te conozco" y "no te pude preguntar" son cosas distintas y antes se mostraban igual:
+// el catch era mudo y CUALQUIER excepción —la base caída, la base sin tablas— terminaba en
+// "email o contraseña incorrectos". Con la base vacía eso manda a resetear contraseñas que
+// estaban perfectas. Distinguirlo no filtra nada del padrón: el fallo de infraestructura no
+// depende de qué email se tipeó.
 import { redirect } from "next/navigation";
 import { signIn } from "../../../src/lib/auth.ts";
 import { Logo } from "../../Logo.tsx";
@@ -14,11 +20,18 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     const email = String(formData.get("email") ?? "");
     const password = String(formData.get("password") ?? "");
     const centro = String(formData.get("centro") ?? "");
+    let codigo: string | null = null;
     try {
       await signIn("credentials", { email, password, redirect: false });
-    } catch {
-      redirect(`/login?error=1${centro ? `&centro=${encodeURIComponent(centro)}` : ""}`);
+    } catch (e) {
+      // Auth.js marca con type "CredentialsSignin" SOLO el caso en que authorize() devolvió
+      // null, o sea credenciales que no verifican. Cualquier otro type significa que la
+      // verificación no llegó a hacerse (authorize tiró), y eso es un problema del sistema.
+      codigo = (e as { type?: string })?.type === "CredentialsSignin" ? "1" : "sistema";
     }
+    // Los redirect() van FUERA del try: se implementan tirando una excepción, y adentro los
+    // estaríamos cazando como si fueran un fallo del login.
+    if (codigo) redirect(`/login?error=${codigo}${centro ? `&centro=${encodeURIComponent(centro)}` : ""}`);
     redirect(centro ? `/panel/${centro}` : "/");
   }
 
@@ -51,10 +64,20 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
 
           <input type="hidden" name="centro" defaultValue={sp.centro ?? ""} />
 
-          {sp.error && (
+          {sp.error === "sistema" ? (
             <p className="error" style={{ marginBottom: 0 }}>
-              Email o contraseña incorrectos.
+              No pudimos verificar tus datos: la base no está respondiendo.
+              <span className="tenue" style={{ display: "block", fontWeight: 400, marginTop: 4 }}>
+                No es tu contraseña. Si estás corriendo la app localmente, pará y corré{" "}
+                <code>npm run doctor</code>: te dice qué falta.
+              </span>
             </p>
+          ) : (
+            sp.error && (
+              <p className="error" style={{ marginBottom: 0 }}>
+                Email o contraseña incorrectos.
+              </p>
+            )
           )}
 
           <p style={{ marginTop: 20, marginBottom: 0 }}>

@@ -10,6 +10,8 @@ import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { actorDeSesion } from "../../../src/lib/sesion.ts";
+import { intentar } from "../../../src/lib/db-salud.ts";
+import { BaseNoLista } from "../../BaseNoLista.tsx";
 import { cargarAgenda } from "../../../src/servicios/agenda/dia.ts";
 import { crearReservaAjena, mensajeDeError } from "../../../src/servicios/agenda/acciones.ts";
 import { prisma } from "../../../src/db/prisma.ts";
@@ -32,20 +34,31 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
   const { slug } = await params;
   const sp = await searchParams;
 
-  const actor = await actorDeSesion(slug);
+  // Esta es la PRIMERA consulta de la app, así que es acá donde revienta una base sin esquema o
+  // caída. Se muestra qué falta en vez de un stack de Prisma; lo que no sea un problema de base
+  // (incluido el NEXT_REDIRECT de más abajo) sigue propagando intacto.
+  const sesion = await intentar(() => actorDeSesion(slug));
+  if (!sesion.ok) return <BaseNoLista falla={sesion.falla} />;
+  const actor = sesion.valor;
   if (!actor) redirect(`/login?centro=${encodeURIComponent(slug)}`);
 
   const vista: Vista = sp.vista && esVista(sp.vista) ? sp.vista : "dia";
   const salasFiltro = sp.salas ? sp.salas.split(",").filter(Boolean) : null;
 
-  const agenda = await cargarAgenda({
-    actor,
-    // `null` = HOY en la zona de la SEDE, resuelto adentro del servicio: la zona NUNCA se clava
-    // acá (§14.4). Un `?fecha=` basura cae a null en vez de romper la pantalla (§9).
-    fecha: fechaDeParam(sp.fecha),
-    vista,
-    salas: salasFiltro,
-  });
+  // También bajo `intentar`: con el esquema viejo el actor resuelve bien y recién acá aparece la
+  // columna que falta (P2022), que es el otro modo en que la base rompe la pantalla.
+  const cargada = await intentar(() =>
+    cargarAgenda({
+      actor,
+      // `null` = HOY en la zona de la SEDE, resuelto adentro del servicio: la zona NUNCA se clava
+      // acá (§14.4). Un `?fecha=` basura cae a null en vez de romper la pantalla (§9).
+      fecha: fechaDeParam(sp.fecha),
+      vista,
+      salas: salasFiltro,
+    }),
+  );
+  if (!cargada.ok) return <BaseNoLista falla={cargada.falla} />;
+  const agenda = cargada.valor;
   if (!agenda) notFound();
 
   const ahora = new Date();
