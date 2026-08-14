@@ -48,15 +48,55 @@ if (!process.env.AUTH_SECRET) {
 ok(".env.local con DATABASE_URL y AUTH_SECRET");
 
 // ── 2. Conexión ─────────────────────────────────────────────────────────────
-const cliente = new pg.Client({ connectionString: process.env.DATABASE_URL });
-try {
-  await cliente.connect();
-} catch (e) {
+/**
+ * Traduce por qué no se pudo conectar.
+ *
+ * "No responde", "no me deja entrar" y "esa base no existe" son tres problemas distintos que se
+ * arreglan de tres maneras distintas. Reportar siempre el primero manda a revisar si el servidor
+ * está levantado cuando el servidor está perfecto y lo único que no coincide es la contraseña —
+ * y ese rodeo ya costó una vuelta entera.
+ */
+function morirPorConexion(e) {
+  // La URL ya se validó arriba; si no parsea, se cae al mensaje genérico.
+  let usuario = "postgres", clave = "", base = "motor";
+  try {
+    const u = new URL(process.env.DATABASE_URL);
+    usuario = decodeURIComponent(u.username) || "postgres";
+    clave = decodeURIComponent(u.password);
+    base = u.pathname.slice(1) || "motor";
+  } catch {}
+
+  if (e.code === "28P01" || /password authentication failed/i.test(e.message ?? "")) {
+    // La clave va escrita en el comando a propósito: es la de una base LOCAL de desarrollo, ya
+    // está en el .env.local de esta misma máquina, y con un placeholder el comando deja de ser
+    // pegable —que es justo lo que hace útil a este mensaje.
+    morir(
+      `Postgres responde, pero rechaza la contraseña del usuario "${usuario}".`,
+      "El servidor está bien: lo que no coincide es la clave de .env.local con la que tiene la base.",
+      "Si la base corre en Docker, alineala con una línea:",
+      `docker exec -it emoapp-db psql -U ${usuario} -c "ALTER USER ${usuario} WITH PASSWORD '${clave}';"`,
+      "y volvé a correr:  npm run doctor",
+    );
+  }
+  if (e.code === "3D000" || /database .* does not exist/i.test(e.message ?? "")) {
+    morir(
+      `El servidor responde, pero no existe la base "${base}".`,
+      `docker exec -it emoapp-db createdb -U ${usuario} ${base}`,
+      "y después:  npm run instalar",
+    );
+  }
   morir(
     `Postgres no responde: ${e.message}`,
     "Levantá la base (o el contenedor: docker start emoapp-db)",
     "Verificá que el puerto de DATABASE_URL sea el correcto",
   );
+}
+
+const cliente = new pg.Client({ connectionString: process.env.DATABASE_URL });
+try {
+  await cliente.connect();
+} catch (e) {
+  morirPorConexion(e);
 }
 const { rows: [fila] } = await cliente.query("SHOW server_version");
 ok(`Postgres responde (v${fila.server_version})`);
