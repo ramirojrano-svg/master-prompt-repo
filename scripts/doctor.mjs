@@ -128,7 +128,30 @@ if (faltan.length > 0) {
     "npm run seed",
   );
 }
-ok(`Esquema completo (${esperadas.length} tablas)`);
+
+// Las tablas pueden estar TODAS y faltar una columna: es lo que pasa cuando el código se
+// actualizó y la base no. Ese caso decía "esquema completo" y después el seed reventaba con un
+// stack de Prisma en la línea que usaba la columna nueva — el chequeo miraba el continente y no
+// el contenido.
+const columnasEsperadas = [...sql.matchAll(/CREATE TABLE "([^"]+)" \(([\s\S]*?)\n\);/g)].flatMap(([, tabla, cuerpo]) =>
+  [...cuerpo.matchAll(/^\s{4}"([^"]+)"/gm)].map((m) => `${tabla}.${m[1]}`),
+);
+const columnasPresentes = new Set(
+  (await cliente.query("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='public'")).rows.map(
+    (r) => `${r.table_name}.${r.column_name}`,
+  ),
+);
+const columnasFaltan = columnasEsperadas.filter((c) => !columnasPresentes.has(c));
+if (columnasFaltan.length > 0) {
+  await cliente.end();
+  morir(
+    `Las tablas están, pero falta${columnasFaltan.length === 1 ? "" : "n"} ${columnasFaltan.length} columna${columnasFaltan.length === 1 ? "" : "s"}: ${columnasFaltan.slice(0, 6).join(", ")}${columnasFaltan.length > 6 ? "…" : ""}`,
+    "La base es de una versión anterior del código: se actualizó la app y no el esquema.",
+    "npm run db:reset   (borra y recrea; después hay que volver a cargar los datos)",
+    "npm run seed",
+  );
+}
+ok(`Esquema completo (${esperadas.length} tablas, ${columnasEsperadas.length} columnas)`);
 
 // El EXCLUDE es el que impide dos reservas en la misma sala a la misma hora. Si la base se creó
 // con `prisma db push` en vez de la migración, las tablas están pero el constraint NO — y eso no

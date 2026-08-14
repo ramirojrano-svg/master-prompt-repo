@@ -45,9 +45,9 @@ Si preferís hacerlo paso a paso, o algo falla, seguí abajo.
 npm run doctor
 ```
 
-Revisa la cadena entera —variables de entorno, conexión, esquema, constraints, datos, y que la
-contraseña del dueño ABRA de verdad— y se frena en el primer eslabón roto diciendo qué comando lo
-arregla. **Corrélo antes que nada si el login rechaza una contraseña que sabés que está bien.**
+Revisa la cadena entera —variables de entorno, conexión, esquema (tablas **y columnas**),
+constraints, datos, y que la contraseña del dueño ABRA de verdad— y se frena en el primer eslabón
+roto diciendo qué comando lo arregla. **Corrélo antes que nada si el login rechaza una contraseña que sabés que está bien.**
 
 Si el problema es la puerta y no los datos, la reparación no borra nada:
 

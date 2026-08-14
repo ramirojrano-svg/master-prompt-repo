@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { EstadoInquilino, EstadoOcupacion, PrismaClient, Rol, TipoOcupacion } from "@prisma/client";
 import { cargarEnv } from "../src/lib/entorno.ts";
+import { diagnosticar, explicar } from "../src/lib/db-salud.ts";
 import { hashPassword } from "../src/lib/password.ts";
 import { diaSemanaDeFecha, instanteDeHoraLocal, sumarDiasLocal, fechaEnZona, periodoDeInstante } from "../src/dominio/motor/zona.ts";
 import { zonaDePais } from "../src/dominio/paises.ts";
@@ -294,7 +295,20 @@ async function main() {
 main()
   .then(() => prisma.$disconnect())
   .catch(async (e) => {
-    console.error(e);
+    // Un fallo de ESQUEMA se explica; el resto se muestra crudo. Sin esto, la base vieja hacía
+    // que el seed muriera con veinte líneas de stack de Prisma apuntando a la línea que usa una
+    // columna nueva — el dato útil ("la base es de otra versión, resetéala") no aparecía por
+    // ningún lado, y el que lo corre termina buscando el problema en el seed.
+    const falla = diagnosticar(e);
+    if (falla) {
+      const { titulo, porque, pasos } = explicar(falla);
+      console.error(`\n  ✗ ${titulo}`);
+      console.error(`    ${porque}`);
+      for (const paso of pasos) console.error(`    → ${paso}`);
+      console.error("");
+    } else {
+      console.error(e);
+    }
     await prisma.$disconnect();
     process.exit(1);
   });
