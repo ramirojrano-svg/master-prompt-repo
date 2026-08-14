@@ -14,6 +14,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import pg from "pg";
 import { cargarEnv } from "../src/lib/entorno.ts";
+import { verificarPassword } from "../src/lib/password.ts";
+
+const CLAVE_DEMO = process.env.SEED_PASSWORD ?? "emoapp-2026";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRACION = join(RAIZ, "prisma/migrations/0001_ocupacion_exclusion/migration.sql");
@@ -148,13 +151,15 @@ const uno = async (q) => Number((await cliente.query(q)).rows[0].n);
 const usuarios = await uno('SELECT count(*)::int AS n FROM "Usuario"');
 const operadores = await uno(`SELECT count(*)::int AS n FROM "Operador" WHERE slug='espacio-moca'`);
 
-if (usuarios === 0 || operadores === 0) {
+if (operadores === 0) {
   await cliente.end();
   morir("El esquema está pero no hay datos: no vas a poder entrar.", "npm run seed");
 }
-
-const conClave = await uno(`SELECT count(*)::int AS n FROM "Usuario" WHERE "passwordHash" LIKE '$2%'`);
-if (conClave === 0) morir("Hay usuarios pero ninguno con contraseña utilizable.", "npm run seed");
+// Sin usuarios pero CON centro: la puerta, no los datos. Se repara sin borrar nada.
+if (usuarios === 0) {
+  await cliente.end();
+  morir("El centro está cargado pero no hay ningún usuario para entrar.", "npm run acceso");
+}
 
 const salas = await uno('SELECT count(*)::int AS n FROM "Sala"');
 const ocupaciones = await uno('SELECT count(*)::int AS n FROM "Ocupacion"');
@@ -163,8 +168,33 @@ ok(`Datos cargados (${usuarios} usuarios, ${salas} salas, ${ocupaciones} ocupaci
 // Que exista al menos un acceso ACTIVO: sin fila en UsuarioOperador se entra al login pero el
 // panel devuelve 404, que es el síntoma más confuso de todos.
 const accesos = await uno('SELECT count(*)::int AS n FROM "UsuarioOperador" WHERE activo = true');
-if (accesos === 0) morir("Ningún usuario tiene acceso activo al centro (el panel daría 404).", "npm run seed");
+if (accesos === 0) {
+  await cliente.end();
+  morir("Ningún usuario tiene acceso activo al centro (el panel daría 404).", "npm run acceso");
+}
 ok(`${accesos} accesos activos al centro`);
+
+// Y lo último: que la contraseña ENTRE de verdad. Es el chequeo que faltaba — "hay un usuario
+// con un hash guardado" no es lo mismo que "esa contraseña abre", y la diferencia entre las dos
+// es exactamente el "email o contraseña incorrectos" que no se explica de ninguna otra forma.
+const { rows: [dueño] } = await cliente.query(
+  `SELECT u."passwordHash" FROM "Usuario" u
+   JOIN "UsuarioOperador" uo ON uo."usuarioId" = u.id AND uo.activo = true
+   WHERE uo.rol = 'owner' LIMIT 1`,
+);
+if (!dueño) {
+  await cliente.end();
+  morir("No hay ningún usuario con rol de dueño.", "npm run acceso");
+}
+if (!(await verificarPassword(CLAVE_DEMO, dueño.passwordHash))) {
+  await cliente.end();
+  morir(
+    `La contraseña "${CLAVE_DEMO}" NO abre la cuenta del dueño.`,
+    "El usuario existe; lo que no coincide es la contraseña guardada.",
+    "npm run acceso",
+  );
+}
+ok(`la contraseña del dueño verifica correctamente`);
 
 await cliente.end();
 

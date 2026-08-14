@@ -18,6 +18,7 @@
     "db:esquema": "node scripts/esquema.mjs",
     "db:reset": "node scripts/esquema.mjs --reset",
     "doctor": "node scripts/doctor.mjs",
+    "acceso": "node scripts/acceso.mjs",
     "instalar": "npm run db:esquema && npm run seed && npm run doctor",
     "humo": "node scripts/humo.mjs"
   },

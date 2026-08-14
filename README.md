@@ -45,10 +45,18 @@ Si preferís hacerlo paso a paso, o algo falla, seguí abajo.
 npm run doctor
 ```
 
-Revisa la cadena entera —variables de entorno, conexión, esquema, constraints, datos— y se
-frena en el primer eslabón roto diciendo qué comando lo arregla. **Corrélo antes que nada si el
-login rechaza una contraseña que sabés que está bien**: con la base vacía o caída la app no puede
-verificar a nadie, y ese es el síntoma.
+Revisa la cadena entera —variables de entorno, conexión, esquema, constraints, datos, y que la
+contraseña del dueño ABRA de verdad— y se frena en el primer eslabón roto diciendo qué comando lo
+arregla. **Corrélo antes que nada si el login rechaza una contraseña que sabés que está bien.**
+
+Si el problema es la puerta y no los datos, la reparación no borra nada:
+
+```bash
+npm run acceso
+```
+
+Crea los tres usuarios si faltan, les repone la contraseña y les devuelve su rol activo en el
+centro. No toca turnos, profesionales, precios ni cuentas — para eso está `seed`, que rehace todo.
 
 ### 1. Postgres
 
@@ -168,7 +176,9 @@ Las pantallas, desde la agenda:
 | Comando | Qué hace |
 |---|---|
 | `npm run dev` | servidor de desarrollo |
-| `npm run seed` | carga (o recarga) los datos del piloto |
+| `npm run seed` | carga (o **recarga**) los datos del piloto: rehace el centro entero |
+| `npm run doctor` | revisa la instalación y dice qué comando arregla lo que falta |
+| `npm run acceso` | repara los usuarios y su acceso al panel, sin tocar los datos |
 | `npm test` | tests puros del dominio, sin base (~191, corren en segundos) |
 | `npm run test:db` | tests de integración contra Postgres real (~171), incluida la concurrencia |
 | `npm run typecheck` | TypeScript en modo estricto |

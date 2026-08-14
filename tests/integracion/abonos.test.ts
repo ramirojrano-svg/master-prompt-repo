@@ -7,7 +7,7 @@
 import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
-import { abonosVigentes, cobrarAbonosDelMes, ponerAbonoMensual } from "../../src/servicios/config/abonos.ts";
+import { abonosCon, abonosVigentes } from "../../src/servicios/config/abonos.ts";
 import { prisma } from "../../src/db/prisma.ts";
 import { nuevoPool, reiniciarEsquema, seedBase, URL_DB } from "./db.ts";
 
@@ -16,6 +16,10 @@ const db = new PrismaClient({ datasourceUrl: `${URL_DB}?connection_limit=20&pool
 
 // El actor del panel: dueño del centro op1.
 const OWNER = { usuarioId: "u1", operadorId: "op1", rol: "owner" as const, inquilinoId: null };
+
+// Acciones atadas a la base DE TEST. Sin esto escriben por el cliente global (`prisma`), que en
+// otra corrida apunta a la base de desarrollo: el test pasaría ensuciando datos reales.
+const { poner: ponerAbonoMensual, cobrar: cobrarAbonosDelMes } = abonosCon(db);
 
 before(async () => {
   await reiniciarEsquema(pgPool);
@@ -33,7 +37,7 @@ after(async () => {
 const cargos = () => db.asiento.findMany({ where: { concepto: "cargo_membresia" }, select: { inquilinoId: true, montoCent: true, periodo: true, fechaHecho: true } });
 
 test("poner un abono lo deja vigente, con 0 minutos incluidos", async () => {
-  const r = await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 }, db as never);
+  const r = await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 });
   assert.ok(r.ok && r.data.ok, "no se pudo poner el abono");
 
   const vigentes = await abonosVigentes("op1", db);
@@ -44,8 +48,8 @@ test("poner un abono lo deja vigente, con 0 minutos incluidos", async () => {
 });
 
 test("cambiar el abono cierra el anterior en vez de editarlo", async () => {
-  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 }, db as never);
-  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 300_000 }, db as never);
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 });
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 300_000 });
 
   // Dos filas en total, una sola vigente: lo que ya se cobró sigue explicándose con su importe.
   assert.equal(await db.membresia.count(), 2);
@@ -55,17 +59,17 @@ test("cambiar el abono cierra el anterior en vez de editarlo", async () => {
 });
 
 test("poner 0 da de baja el abono", async () => {
-  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 }, db as never);
-  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 0 }, db as never);
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 });
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 0 });
   assert.equal((await abonosVigentes("op1", db)).length, 0);
   assert.equal(await db.membresia.count(), 1, "la fila queda: la historia no se borra");
 });
 
 test("cobrar el mes carga un asiento por abono vigente", async () => {
-  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 }, db as never);
-  await ponerAbonoMensual(OWNER, { inquilinoId: "in2", montoMensual: 250_000 }, db as never);
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 });
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in2", montoMensual: 250_000 });
 
-  const r = await cobrarAbonosDelMes(OWNER, { periodo: "2026-08" }, db as never);
+  const r = await cobrarAbonosDelMes(OWNER, { periodo: "2026-08" });
   assert.ok(r.ok && r.data.cobrados === 2 && r.data.totalCent === 50_000_000n);
 
   const filas = await cargos();
@@ -78,18 +82,18 @@ test("cobrar el mes carga un asiento por abono vigente", async () => {
 
 test("apretar dos veces NO cobra dos veces", async () => {
   // Es el punto de todo: es un botón que el operador va a apretar sin acordarse si ya lo hizo.
-  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 }, db as never);
-  await cobrarAbonosDelMes(OWNER, { periodo: "2026-08" }, db as never);
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 });
+  await cobrarAbonosDelMes(OWNER, { periodo: "2026-08" });
 
-  const segunda = await cobrarAbonosDelMes(OWNER, { periodo: "2026-08" }, db as never);
+  const segunda = await cobrarAbonosDelMes(OWNER, { periodo: "2026-08" });
   assert.ok(segunda.ok && segunda.data.cobrados === 0 && segunda.data.yaEstaban === 1);
   assert.equal((await cargos()).length, 1);
 });
 
 test("cada mes se cobra por separado", async () => {
-  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 }, db as never);
-  await cobrarAbonosDelMes(OWNER, { periodo: "2026-08" }, db as never);
-  await cobrarAbonosDelMes(OWNER, { periodo: "2026-09" }, db as never);
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 });
+  await cobrarAbonosDelMes(OWNER, { periodo: "2026-08" });
+  await cobrarAbonosDelMes(OWNER, { periodo: "2026-09" });
 
   const filas = await cargos();
   assert.equal(filas.length, 2);
@@ -97,15 +101,15 @@ test("cada mes se cobra por separado", async () => {
 });
 
 test("un abono dado de baja deja de cobrarse", async () => {
-  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 }, db as never);
-  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 0 }, db as never);
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 });
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 0 });
 
-  const r = await cobrarAbonosDelMes(OWNER, { periodo: "2026-08" }, db as never);
+  const r = await cobrarAbonosDelMes(OWNER, { periodo: "2026-08" });
   assert.ok(r.ok && r.data.cobrados === 0);
   assert.equal((await cargos()).length, 0);
 });
 
 test("un profesional de otro centro no existe acá", async () => {
-  const r = await ponerAbonoMensual(OWNER, { inquilinoId: "no-existe", montoMensual: 250_000 }, db as never);
+  const r = await ponerAbonoMensual(OWNER, { inquilinoId: "no-existe", montoMensual: 250_000 });
   assert.ok(r.ok && !r.data.ok && r.data.error === "INQUILINO_INEXISTENTE");
 });
