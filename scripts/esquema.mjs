@@ -12,7 +12,7 @@
 // incorrecta". El paso más importante de la instalación no podía correrse en la mitad de las
 // máquinas. Esto hace el mismo trabajo con pg, que ya es dependencia del proyecto.
 
-import { execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -94,10 +94,16 @@ try {
 // campo nuevo muere con "Unknown argument", que no se parece en nada a "faltó regenerar". Es
 // barato y elimina el paso que todo el mundo se olvida después de un `git pull`.
 try {
-  execFileSync("npx", ["--yes", "prisma@6", "generate"], { cwd: RAIZ, stdio: "pipe" });
+  // `shell: true` NO es decorativo: en Windows `npx` es `npx.cmd`, y sin shell el spawn no lo
+  // resuelve y muere con ENOENT. El comando va como string por la misma razón.
+  execSync("npx --yes prisma@6 generate", { cwd: RAIZ, stdio: "pipe", shell: true });
   ok("Cliente de Prisma regenerado");
 } catch (e) {
-  err("No se pudo regenerar el cliente de Prisma. Corré a mano:  npx prisma generate");
-  err(String(e.stderr ?? e.message).split("\n").slice(0, 3).join(" "));
+  // Sale con 1 para FRENAR la cadena (`npm run instalar` es esquema && seed && doctor): sin el
+  // cliente regenerado el seed va a morir igual, y es mejor parar acá —en la causa— que dejarlo
+  // fallar dos pasos más adelante con otro mensaje.
+  err("El esquema SÍ se aplicó, pero no se pudo regenerar el cliente de Prisma.");
+  err("Corré a mano:   npx prisma generate");
+  err(String(e.stderr || e.message).split("\n").filter(Boolean).slice(0, 2).join(" "));
   process.exit(1);
 }
