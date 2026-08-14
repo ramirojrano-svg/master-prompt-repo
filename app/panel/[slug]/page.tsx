@@ -57,7 +57,7 @@ async function ejecutarSobreTurno(
   const ocupacionId = String(fd.get("ocupacionId") ?? "");
   const r =
     cual === "cancelar"
-      ? await cancelarReservaAjena(actor, { ocupacionId })
+      ? await cancelarReservaAjena(actor, { ocupacionId, alcance: fd.get("alcance") ?? "solo" })
       : await noShowReservaAjena(actor, { ocupacionId, accion: fd.get("accion") });
 
   const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
@@ -172,7 +172,6 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
       duracionMin: formData.get("duracionMin"),
       inquilinoId: formData.get("inquilinoId"),
       repeticion: formData.get("repeticion") ?? "no",
-      veces: formData.get("veces") ?? 1,
     });
 
     const q = new URLSearchParams({ fecha: fechaForm, vista });
@@ -360,9 +359,12 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
       {/* ── Crear turno: redondo, abajo a la izquierda ────────────────────────
           Fuera del <aside>: el lateral se esconde abajo de 880px y el botón de crear no puede
           desaparecer en un teléfono. Sigue siendo <details>/<summary>, o sea que abre y cierra
-          sin una línea de JavaScript. */}
+          sin una línea de JavaScript.
+          Queda abierto SOLO si hubo error: con el turno ya creado el formulario no tiene nada más
+          que hacer, y dejarlo abierto obliga a cerrarlo a mano para ver la agenda que se acaba de
+          modificar. El aviso de "turno creado" aparece arriba, sobre la grilla. */}
       {puedeCargar && (
-        <details className="crear-flotante" open={Boolean(sp.error) || Boolean(sp.creada)}>
+        <details className="crear-flotante" open={Boolean(sp.error)}>
           <summary aria-label="Crear turno" title="Crear turno">
             <IconoMas />
           </summary>

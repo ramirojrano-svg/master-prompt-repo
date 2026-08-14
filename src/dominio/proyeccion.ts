@@ -23,6 +23,8 @@ export type FilaReserva = {
   fin: Date;
   motivo: string | null;
   notaInterna: string | null;
+  /** Si pertenece a una serie recurrente. Lo necesita el borrado por alcance. */
+  serieId: string | null;
   /** Lo que se cobró por esa hora, estampado al nacer. null = no había precio cargado. */
   importeCent?: bigint | null;
 };
@@ -34,6 +36,8 @@ export type ReservaOperadorDTO = Omit<ReservaAjenaDTO, "estado"> & {
   inquilinoId: string | null;
   inquilinoNombre: string | null;
   motivo: string | null;
+  /** No null => es parte de una serie, y borrarlo pregunta si va uno, los siguientes o todos. */
+  serieId: string | null;
   /** String, no bigint: un BigInt no se puede serializar del servidor al cliente. */
   importeCent: string | null;
 };
@@ -70,6 +74,7 @@ export function proyectarReserva(r: FilaReserva, actor: { rol: Rol; inquilinoId:
     inquilinoId: r.inquilinoId,
     inquilinoNombre: r.inquilinoNombre,
     motivo: r.motivo,
+    serieId: r.serieId,
     importeCent: veLaPlata && r.importeCent != null ? r.importeCent.toString() : null,
   };
 

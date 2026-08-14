@@ -2,7 +2,7 @@
 // El <form action={...}> apunta a una server action que resuelve la sesión y delega en la acción
 // de dominio (que ya declara su permiso). Sin JS del lado del cliente: es un form HTML.
 
-import { etiquetaDeRepeticion, OCURRENCIAS_MAX, REPETICIONES } from "../../../src/dominio/repeticion.ts";
+import { etiquetaDeRepeticion, REPETICIONES } from "../../../src/dominio/repeticion.ts";
 
 export type OpcionSala = { id: string; nombre: string };
 export type OpcionInquilino = { id: string; nombre: string };
@@ -82,11 +82,9 @@ export function NuevaReserva({
         ))}
       </select>
 
-      <label htmlFor="veces">Cuántas veces</label>
-      <input id="veces" name="veces" type="number" min={1} max={OCURRENCIAS_MAX} step={1} defaultValue={8} />
       <p className="tenue" style={{ margin: "4px 0 0", fontSize: 12 }}>
-        Solo cuenta si elegiste una repetición. Las que choquen con otro turno se informan y no se
-        crean; el resto sí.
+        La repetición cubre toda la agenda que se puede reservar (poco más de un año). Las fechas
+        que choquen con otro turno se informan y no se crean; el resto sí.
       </p>
 
       {/* El precio no se elige en el alta: sale de la tarifa vigente (§8.8). Se avisa cuál es,

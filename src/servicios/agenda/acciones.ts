@@ -17,7 +17,7 @@ import { marcarNoShow, revertirNoShow } from "../reservas/no-show.ts";
 import { parseHorarios } from "../../dominio/motor/horarios.ts";
 import { instanteDeHoraLocal } from "../../dominio/motor/zona.ts";
 import { PASO_DEFAULT, DURACION_MAX_MIN, DURACION_MIN_MIN } from "../../dominio/motor/limites.ts";
-import { OCURRENCIAS_MAX, REPETICIONES, type Repeticion } from "../../dominio/repeticion.ts";
+import { ocurrenciasEnElHorizonte, REPETICIONES, type Repeticion } from "../../dominio/repeticion.ts";
 import { expandirSerie } from "../reservas/expandir-serie.ts";
 
 // z.enum pide una tupla no vacía; la lista canónica vive en el módulo de repetición.
@@ -31,9 +31,9 @@ export const NuevaReservaInput = z.object({
   duracionMin: z.coerce.number().int().min(DURACION_MIN_MIN).max(DURACION_MAX_MIN),
   inquilinoId: z.string().min(1),
   // Repetición: por defecto "no", así un formulario viejo (o un POST sin el campo) sigue
-  // creando UN turno y nunca una serie por accidente.
+  // creando UN turno y nunca una serie por accidente. CUÁNTAS veces no se pregunta: sale del
+  // horizonte de agenda (ver ocurrenciasEnElHorizonte).
   repeticion: z.enum(REPETICIONES_TUPLA).default("no"),
-  veces: z.coerce.number().int().min(1).max(OCURRENCIAS_MAX).default(1),
 });
 
 export type NuevaReserva = z.infer<typeof NuevaReservaInput>;
@@ -96,7 +96,7 @@ async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClie
   // Un turno suelto sigue yendo por crearOcupacion, que es EL camino de escritura. Una serie va
   // por expandirSerie, que escribe las N en una sola transacción tomando todos los locks: crear
   // N veces en un for se deadlockearía contra otra serie que empiece por el otro extremo.
-  if (input.repeticion === "no" || input.veces <= 1) {
+  if (input.repeticion === "no") {
     const r = await crearOcupacion(
       { salaId: sala.id, fecha: input.fecha, inicioISO: inicio.toISOString(), duracionMin: input.duracionMin },
       ctx,
@@ -115,7 +115,8 @@ async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClie
       duracionMin: input.duracionMin,
       fechaInicio: input.fecha,
       repeticion: input.repeticion as Repeticion,
-      cantidad: input.veces,
+      // Todas las que entren en el horizonte: "cada semana el sábado" son TODOS los sábados.
+      cantidad: ocurrenciasEnElHorizonte(input.repeticion as Repeticion),
       modo: "parcial",
     },
     ctx,
@@ -158,7 +159,13 @@ export const moverReservaAjenaCon = (db: PrismaClient) =>
 // Las tres piden `reserva.editar.ajena`: cambiarle la hora, marcarle una falta o darlo de baja
 // son formas de editar el turno de otro. La recepción no las tiene.
 
-export const TurnoInput = z.object({ ocupacionId: z.string().min(1), motivo: z.string().max(200).optional() });
+export const TurnoInput = z.object({
+  ocupacionId: z.string().min(1),
+  motivo: z.string().max(200).optional(),
+  /** Qué se cancela si el turno es parte de una serie. Por defecto, SOLO ese: el alcance amplio
+   *  se pide explícitamente, nunca se asume. */
+  alcance: z.enum(["solo", "siguientes", "serie"]).default("solo"),
+});
 export const NoShowInput = TurnoInput.extend({ accion: z.enum(["marcar", "revertir"]) });
 
 /** Da de baja el turno y devuelve la plata (la política pura reembolsa 100% al cancelar el centro). */

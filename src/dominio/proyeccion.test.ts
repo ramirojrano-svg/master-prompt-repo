@@ -11,6 +11,7 @@ const fila: FilaReserva = {
   inquilinoNombre: "María Gómez (Psicología)",
   tipo: "reserva",
   estado: "confirmada",
+  serieId: null,
   inicio: new Date("2026-08-12T12:00:00Z"),
   fin: new Date("2026-08-12T13:00:00Z"),
   motivo: null,

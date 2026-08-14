@@ -46,6 +46,8 @@ export function DetalleTurno({
   const motivo = "motivo" in turno ? turno.motivo : null;
   const importe = "importeCent" in turno && turno.importeCent != null ? formatearPesos(BigInt(turno.importeCent), moneda) : null;
   const minutos = Math.round((new Date(turno.fin).getTime() - new Date(turno.inicio).getTime()) / 60_000);
+  // `serieId` solo existe en la proyección con identidad; para el resto no hay nada que preguntar.
+  const esSerie = "serieId" in turno && turno.serieId != null;
 
   // Un turno cancelado o ya movido es historia: se muestra, no se opera.
   const vivo = estado === "confirmada" || estado === "no_show";
@@ -114,8 +116,31 @@ export function DetalleTurno({
           {estado === "confirmada" && (
             <form action={cancelar}>
               <input type="hidden" name="ocupacionId" value={turno.id} />
+
+              {/* Si es parte de una serie hay que PREGUNTAR el alcance, como cualquier calendario:
+                  sin la pregunta, "cancelar" o deja cincuenta turnos que nadie quiere, o se lleva
+                  puestos los que ya pasaron. El default es el más chico —solo este—: el alcance
+                  amplio se elige a propósito, nunca se asume. */}
+              {esSerie && (
+                <fieldset style={{ border: "none", padding: 0, margin: "4px 0 12px" }}>
+                  <legend className="tenue" style={{ fontSize: 12, padding: 0, marginBottom: 6 }}>
+                    Este turno se repite. ¿Qué cancelás?
+                  </legend>
+                  {[
+                    { v: "solo", t: "Solo este turno" },
+                    { v: "siguientes", t: "Este y los siguientes" },
+                    { v: "serie", t: "Todos los de la serie" },
+                  ].map((o, i) => (
+                    <label key={o.v} htmlFor={`alcance-${o.v}`} style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 4px", fontSize: 13, color: "var(--texto)", fontWeight: 400 }}>
+                      <input id={`alcance-${o.v}`} type="radio" name="alcance" value={o.v} defaultChecked={i === 0} style={{ width: "auto", margin: 0 }} />
+                      {o.t}
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+
               <button type="submit" style={{ width: "100%", background: "var(--error)" }}>
-                Cancelar turno
+                {esSerie ? "Cancelar" : "Cancelar turno"}
               </button>
               <p className="tenue" style={{ margin: "8px 0 0", fontSize: 12 }}>
                 Libera la hora y devuelve lo facturado. Queda registrado: el cargo no se borra, se

@@ -24,8 +24,21 @@ export function esRepeticion(v: string): v is Repeticion {
   return (REPETICIONES as string[]).includes(v);
 }
 
-/** Tope de ocurrencias por serie: un año de turnos semanales, o dos meses de diarios. */
-export const OCURRENCIAS_MAX = 60;
+/**
+ * Hasta dónde llega una serie. No se pregunta "cuántas veces": si alguien elige "cada semana el
+ * sábado", quiere TODOS los sábados, no ocho.
+ *
+ * El límite es el HORIZONTE de agenda del operador (§4.7.2) — el mismo hasta el que se puede
+ * reservar a mano. Una serie de verdad infinita no es posible y no es un detalle de
+ * implementación: las ocurrencias se MATERIALIZAN como filas, porque el constraint de exclusión
+ * de Postgres es lo que impide vender dos veces la misma hora, y no puede proteger una fila que
+ * todavía no existe (§4.9). Así que la serie llega hasta donde llega la agenda; cuando el
+ * horizonte avance, se extiende.
+ */
+export const HORIZONTE_DIAS = 400;
+
+/** Tope duro de filas por serie. Solo lo toca la repetición diaria (400 días ≈ 400 turnos). */
+export const OCURRENCIAS_MAX = 420;
 
 const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -65,6 +78,27 @@ function nEsimoDiaDelMes(a: number, m: number, dow: number, n: number): FechaLoc
 /** En qué semana del mes cae esa fecha: 1 = primer <día>, 2 = segundo, … */
 function ordinalEnElMes(d: number): number {
   return Math.floor((d - 1) / 7) + 1;
+}
+
+/**
+ * Cuántas ocurrencias entran en el horizonte, según el patrón. Es lo que reemplaza al "¿cuántas
+ * veces?": el número sale del calendario, no de una pregunta al operador.
+ */
+export function ocurrenciasEnElHorizonte(repeticion: Repeticion): number {
+  switch (repeticion) {
+    case "no":
+      return 1;
+    case "diaria":
+      return HORIZONTE_DIAS;
+    case "habiles":
+      return Math.floor((HORIZONTE_DIAS / 7) * 5);
+    case "semanal":
+      return Math.floor(HORIZONTE_DIAS / 7);
+    case "mensual":
+      return Math.floor(HORIZONTE_DIAS / 30);
+    case "anual":
+      return Math.max(1, Math.floor(HORIZONTE_DIAS / 365));
+  }
 }
 
 /**

@@ -10,6 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import { crearOcupacion, type CtxReserva } from "../../src/servicios/reservas/crear.ts";
 import { cancelarOcupacion } from "../../src/servicios/reservas/cancelar.ts";
 import { marcarNoShow } from "../../src/servicios/reservas/no-show.ts";
+import { expandirSerie } from "../../src/servicios/reservas/expandir-serie.ts";
 import { prisma } from "../../src/db/prisma.ts";
 import { insertarOcupacion, nuevoPool, reiniciarEsquema, seedBase, URL_DB } from "./db.ts";
 
@@ -82,7 +83,7 @@ test("la plata se devuelve entera y el cargo original NO se borra", async () => 
   const id = await crear();
 
   const r = await cancelarOcupacion({ ocupacionId: id, motivo: "obra en el consultorio" }, CTX, db);
-  assert.ok(r.ok && r.devueltoCent === 800_000n);
+  assert.ok(r.ok && r.devueltoCent === 800_000n && r.canceladas === 1);
 
   const asientos = await db.asiento.findMany({ where: { reservaId: id }, orderBy: { concepto: "asc" }, select: { concepto: true, montoCent: true, revierteAId: true, periodo: true } });
   assert.equal(asientos.length, 2, "tienen que quedar los DOS: el cargo y su reversa");
@@ -112,7 +113,7 @@ test("cancelar dos veces no devuelve dos veces", async () => {
 test("un turno sin precio cargado se cancela igual, sin devolver nada", async () => {
   const id = await crear(); // sin tarifa vigente: importe NULL, no hay cargo
   const r = await cancelarOcupacion({ ocupacionId: id }, CTX, db);
-  assert.ok(r.ok && r.devueltoCent === 0n);
+  assert.ok(r.ok && r.devueltoCent === 0n && r.canceladas === 1);
   assert.equal(await db.asiento.count(), 0);
 });
 
@@ -148,4 +149,74 @@ test("si el mes ya se liquidó no se cancela, y la fila queda intacta", async ()
   assert.deepEqual(await cancelarOcupacion({ ocupacionId: id }, CTX, db), { ok: false, error: "MES_CERRADO" });
   assert.equal((await db.ocupacion.findUniqueOrThrow({ where: { id }, select: { estado: true } })).estado, "confirmada");
   assert.equal(await db.asiento.count({ where: { concepto: "nota_credito" } }), 0);
+});
+
+// ── Alcance sobre una serie ────────────────────────────────────────────────
+// El operador borra un turno de una serie y elige: este, este y los siguientes, o todos. Es la
+// pregunta que hace cualquier calendario, y sin ella "borrar" o deja 51 turnos que nadie quiere o
+// se lleva puestos los que ya pasaron.
+
+async function serieSemanal(desde = "2026-08-12", cantidad = 5): Promise<string[]> {
+  const r = await expandirSerie(
+    { salaId: "sa1", hora: "10:00", duracionMin: 60, fechaInicio: desde, repeticion: "semanal", cantidad, modo: "parcial" },
+    ctxCrear("in1"),
+    db,
+  );
+  assert.ok(r.ok && r.creadas.length === cantidad, "no se pudo armar la serie de base");
+  return r.ok ? r.creadas : [];
+}
+
+const estados = async () =>
+  (await db.ocupacion.findMany({ orderBy: { inicio: "asc" }, select: { estado: true } })).map((x) => x.estado);
+
+test("alcance `solo`: cancela uno y deja el resto de la serie en pie", async () => {
+  await serieSemanal();
+  const r = await cancelarOcupacion({ ocupacionId: (await db.ocupacion.findFirstOrThrow({ orderBy: { inicio: "asc" } })).id, alcance: "solo" }, CTX, db);
+  assert.ok(r.ok && r.canceladas === 1);
+  assert.deepEqual(await estados(), ["cancelada", "confirmada", "confirmada", "confirmada", "confirmada"]);
+});
+
+test("alcance `siguientes`: cancela desde ese en adelante y NO toca los anteriores", async () => {
+  const ids = await serieSemanal();
+  const r = await cancelarOcupacion({ ocupacionId: ids[2]!, alcance: "siguientes" }, CTX, db);
+  assert.ok(r.ok && r.canceladas === 3, `canceladas: ${r.ok ? r.canceladas : r.error}`);
+  // Los dos primeros ya ocurrieron desde el punto de vista de la serie: no se deshacen desde acá.
+  assert.deepEqual(await estados(), ["confirmada", "confirmada", "cancelada", "cancelada", "cancelada"]);
+});
+
+test("alcance `serie`: cancela todas, incluidas las anteriores", async () => {
+  const ids = await serieSemanal();
+  const r = await cancelarOcupacion({ ocupacionId: ids[3]!, alcance: "serie" }, CTX, db);
+  assert.ok(r.ok && r.canceladas === 5);
+  assert.deepEqual(await estados(), ["cancelada", "cancelada", "cancelada", "cancelada", "cancelada"]);
+});
+
+test("un turno suelto ignora el alcance: `serie` no puede llevarse turnos ajenos", async () => {
+  // Sin serieId, pedir "todos" NO puede convertirse en "todos los turnos del centro".
+  await crear("sa1", "2026-08-12");
+  const otro = await crear("sa2", "2026-08-12", "in2");
+  const r = await cancelarOcupacion({ ocupacionId: otro, alcance: "serie" }, CTX, db);
+  assert.ok(r.ok && r.canceladas === 1);
+  assert.equal(await db.ocupacion.count({ where: { estado: "cancelada" } }), 1);
+});
+
+test("cancelar una serie devuelve la plata de TODAS y una nota de crédito por cada una", async () => {
+  await tarifaGeneral(800_000n);
+  const ids = await serieSemanal("2026-08-12", 4);
+  const r = await cancelarOcupacion({ ocupacionId: ids[0]!, alcance: "serie" }, CTX, db);
+  assert.ok(r.ok && r.canceladas === 4 && r.devueltoCent === 3_200_000n);
+  assert.equal(await db.asiento.count({ where: { concepto: "nota_credito" } }), 4);
+
+  // Neto cero: cuatro turnos que no van a pasar no le deben nada a nadie.
+  const suma = (await db.asiento.findMany({ select: { montoCent: true } })).reduce((a, x) => a + x.montoCent, 0n);
+  assert.equal(suma, 0n);
+});
+
+test("los turnos congelados de la serie se saltean y se informan, sin frenar al resto", async () => {
+  const ids = await serieSemanal("2026-08-12", 4);
+  assert.deepEqual(await marcarNoShow({ ocupacionId: ids[1]! }, CTX, db), { ok: true });
+
+  const r = await cancelarOcupacion({ ocupacionId: ids[0]!, alcance: "serie" }, CTX, db);
+  assert.ok(r.ok && r.canceladas === 3 && r.omitidas === 1, r.ok ? `canceladas ${r.canceladas}, omitidas ${r.omitidas}` : r.error);
+  assert.deepEqual(await estados(), ["cancelada", "no_show", "cancelada", "cancelada"]);
 });

@@ -3,7 +3,7 @@
 SaaS para que un centro alquile sus consultorios a profesionales independientes: agenda que no
 vende la misma sala dos veces, cuenta corriente por inquilino y liquidación mensual.
 
-Piloto: **Espacio Montes de Oca** (1 sede, 3 consultorios, 50 profesionales, L-V 08–22).
+Piloto: **Espacio Montes de Oca** (1 sede, 3 consultorios, 50 profesionales, L-D 08–22).
 
 ---
 
@@ -125,12 +125,17 @@ Las pantallas, desde la agenda:
 | `/panel/<slug>` | el calendario: vistas **día, semana y mes**, alta de turno, **arrastrar para mover** y detalle con **cancelar / no vino** | todos (cada uno ve lo suyo) |
 | `…/salas` | alta, edición y **archivado** de consultorios | owner y gestor |
 | `…/inquilinos` | alta y baja de profesionales | owner y gestor |
-| `…/tarifas` | **precio de la hora**: general, por consultorio y por profesional | solo el owner |
+| `…/tarifas` | **precio de la hora**: general del centro o por profesional | solo el owner |
 | `…/reportes` | facturado, cobrado, deuda y ocupación del mes | owner, gestor y soporte |
 | `…/reportes/<id>` | el mes de UN profesional: horas, qué días y a qué hora, y cuánto factura | owner, gestor y soporte |
 
 > El estado del calendario (día, vista, consultorios filtrados) vive en la URL: el botón "atrás"
 > funciona, y el link de un día concreto se puede mandar por WhatsApp.
+
+> **Los turnos se pueden repetir** (todos los días, hábiles, cada semana, todos los meses "el
+> segundo viernes", o anual). No se pregunta cuántas veces: cubre toda la agenda reservable
+> (poco más de un año). Al cancelar uno de una serie se elige el alcance — solo ese, ese y los
+> siguientes, o todos.
 
 > **Clickear un turno** abre su detalle (`?turno=<id>`) con lo que se le puede hacer: marcar que
 > el profesional **no vino** (queda la falta, la hora NO se libera: ya pasó) o **cancelarlo**
@@ -155,8 +160,8 @@ Las pantallas, desde la agenda:
 |---|---|
 | `npm run dev` | servidor de desarrollo |
 | `npm run seed` | carga (o recarga) los datos del piloto |
-| `npm test` | tests puros del dominio, sin base (~175, corren en segundos) |
-| `npm run test:db` | tests de integración contra Postgres real (~157), incluida la concurrencia |
+| `npm test` | tests puros del dominio, sin base (~191, corren en segundos) |
+| `npm run test:db` | tests de integración contra Postgres real (~163), incluida la concurrencia |
 | `npm run typecheck` | TypeScript en modo estricto |
 | `npm run verify` | typecheck + tests puros |
 | `npm run humo` | prueba de humo en un browser real; deja capturas en `capturas/` |

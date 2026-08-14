@@ -97,7 +97,7 @@ export async function cargarAgenda(
     },
     select: {
       id: true, salaId: true, inquilinoId: true, tipo: true, estado: true, inicio: true, fin: true,
-      motivo: true, notaInterna: true, importeCent: true,
+      motivo: true, notaInterna: true, importeCent: true, serieId: true,
       inquilino: { select: { nombre: true } },
     },
     orderBy: { inicio: "asc" },
@@ -143,7 +143,7 @@ export async function cargarAgenda(
 
   const reservas: EventoAgenda[] = enVista.map((f) => {
     const dto = proyectarReserva(
-      { id: f.id, salaId: f.salaId, inquilinoId: f.inquilinoId, inquilinoNombre: f.inquilino?.nombre ?? null, tipo: f.tipo, estado: f.estado, inicio: f.inicio, fin: f.fin, motivo: f.motivo, notaInterna: f.notaInterna, importeCent: f.importeCent },
+      { id: f.id, salaId: f.salaId, inquilinoId: f.inquilinoId, inquilinoNombre: f.inquilino?.nombre ?? null, tipo: f.tipo, estado: f.estado, inicio: f.inicio, fin: f.fin, motivo: f.motivo, notaInterna: f.notaInterna, serieId: f.serieId, importeCent: f.importeCent },
       a.actor,
     );
     const conIdentidad = "inquilinoNombre" in dto ? dto : null;

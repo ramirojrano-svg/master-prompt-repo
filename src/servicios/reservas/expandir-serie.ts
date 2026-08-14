@@ -10,7 +10,9 @@ import { prisma } from "../../db/prisma.ts";
 import { clavesDeLock } from "../../dominio/locks.ts";
 import { evaluarReserva, type CodigoReserva } from "../../dominio/motor/reserva.ts";
 import { LOOKBACK_MIN, DURACION_MAX_MIN, DURACION_MIN_MIN } from "../../dominio/motor/limites.ts";
-import { instanteDeHoraLocal } from "../../dominio/motor/zona.ts";
+import { instanteDeHoraLocal, periodoDeInstante } from "../../dominio/motor/zona.ts";
+import { cotizar, resolverTarifa } from "../../dominio/tarifa.ts";
+import { asentarIdempotente } from "../plata/ledger.ts";
 import { fechasDeSerie, OCURRENCIAS_MAX, type Repeticion } from "../../dominio/repeticion.ts";
 import type { CtxReserva } from "./crear.ts";
 import { aMotor, OCUPAN } from "./comun.ts";
@@ -74,6 +76,15 @@ export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaC
     return await db.$transaction(async (tx) => {
       for (const c of claves) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${c}))`;
 
+      // La tarifa vigente se resuelve UNA vez para toda la serie: no cambia entre ocurrencias
+      // dentro de la misma transacción, y consultarla N veces sería N consultas para el mismo dato.
+      const tarifas = await tx.tarifa.findMany({
+        where: { operadorId: ctx.operadorId, vigenteDesde: { lte: ahora }, OR: [{ vigenteHasta: null }, { vigenteHasta: { gt: ahora } }] },
+        select: { id: true, salaId: true, inquilinoId: true, precioHoraCent: true, vigenteDesde: true, vigenteHasta: true },
+      });
+      const tarifa = resolverTarifa(tarifas, { salaId: sala.id, inquilinoId: ctx.inquilinoId, ahora });
+      const cot = tarifa ? cotizar(tarifa, p.duracionMin) : null;
+
       const creadas: string[] = [];
       const conflictos: Conflicto[] = [];
 
@@ -116,9 +127,31 @@ export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaC
             bloqueaProfesional: ctx.bloqueaProfesional,
             serieId,
             motivo: p.motivo ?? null,
+            // El precio se ESTAMPA igual que en un alta suelta. Sin esto una serie nacía sin
+            // precio y sin cargo: cincuenta turnos que ocupaban la sala y no le facturaban un
+            // peso a nadie, y el resumen del mes los mostraba como horas regaladas.
+            tarifaId: cot?.tarifaId ?? null,
+            precioHoraCent: cot?.precioHoraCent ?? null,
+            importeCent: cot?.importeCent ?? null,
           },
           select: { id: true },
         });
+
+        // El cargo va en la MISMA transacción que la fila, con el período de SU ocurrencia: una
+        // serie cruza meses, y todas las cuotas no pueden caer en el mes de la primera.
+        if (cot && cot.importeCent > 0n) {
+          await asentarIdempotente(tx, {
+            operadorId: ctx.operadorId,
+            inquilinoId: ctx.inquilinoId,
+            concepto: "cargo_uso",
+            montoCent: cot.importeCent,
+            moneda: ctx.moneda ?? "ARS",
+            periodo: periodoDeInstante(o.inicio, tz),
+            fechaHecho: o.inicio,
+            clave: `cargo_uso:${creada.id}`,
+            reservaId: creada.id,
+          });
+        }
         creadas.push(creada.id);
       }
 

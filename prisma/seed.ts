@@ -32,16 +32,9 @@ const TZ = zonaDePais(PAIS)!;
 const PASSWORD_DEMO = "emoapp-2026";
 const TARIFA_HORA_CENT = 800_000n; // $8.000 ARS
 
-// L-V 08:00–22:00, sábado y domingo cerrado (horario real del centro).
-const HORARIO = {
-  0: [],
-  1: [{ desde: "08:00", hasta: "22:00" }],
-  2: [{ desde: "08:00", hasta: "22:00" }],
-  3: [{ desde: "08:00", hasta: "22:00" }],
-  4: [{ desde: "08:00", hasta: "22:00" }],
-  5: [{ desde: "08:00", hasta: "22:00" }],
-  6: [],
-};
+// Lunes a domingo, 08:00–22:00: los consultorios abren todos los días.
+const FRANJA = [{ desde: "08:00", hasta: "22:00" }];
+const HORARIO = { 0: FRANJA, 1: FRANJA, 2: FRANJA, 3: FRANJA, 4: FRANJA, 5: FRANJA, 6: FRANJA };
 
 const ESPECIALIDADES = [
   "Odontología general", "Psicología", "Kinesiología", "Médico PAMI", "Pediatría",
@@ -140,15 +133,15 @@ async function main() {
   });
 
   // ── Precios (§8.8) ────────────────────────────────────────────────────────
-  // La general del centro y dos excepciones, que es como funciona de verdad: un profesional con
-  // precio acordado y una sala más cara. Todas empiezan hace un año: las reservas históricas del
+  // La general del centro y dos excepciones por PROFESIONAL, que es como funciona de verdad: el
+  // precio no depende del consultorio, depende de con quién se acordó. Todas empiezan hace un año: las reservas históricas del
   // seed también tienen que caer adentro de una tarifa vigente.
   const desdeTarifas = new Date(Date.now() - 365 * 86_400_000);
   const tarifas = await Promise.all(
     [
       { nombre: "General", salaId: null, inquilinoId: null, precioHoraCent: TARIFA_HORA_CENT },
-      { nombre: salas[2]!.nombre, salaId: salas[2]!.id, inquilinoId: null, precioHoraCent: 950_000n },
       { nombre: "María Gómez", salaId: null, inquilinoId: maria.id, precioHoraCent: 700_000n },
+      { nombre: inquilinos[3]!.nombre, salaId: null, inquilinoId: inquilinos[3]!.id, precioHoraCent: 950_000n },
     ].map((t) =>
       prisma.tarifa.create({
         data: { operadorId: operador.id, vigenteDesde: desdeTarifas, ...t },

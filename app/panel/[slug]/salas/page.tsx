@@ -34,7 +34,9 @@ export default async function SalasPage({
 
   const enEdicion = editar ? salas.find((s) => s.id === editar) : undefined;
   const horarioEd = enEdicion ? parseHorarios(enEdicion.horarioJson) : null;
-  const diasEd = horarioEd ? diasDeHorario(horarioEd) : [1, 2, 3, 4, 5];
+  // Un consultorio nuevo abre TODOS los días: es el default del centro (L a D, 08 a 22). El que
+  // cierra sábado o domingo lo destilda; al revés, tildar dos días más es el caso raro.
+  const diasEd = horarioEd ? diasDeHorario(horarioEd) : [0, 1, 2, 3, 4, 5, 6];
   const franjaEd = horarioEd ? Object.values(horarioEd).flat()[0] : undefined;
 
   async function guardar(formData: FormData) {
