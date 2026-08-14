@@ -9,7 +9,7 @@
 // primer eslabón roto con el comando que lo arregla. Sale con código 1 si algo está mal, así
 // sirve igual en un CI.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import pg from "pg";
@@ -168,6 +168,25 @@ if (excl.length === 0) {
   );
 }
 ok(`Constraints de exclusión activos (${excl.length})`);
+
+// El cliente GENERADO de Prisma, que es distinto del esquema de la base. Un `git pull` que cambia
+// schema.prisma NO lo regenera —eso pasa en `npm install`—, y entonces la base queda al día y el
+// código no la puede usar: la primera consulta con un campo nuevo muere con "Unknown argument",
+// que no se parece en nada a "faltó regenerar el cliente".
+const generado = join(RAIZ, "node_modules/.prisma/client/index.d.ts");
+if (!existsSync(generado)) {
+  await cliente.end();
+  morir("Falta el cliente de Prisma generado.", "npx prisma generate");
+}
+if (statSync(join(RAIZ, "prisma/schema.prisma")).mtimeMs > statSync(generado).mtimeMs) {
+  await cliente.end();
+  morir(
+    "El cliente de Prisma es MÁS VIEJO que el esquema.",
+    "La base puede estar bien; lo que no sabe de los campos nuevos es el código.",
+    "npx prisma generate",
+  );
+}
+ok("Cliente de Prisma al día con el esquema");
 
 // ── 4. Datos ────────────────────────────────────────────────────────────────
 const uno = async (q) => Number((await cliente.query(q)).rows[0].n);

@@ -15,7 +15,8 @@
 export type Falla =
   | { tipo: "sin-conexion" }
   | { tipo: "sin-esquema"; tabla: string | null }
-  | { tipo: "esquema-viejo"; columna: string | null };
+  | { tipo: "esquema-viejo"; columna: string | null }
+  | { tipo: "cliente-viejo"; campo: string | null };
 
 type ErrorPrisma = { name?: unknown; code?: unknown; meta?: { table?: unknown; column?: unknown } };
 
@@ -45,6 +46,15 @@ export function diagnosticar(e: unknown): Falla | null {
   // Cuando Prisma ni siquiera pudo conectar, el error no trae `code`: se reconoce por la clase.
   if (typeof name === "string" && name.includes("Initialization")) return { tipo: "sin-conexion" };
 
+  // El caso al revés del anterior: la BASE está al día y el CLIENTE GENERADO quedó viejo. Pasa
+  // después de un `git pull` que cambia el schema — el cliente se regenera en `npm install`
+  // (postinstall), no al bajar código. Prisma lo reporta como error de VALIDACIÓN, sin `code`,
+  // porque para él el campo directamente no existe.
+  if (typeof name === "string" && name.includes("Validation")) {
+    const m = /Unknown argument `([^`]+)`/.exec(String((e as { message?: unknown }).message ?? ""));
+    if (m) return { tipo: "cliente-viejo", campo: m[1] ?? null };
+  }
+
   return null;
 }
 
@@ -66,6 +76,14 @@ export function explicar(f: Falla): { titulo: string; porque: string; pasos: str
           `Postgres responde, pero la tabla ${f.tabla ?? "que hace falta"} no existe: a esta base ` +
           "nunca se le aplicó el esquema.",
         pasos: ["npm run db:esquema", "npm run seed", "npm run doctor"],
+      };
+    case "cliente-viejo":
+      return {
+        titulo: "El cliente de Prisma quedó viejo",
+        porque:
+          `El código usa ${f.campo ?? "un campo"} y el cliente generado no lo conoce. La BASE está bien: ` +
+          "lo que falta es regenerar el cliente, que se rehace al instalar y no al bajar código.",
+        pasos: ["npx prisma generate", "y volvé a correr lo que estabas haciendo"],
       };
     case "esquema-viejo":
       return {

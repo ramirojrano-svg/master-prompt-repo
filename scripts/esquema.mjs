@@ -12,6 +12,7 @@
 // incorrecta". El paso más importante de la instalación no podía correrse en la mitad de las
 // máquinas. Esto hace el mismo trabajo con pg, que ya es dependencia del proyecto.
 
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -86,4 +87,17 @@ try {
   process.exit(1);
 } finally {
   await cliente.end();
+}
+
+// El CLIENTE de Prisma se regenera acá, no solo en `npm install`. Aplicar el esquema y dejar el
+// cliente viejo deja la base al día y el código incapaz de usarla: la primera consulta con un
+// campo nuevo muere con "Unknown argument", que no se parece en nada a "faltó regenerar". Es
+// barato y elimina el paso que todo el mundo se olvida después de un `git pull`.
+try {
+  execFileSync("npx", ["--yes", "prisma@6", "generate"], { cwd: RAIZ, stdio: "pipe" });
+  ok("Cliente de Prisma regenerado");
+} catch (e) {
+  err("No se pudo regenerar el cliente de Prisma. Corré a mano:  npx prisma generate");
+  err(String(e.stderr ?? e.message).split("\n").slice(0, 3).join(" "));
+  process.exit(1);
 }

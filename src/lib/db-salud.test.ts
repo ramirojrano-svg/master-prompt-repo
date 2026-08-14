@@ -27,6 +27,22 @@ test("los códigos de conexión caen todos en sin-conexion", () => {
   }
 });
 
+test("cliente generado viejo: la base está bien, lo que no sabe es el código", () => {
+  // Este es el error de VALIDACIÓN de Prisma, sin `code`: para el cliente el campo no existe.
+  // Pasa después de un git pull que cambia el schema, porque el cliente se regenera al instalar.
+  const e = {
+    name: "PrismaClientValidationError",
+    message: "Invalid `prisma.inquilino.create()` invocation:\n\nUnknown argument `pagador`. Available options are marked with ?.",
+  };
+  assert.deepEqual(diagnosticar(e), { tipo: "cliente-viejo", campo: "pagador" });
+  assert.ok(explicar({ tipo: "cliente-viejo", campo: "pagador" }).pasos.some((p) => p.includes("prisma generate")));
+});
+
+test("un error de validación que NO es un campo desconocido no se confunde", () => {
+  // Un dato mal formado también es PrismaClientValidationError, y ahí regenerar no arregla nada.
+  assert.equal(diagnosticar({ name: "PrismaClientValidationError", message: "Argument `monto` is missing." }), null);
+});
+
 test("un error de negocio NO se confunde con un problema de base", () => {
   // P2002 es choque de unicidad: es un pedido inválido, no una base rota. Si lo tomáramos por
   // falla de infraestructura, mostraríamos "revisá la base" ante un email duplicado.

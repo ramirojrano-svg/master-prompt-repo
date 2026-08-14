@@ -95,7 +95,8 @@ npm run seed          # carga el piloto (toma la conexión de .env.local)
 
 `db:esquema` aplica `prisma/migrations/0001_ocupacion_exclusion/migration.sql` usando Node, sin
 depender de tener `psql` instalado (en Windows no viene). Es idempotente: si el esquema ya está,
-avisa y no toca nada.
+avisa y no toca nada. Además **regenera el cliente de Prisma**, que es el paso que se olvida
+después de un `git pull` — sin él la base queda al día y el código no la puede usar.
 
 Si la base quedó de una versión anterior del código, `db:esquema` te lo dice y te frena. Para
 rehacerla —**se pierden los datos**, son de prueba—:
@@ -179,7 +180,7 @@ Las pantallas, desde la agenda:
 | `npm run seed` | carga (o **recarga**) los datos del piloto: rehace el centro entero |
 | `npm run doctor` | revisa la instalación y dice qué comando arregla lo que falta |
 | `npm run acceso` | repara los usuarios y su acceso al panel, sin tocar los datos |
-| `npm test` | tests puros del dominio, sin base (~191, corren en segundos) |
+| `npm test` | tests puros del dominio, sin base (~193, corren en segundos) |
 | `npm run test:db` | tests de integración contra Postgres real (~171), incluida la concurrencia |
 | `npm run typecheck` | TypeScript en modo estricto |
 | `npm run verify` | typecheck + tests puros |
