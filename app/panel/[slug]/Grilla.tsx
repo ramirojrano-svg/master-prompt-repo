@@ -31,13 +31,16 @@ type Mover = (input: { ocupacionId: string; salaDestinoId: string; fecha: string
 
 type Arrastre = { id: string; salaId: string | null; filasDeAgarre: number };
 
-export function Grilla({ dia, hoy, mover }: { dia: AgendaVista; hoy: string; mover?: Mover }) {
+// `baseTurno` es un STRING y no una función que arme el link: una función no se puede pasar de
+// un componente de servidor a uno de cliente (solo las server actions cruzan esa frontera).
+export function Grilla({ dia, hoy, mover, baseTurno }: { dia: AgendaVista; hoy: string; mover?: Mover; baseTurno?: string }) {
   const router = useRouter();
   // El arrastre vive en una REF y no solo en estado. El drop tiene que poder leer qué se está
   // moviendo aunque React todavía no haya re-renderizado desde el dragstart: si dependiera del
   // estado, un arrastre rápido (o un navegador que manda pocos dragover) soltaría el turno con
   // el dato en null y no pasaría nada, sin error visible. El estado queda solo para lo visual.
   const arrastreRef = useRef<Arrastre | null>(null);
+  const arrastroRecien = useRef(false);
   const [arrastre, setArrastre] = useState<Arrastre | null>(null);
   const [destino, setDestino] = useState<{ columnaId: string; fila: number } | null>(null);
   const [aviso, setAviso] = useState("");
@@ -77,6 +80,8 @@ export function Grilla({ dia, hoy, mover }: { dia: AgendaVista; hoy: string; mov
     e.preventDefault();
     const a = arrastreRef.current;
     arrastreRef.current = null;
+    arrastroRecien.current = true;
+    setTimeout(() => (arrastroRecien.current = false), 0);
     setArrastre(null);
     setDestino(null);
     if (!a || !mover) return;
@@ -251,9 +256,14 @@ export function Grilla({ dia, hoy, mover }: { dia: AgendaVista; hoy: string; mov
                   // igual, pero ofrecer el gesto y después negarlo es peor que no ofrecerlo).
                   const movible = Boolean(mover) && !r.esBloqueo;
                   const seEstaMoviendo = arrastre?.id === u.id;
+                  // Link real y no un onClick: el detalle vive en la URL, así que abrirlo tiene
+                  // que funcionar con el botón del medio, con "copiar dirección" y sin JS.
+                  const destino = baseTurno ? `${baseTurno}${baseTurno.includes("?") ? "&" : "?"}turno=${u.id}` : undefined;
+                  const Bloque = (destino ? "a" : "div") as "a" | "div";
                   return (
-                    <div
+                    <Bloque
                       key={u.id}
+                      href={destino}
                       className="evento"
                       draggable={movible}
                       onDragStart={
@@ -273,6 +283,11 @@ export function Grilla({ dia, hoy, mover }: { dia: AgendaVista; hoy: string; mov
                         arrastreRef.current = null;
                         setArrastre(null);
                         setDestino(null);
+                      }}
+                      // Arrastrar un <a> termina en un click que abriría el detalle del turno que
+                      // se acaba de mover. Se traga ese click y solo ese.
+                      onClick={(e) => {
+                        if (arrastreRef.current || arrastroRecien.current) e.preventDefault();
                       }}
                       title={[r.titulo, r.horaTexto, dia.vista === "semana" ? r.salaNombre : null, importe, movible ? "Arrastrá para moverlo" : null]
                         .filter(Boolean)
@@ -306,7 +321,7 @@ export function Grilla({ dia, hoy, mover }: { dia: AgendaVista; hoy: string; mov
                       {u.span > 1 && <div style={{ opacity: 0.9, fontSize: 11 }}>{r.horaTexto}</div>}
                       {u.span > 2 && dia.vista === "semana" && <div style={{ opacity: 0.9, fontSize: 11 }}>{r.salaNombre}</div>}
                       {u.span > 2 && importe && <div style={{ opacity: 0.9, fontSize: 11 }}>{importe}</div>}
-                    </div>
+                    </Bloque>
                   );
                 })}
               </div>

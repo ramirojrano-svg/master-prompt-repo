@@ -13,7 +13,15 @@ import { actorDeSesion } from "../../../src/lib/sesion.ts";
 import { intentar } from "../../../src/lib/db-salud.ts";
 import { BaseNoLista } from "../../BaseNoLista.tsx";
 import { cargarAgenda } from "../../../src/servicios/agenda/dia.ts";
-import { crearReservaAjena, mensajeDeError, mensajeDeMovimiento, moverReservaAjena } from "../../../src/servicios/agenda/acciones.ts";
+import {
+  cancelarReservaAjena,
+  crearReservaAjena,
+  mensajeDeError,
+  mensajeDeMovimiento,
+  mensajeDeTurno,
+  moverReservaAjena,
+  noShowReservaAjena,
+} from "../../../src/servicios/agenda/acciones.ts";
 import { prisma } from "../../../src/db/prisma.ts";
 import { puede } from "../../../src/lib/permisos.ts";
 import { fechaEnZona, formatHora } from "../../../src/dominio/motor/zona.ts";
@@ -27,9 +35,43 @@ import { Grilla } from "./Grilla.tsx";
 import { VistaMes } from "./VistaMes.tsx";
 import { MiniCalendario } from "./MiniCalendario.tsx";
 import { NuevaReserva } from "./NuevaReserva.tsx";
+import { DetalleTurno } from "./DetalleTurno.tsx";
 
 type Params = { slug: string };
-type Query = { fecha?: string; vista?: string; mes?: string; salas?: string; error?: string; creada?: string };
+type Query = { fecha?: string; vista?: string; mes?: string; salas?: string; error?: string; creada?: string; turno?: string; errorTurno?: string };
+
+/**
+ * El cuerpo compartido de las acciones sobre un turno. Vive FUERA del componente a propósito:
+ * una server action serializa todo lo que captura de su entorno, y capturar una función definida
+ * adentro de la página revienta con "Functions cannot be passed directly to Client Components".
+ * Acá las actions solo capturan strings.
+ */
+async function ejecutarSobreTurno(
+  cual: "cancelar" | "noShow",
+  fd: FormData,
+  ctx: { slug: string; vista: Vista; fecha: string; salas?: string },
+): Promise<void> {
+  const actor = await actorDeSesion(ctx.slug);
+  if (!actor) redirect(`/login?centro=${encodeURIComponent(ctx.slug)}`);
+
+  const ocupacionId = String(fd.get("ocupacionId") ?? "");
+  const r =
+    cual === "cancelar"
+      ? await cancelarReservaAjena(actor, { ocupacionId })
+      : await noShowReservaAjena(actor, { ocupacionId, accion: fd.get("accion") });
+
+  const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
+  const q = new URLSearchParams({ fecha: ctx.fecha, vista: ctx.vista });
+  if (ctx.salas) q.set("salas", ctx.salas);
+  // Con error el detalle sigue abierto: el mensaje sin el turno adelante no se entiende.
+  if (codigo) {
+    q.set("turno", ocupacionId);
+    q.set("errorTurno", codigo);
+  }
+
+  revalidatePath(`/panel/${ctx.slug}`);
+  redirect(`/panel/${ctx.slug}?${q.toString()}`);
+}
 
 export default async function PanelPage({ params, searchParams }: { params: Promise<Params>; searchParams: Promise<Query> }) {
   // En Next 16 params y searchParams son Promise (§11.0).
@@ -156,6 +198,23 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
     return { ok: true, mensaje: "" };
   }
 
+  // Acciones sobre un turno existente. Vuelven al mismo día y vista, con el detalle CERRADO si
+  // salió bien (el turno ya no es lo que era) y abierto con el error si no.
+  const puedeEditarTurnos = puede(actor.rol, "reserva.editar.ajena");
+
+  async function cancelarTurno(fd: FormData) {
+    "use server";
+    await ejecutarSobreTurno("cancelar", fd, { slug, vista, fecha: agenda!.fecha, salas: sp.salas });
+  }
+  async function marcarNoShowTurno(fd: FormData) {
+    "use server";
+    await ejecutarSobreTurno("noShow", fd, { slug, vista, fecha: agenda!.fecha, salas: sp.salas });
+  }
+
+  // El turno abierto sale de la agenda YA PROYECTADA: si el que mira no lo puede ver, no está en
+  // la lista y el panel no se abre. No hay una segunda consulta que se saltee la privacidad.
+  const turnoAbierto = sp.turno ? agenda.reservas.find((r) => r.id === sp.turno) : undefined;
+
   const links: { href: string; texto: string; icono: ReactNode }[] = [];
   if (puede(actor.rol, "sala.administrar")) links.push({ href: `/panel/${slug}/salas`, texto: "Consultorios", icono: <IconoConsultorio /> });
   if (puede(actor.rol, "inquilino.administrar")) links.push({ href: `/panel/${slug}/inquilinos`, texto: "Profesionales", icono: <IconoProfesional /> });
@@ -279,10 +338,29 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           ) : (
             // Sin permiso para editar turnos ajenos no se pasa la acción: la grilla no ofrece el
             // gesto en vez de ofrecerlo y que el servidor lo rechace después.
-            <Grilla dia={agenda} hoy={hoy} mover={puede(actor.rol, "reserva.editar.ajena") ? mover : undefined} />
+            <Grilla
+              dia={agenda}
+              hoy={hoy}
+              mover={puedeEditarTurnos ? mover : undefined}
+              // Sin identidad el turno es un "ocupado" y no hay detalle que abrir: no se ofrece
+              // el link en vez de abrir un panel vacío.
+              baseTurno={puede(actor.rol, "agenda.ver.identidad") ? href(agenda.fecha) : undefined}
+            />
           )}
         </section>
       </div>
+
+      {turnoAbierto && (
+        <DetalleTurno
+          turno={turnoAbierto}
+          moneda={agenda.moneda}
+          cerrarHref={href(agenda.fecha)}
+          puedeEditar={puedeEditarTurnos}
+          cancelar={cancelarTurno}
+          noShow={marcarNoShowTurno}
+          error={sp.errorTurno ? mensajeDeTurno(sp.errorTurno) : undefined}
+        />
+      )}
 
       {/* ── Crear turno: redondo, abajo a la izquierda ────────────────────────
           Fuera del <aside>: el lateral se esconde abajo de 880px y el botón de crear no puede

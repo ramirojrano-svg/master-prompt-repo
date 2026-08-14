@@ -12,6 +12,8 @@ import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
 import { crearOcupacion, type CtxReserva, type ResultadoCrear } from "../reservas/crear.ts";
 import { moverOcupacion, type ResultadoMover } from "../reservas/mover.ts";
+import { cancelarOcupacion } from "../reservas/cancelar.ts";
+import { marcarNoShow, revertirNoShow } from "../reservas/no-show.ts";
 import { parseHorarios } from "../../dominio/motor/horarios.ts";
 import { instanteDeHoraLocal } from "../../dominio/motor/zona.ts";
 import { PASO_DEFAULT, DURACION_MAX_MIN, DURACION_MIN_MIN } from "../../dominio/motor/limites.ts";
@@ -114,6 +116,34 @@ export const moverReservaAjena = definirAccion(
 export const moverReservaAjenaCon = (db: PrismaClient) =>
   definirAccion({ permiso: "reserva.editar.ajena", schema: MoverReservaInput }, (actor, input) => moverDesdePanel(actor, input, db));
 
+// ── Acciones sobre un turno ya existente ───────────────────────────────────
+// Las tres piden `reserva.editar.ajena`: cambiarle la hora, marcarle una falta o darlo de baja
+// son formas de editar el turno de otro. La recepción no las tiene.
+
+export const TurnoInput = z.object({ ocupacionId: z.string().min(1), motivo: z.string().max(200).optional() });
+export const NoShowInput = TurnoInput.extend({ accion: z.enum(["marcar", "revertir"]) });
+
+/** Da de baja el turno y devuelve la plata (la política pura reembolsa 100% al cancelar el centro). */
+export const cancelarReservaAjena = definirAccion(
+  { permiso: "reserva.editar.ajena", schema: TurnoInput },
+  (actor, input) => cancelarOcupacion(input, { operadorId: actor.operadorId }),
+);
+
+/** Marca (o desmarca) que el profesional no vino. No libera la sala: la hora ya pasó. */
+export const noShowReservaAjena = definirAccion(
+  { permiso: "reserva.editar.ajena", schema: NoShowInput },
+  (actor, input) =>
+    input.accion === "marcar"
+      ? marcarNoShow(input, { operadorId: actor.operadorId })
+      : revertirNoShow(input, { operadorId: actor.operadorId }),
+);
+
+/** Las mismas, para tests: permiten inyectar el cliente de base. */
+export const cancelarReservaAjenaCon = (db: PrismaClient) =>
+  definirAccion({ permiso: "reserva.editar.ajena", schema: TurnoInput }, (actor, input) =>
+    cancelarOcupacion(input, { operadorId: actor.operadorId }, db),
+  );
+
 /** Reserva a nombre de OTRO inquilino: es lo que hace el operador desde el panel. */
 export const crearReservaAjena = definirAccion(
   { permiso: "reserva.crear.ajena", schema: NuevaReservaInput },
@@ -183,5 +213,27 @@ export function mensajeDeMovimiento(codigo: string): string {
       return ""; // soltar el bloque donde ya estaba no es un error: no se dice nada
     default:
       return "No se pudo mover el turno.";
+  }
+}
+
+/** Mensajes de las acciones sobre un turno existente (cancelar, no vino). */
+export function mensajeDeTurno(codigo: string): string {
+  switch (codigo) {
+    case "CONGELADA":
+      return "Ese turno ya se usó o se marcó como ausente: no se puede cancelar.";
+    case "YA_CANCELADA":
+      return "Ese turno ya estaba cancelado.";
+    case "NO_CANCELABLE":
+      return "Los bloqueos y el mantenimiento no se cancelan desde acá.";
+    case "MES_CERRADO":
+      return "Ese turno está en un mes ya liquidado: cancelarlo cambiaría plata cerrada.";
+    case "NO_APLICABLE":
+      return "El turno no está en un estado que permita esa marca.";
+    case "NO_ENCONTRADA":
+      return "Ese turno ya no existe. Recargá la agenda.";
+    case "SIN_PERMISO":
+      return "Tu rol no puede modificar turnos de otros profesionales.";
+    default:
+      return "No se pudo completar la acción sobre el turno.";
   }
 }

@@ -59,7 +59,9 @@ try {
   const page = await ctx.newPage();
   await entrar(page, "ramirojrano@gmail.com");
 
-  const bloques = await page.locator("[aria-label]").count();
+  // Se cuenta `.evento` y no `[aria-label]`: aria-label lo llevan también la barra, el botón de
+  // crear y el detalle del turno, así que esa cuenta medía la pantalla entera y no la grilla.
+  const bloques = await page.locator(".evento").count();
   chequeo(bloques > 0, `la grilla muestra ${bloques} bloques`);
   const kpi = (await page.locator("#kpi").innerText()).replace(/\s+/g, " ");
   chequeo(/Ocupación .* de .*/.test(kpi), `KPI con denominador: "${kpi}"`);
@@ -67,7 +69,7 @@ try {
 
   // ── 2. Alta de reserva por el formulario ──────────────────────────────────
   console.log("\n[owner] alta de reserva");
-  const antes = await page.locator("[aria-label]").count();
+  const antes = await page.locator(".evento").count();
   const sala = await page.locator("#salaId option").first().getAttribute("value");
   // El script tiene que poder correrse VARIAS VECES seguidas sin reseed: se busca un hueco libre
   // en vez de clavar uno. (La primera versión clavaba 20:00 y la segunda corrida se chocaba sola.)
@@ -77,32 +79,34 @@ try {
   }).reverse(); // de la tarde para atrás: la mañana del seed está más llena
   let hora = null;
   for (const h of horasPosibles) {
+    // Cada intento arranca de una URL LIMPIA. Es lo que hace fiable al waitForURL de abajo: si se
+    // dejara la URL del intento anterior (que ya trae `error=`), el patrón matchearía al instante
+    // sin esperar la navegación y el bucle leería siempre el resultado viejo — con eso un alta
+    // que funcionaba perfecto se reportaba como fallada. Esperar "que la URL cambie" tampoco
+    // sirve: dos intentos seguidos con el mismo error dan exactamente la misma URL.
+    await page.goto(`${BASE}/panel/${SLUG}`, { waitUntil: "domcontentloaded" });
     await abrirAlta(page);
     await page.selectOption("#salaId", sala);
     await page.fill("#hora", h);
     await page.selectOption("#duracionMin", "60");
-    // Se espera a que la URL CAMBIE, no a que matchee /creada=1|error=/: después del primer
-    // intento fallido la URL ya trae `error=`, el waitForURL resolvía al instante sin esperar la
-    // navegación, y a partir de ahí el bucle leía siempre la URL vieja. Con eso, un alta que
-    // funcionaba perfecto se reportaba como fallada.
-    const urlPrevia = page.url();
     await Promise.all([
-      page.waitForURL((u) => u.toString() !== urlPrevia, { timeout: 20_000 }),
+      page.waitForURL(/creada=1|error=/, { timeout: 20_000 }),
       page.click('form button[type="submit"]'),
     ]);
     if (page.url().includes("creada=1")) { hora = h; break; }
   }
   chequeo(hora !== null, `reserva creada a las ${hora ?? "—"} (url: ${page.url().split("?")[1]})`);
-  const despues = await page.locator("[aria-label]").count();
+  const despues = await page.locator(".evento").count();
   chequeo(despues === antes + 1, `la grilla pasó de ${antes} a ${despues} bloques`);
   await page.screenshot({ path: `${OUT}/2-reserva-creada.png`, fullPage: true });
 
   // ── 3. El mismo slot otra vez: mensaje honesto ────────────────────────────
   console.log("\n[owner] slot ya ocupado");
+  await page.goto(`${BASE}/panel/${SLUG}`, { waitUntil: "domcontentloaded" });
   await abrirAlta(page);
   await page.selectOption("#salaId", sala);
   await page.fill("#hora", hora ?? "20:00");
-  await Promise.all([page.waitForURL(/creada=1|error=/, { timeout: 20_000 }), page.click('button[type="submit"]')]);
+  await Promise.all([page.waitForURL(/creada=1|error=/, { timeout: 20_000 }), page.click('form button[type="submit"]')]);
   const err = await page.locator("p.error").innerText().catch(() => "");
   chequeo(/ocupar|ocupado|otra sala|fuera de/i.test(err), `error honesto: "${err}"`);
   await page.screenshot({ path: `${OUT}/3-slot-ocupado.png`, fullPage: true });
@@ -153,6 +157,52 @@ try {
     chequeo(sigueEnElLugar === 1, "si rebota, el turno sigue donde estaba (no se pierde)");
   }
   await page.screenshot({ path: `${OUT}/3b-arrastre.png`, fullPage: true });
+
+  // ── 3-ter. Detalle del turno: no vino y cancelar ──────────────────────────
+  console.log("\n[owner] detalle del turno");
+  await page.goto(`${BASE}/panel/${SLUG}`, { waitUntil: "domcontentloaded" });
+  const detalle = page.locator('[aria-label="Detalle del turno"]');
+  const bloquesAntes = await page.locator("a.evento").count();
+  chequeo(bloquesAntes > 0, `${bloquesAntes} turnos abren su detalle al clickearlos`);
+
+  /**
+   * Abre turnos hasta encontrar uno que ofrezca `boton`, y devuelve su etiqueta.
+   * No sirve agarrar "el primero": el script se corre varias veces seguidas sin reseed, y en la
+   * segunda corrida los primeros turnos ya quedaron marcados o cancelados por la anterior. Lo que
+   * se prueba es la acción, no cuál turno tocó.
+   */
+  async function turnoQueOfrece(boton, tope = 12) {
+    for (let i = 0; i < Math.min(await page.locator("a.evento").count(), tope); i++) {
+      await page.goto(`${BASE}/panel/${SLUG}`, { waitUntil: "domcontentloaded" });
+      const b = page.locator("a.evento").nth(i);
+      const etiqueta = await b.getAttribute("aria-label");
+      await b.click();
+      if (!(await esperar(async () => (await detalle.count()) === 1, 6000))) continue;
+      if ((await detalle.locator(`button:has-text("${boton}")`).count()) === 1) return etiqueta;
+    }
+    return null;
+  }
+
+  const etiquetaTurno = await turnoQueOfrece("Marcar que no vino");
+  chequeo(etiquetaTurno !== null, `clickear un turno abre su detalle (elegido: ${etiquetaTurno ?? "ninguno"})`);
+
+  // "No vino" no libera la sala: la hora ya pasó, la falta queda registrada.
+  await detalle.locator('button:has-text("Marcar que no vino")').click();
+  await esperar(async () => (await detalle.count()) === 0);
+  await page.locator(`a.evento[aria-label="${etiquetaTurno}"]`).first().click();
+  await esperar(async () => (await detalle.count()) === 1);
+  const textoDetalle = (await detalle.innerText()).replace(/\s+/g, " ");
+  chequeo(/No vino/.test(textoDetalle), `queda marcado como "no vino"`);
+  chequeo(await detalle.locator('button:has-text("Deshacer")').count() === 1, "ofrece deshacer la marca");
+  chequeo(await detalle.locator('button:has-text("Cancelar turno")').count() === 0, "un turno con falta ya NO se puede cancelar");
+  await page.screenshot({ path: `${OUT}/3c-detalle.png`, fullPage: true });
+
+  // Cancelar SÍ libera la sala: el bloque desaparece de la grilla.
+  const etiquetaCancelada = await turnoQueOfrece("Cancelar turno");
+  chequeo(etiquetaCancelada !== null, `hay un turno cancelable (${etiquetaCancelada ?? "ninguno"})`);
+  await detalle.locator('button:has-text("Cancelar turno")').click();
+  const desaparecio = await esperar(async () => (await page.locator(`a.evento[aria-label="${etiquetaCancelada}"]`).count()) === 0);
+  chequeo(desaparecio, "cancelar saca el turno de la grilla y libera la hora");
 
   // ── 4. El inquilino: sin identidad ajena ni formulario ────────────────────
   console.log("\n[inquilino] privacidad");

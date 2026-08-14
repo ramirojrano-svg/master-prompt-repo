@@ -122,7 +122,7 @@ Las pantallas, desde la agenda:
 
 | Pantalla | Para qué | Quién entra |
 |---|---|---|
-| `/panel/<slug>` | el calendario: vistas **día, semana y mes**, alta de turno y **arrastrar para mover** | todos (cada uno ve lo suyo) |
+| `/panel/<slug>` | el calendario: vistas **día, semana y mes**, alta de turno, **arrastrar para mover** y detalle con **cancelar / no vino** | todos (cada uno ve lo suyo) |
 | `…/salas` | alta, edición y **archivado** de consultorios | owner y gestor |
 | `…/inquilinos` | alta y baja de profesionales | owner y gestor |
 | `…/tarifas` | **precio de la hora**: general, por consultorio y por profesional | solo el owner |
@@ -131,6 +131,11 @@ Las pantallas, desde la agenda:
 
 > El estado del calendario (día, vista, consultorios filtrados) vive en la URL: el botón "atrás"
 > funciona, y el link de un día concreto se puede mandar por WhatsApp.
+
+> **Clickear un turno** abre su detalle (`?turno=<id>`) con lo que se le puede hacer: marcar que
+> el profesional **no vino** (queda la falta, la hora NO se libera: ya pasó) o **cancelarlo**
+> (libera la hora y devuelve lo facturado con una nota de crédito que apunta al cargo original —
+> el cargo no se borra nunca). Un turno de un mes ya liquidado no se cancela.
 
 > **Arrastrar un turno** lo mueve de horario y de consultorio (en la vista semana, de día). La
 > duración viaja con él y el precio NO se recotiza: mover un turno no es volverlo a vender. El
@@ -151,7 +156,7 @@ Las pantallas, desde la agenda:
 | `npm run dev` | servidor de desarrollo |
 | `npm run seed` | carga (o recarga) los datos del piloto |
 | `npm test` | tests puros del dominio, sin base (~175, corren en segundos) |
-| `npm run test:db` | tests de integración contra Postgres real (~148), incluida la concurrencia |
+| `npm run test:db` | tests de integración contra Postgres real (~157), incluida la concurrencia |
 | `npm run typecheck` | TypeScript en modo estricto |
 | `npm run verify` | typecheck + tests puros |
 | `npm run humo` | prueba de humo en un browser real; deja capturas en `capturas/` |
