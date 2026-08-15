@@ -9,7 +9,28 @@
 // depende de qué email se tipeó.
 import { redirect } from "next/navigation";
 import { signIn } from "../../../src/lib/auth.ts";
+import { prisma } from "../../../src/db/prisma.ts";
 import { Logo } from "../../Logo.tsx";
+
+/**
+ * A qué centro mandar a un usuario que entró sin decir a cuál. Devuelve el slug del primer centro
+ * donde tiene acceso ACTIVO, o null si no tiene ninguno.
+ *
+ * Existe porque el login sin `?centro=` mandaba a la portada, y la portada solo ofrece "Creá tu
+ * centro": después de cerrar sesión, volver a entrar dejaba en una pantalla desde la que no se
+ * podía llegar a la app. El dato para resolverlo siempre estuvo —el usuario tiene su acceso en la
+ * base—, solo que nadie lo miraba.
+ */
+async function centroDe(email: string): Promise<string | null> {
+  const uo = await prisma.usuarioOperador.findFirst({
+    where: { activo: true, usuario: { email: email.trim().toLowerCase() } },
+    select: { operador: { select: { slug: true } } },
+    // Sin criterio de desempate: quien alquila en más de un centro entra al primero que devuelva
+    // la base. Es aceptable porque desde el panel puede cambiar, y el caso hoy no existe — pero
+    // el día que exista, acá va el "último centro visitado".
+  });
+  return uo?.operador.slug ?? null;
+}
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; centro?: string }> }) {
   // En Next 16 searchParams es una Promise (§11.0).
@@ -29,10 +50,16 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       // verificación no llegó a hacerse (authorize tiró), y eso es un problema del sistema.
       codigo = (e as { type?: string })?.type === "CredentialsSignin" ? "1" : "sistema";
     }
+    // Sin `centro` en la URL —lo normal al entrar desde /login pelado, que es donde deja el cerrar
+    // sesión— se resuelve por el usuario en vez de mandarlo a la portada.
+    const destino = centro || (codigo ? null : await centroDe(email));
+
     // Los redirect() van FUERA del try: se implementan tirando una excepción, y adentro los
     // estaríamos cazando como si fueran un fallo del login.
     if (codigo) redirect(`/login?error=${codigo}${centro ? `&centro=${encodeURIComponent(centro)}` : ""}`);
-    redirect(centro ? `/panel/${centro}` : "/");
+    // Entró bien pero no tiene acceso a ningún centro: es un caso real (un acceso dado de baja) y
+    // no puede terminar en la portada, que solo ofrece crear un centro nuevo.
+    redirect(destino ? `/panel/${destino}` : "/login?error=sin-centro");
   }
 
   return (
@@ -64,7 +91,14 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
 
           <input type="hidden" name="centro" defaultValue={sp.centro ?? ""} />
 
-          {sp.error === "sistema" ? (
+          {sp.error === "sin-centro" ? (
+            <p className="error" style={{ marginBottom: 0 }}>
+              Tus datos son correctos, pero tu usuario no tiene acceso activo a ningún centro.
+              <span className="tenue" style={{ display: "block", fontWeight: 400, marginTop: 4 }}>
+                Pedile al dueño del centro que te reactive el acceso.
+              </span>
+            </p>
+          ) : sp.error === "sistema" ? (
             <p className="error" style={{ marginBottom: 0 }}>
               No pudimos verificar tus datos: la base no está respondiendo.
               <span className="tenue" style={{ display: "block", fontWeight: 400, marginTop: 4 }}>

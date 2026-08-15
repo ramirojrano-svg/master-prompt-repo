@@ -43,8 +43,8 @@ test("el OPERADOR ve identidad pero NO la nota privada del inquilino", () => {
   assert.equal("notaInterna" in dto, false, "la nota privada no sale ni para el owner");
 });
 
-test("la recepción ve identidad (necesita saber quién entra) pero tampoco la nota", () => {
-  const dto = proyectarReserva(fila, actor("recepcion")) as Record<string, unknown>;
+test("el soporte ve identidad (para poder ayudar) pero tampoco la nota", () => {
+  const dto = proyectarReserva(fila, actor("soporte_plataforma")) as Record<string, unknown>;
   assert.equal(dto.inquilinoNombre, "María Gómez (Psicología)");
   assert.equal("notaInterna" in dto, false);
 });
@@ -70,10 +70,13 @@ test("el owner ve el importe de la reserva", () => {
   assert.equal(dto.importeCent, "1200000", "string: un BigInt no viaja al cliente");
 });
 
-test("la RECEPCIÓN ve quién está en la sala pero NO cuánto paga", () => {
-  const dto = proyectarReserva(conPrecio, actor("recepcion")) as Record<string, unknown>;
-  assert.equal(dto.inquilinoNombre, "María Gómez (Psicología)");
-  assert.equal(dto.importeCent, null, "identidad y plata son permisos distintos (§6.2)");
+test("en la vista AJENA no sale NI el nombre NI el importe: un ocupado es un ocupado", () => {
+  // Los campos no vienen en null: directamente no están. Un null en el DTO sigue diciendo "acá
+  // había algo que no te muestro", y eso ya es información sobre la reserva del de al lado.
+  const ajena = proyectarReserva(conPrecio, actor("inquilino_titular", "in9")) as Record<string, unknown>;
+  assert.equal("importeCent" in ajena, false);
+  assert.equal("inquilinoNombre" in ajena, false);
+  assert.equal(ajena.estado, "ocupado");
 });
 
 test("el profesional ve el importe de SU reserva", () => {
@@ -81,10 +84,18 @@ test("el profesional ve el importe de SU reserva", () => {
   assert.equal(dto.importeCent, "1200000");
 });
 
-test("el staff del profesional agenda pero no mira la facturación del titular", () => {
-  const dto = proyectarReserva(conPrecio, actor("inquilino_staff", "in1")) as Record<string, unknown>;
-  assert.equal(dto.notaInterna, "Martín 16h", "es su vista propia");
-  assert.equal(dto.importeCent, null, "pero sin cuenta.ver.propia no hay plata");
+test("la plata la gobierna el PERMISO, no la vista", () => {
+  // El soporte no es dueño de ninguna reserva y ve todos los importes (cuenta.ver.todas); el
+  // profesional ve el suyo por cuenta.ver.propia. Son dos caminos distintos al mismo campo, y por
+  // eso el gate de plata está escrito aparte del de identidad.
+  //
+  // Al reducir los roles dejó de existir uno con identidad y SIN plata (era la recepción). La
+  // separación sigue en el código y este test la recorre por los dos lados que quedan.
+  const soporte = proyectarReserva(conPrecio, actor("soporte_plataforma", null)) as Record<string, unknown>;
+  assert.equal(soporte.importeCent, "1200000", "cuenta.ver.todas");
+
+  const propia = proyectarReserva(conPrecio, actor("inquilino_titular", "in1")) as Record<string, unknown>;
+  assert.equal(propia.importeCent, "1200000", "cuenta.ver.propia sobre la vista propia");
 });
 
 test("el importe JAMÁS aparece en la vista ajena", () => {

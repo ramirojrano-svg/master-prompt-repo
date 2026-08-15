@@ -159,17 +159,18 @@ async function main() {
   // usan sala, y cargarles un turno en el seed sería inventar un dato que la app no aceptaría.
   const conSala = inquilinos.filter((_, i) => !PROFESIONALES[i]!.abonoMensualCent);
 
-  // Usuarios del centro: los tres roles reales.
+  // Usuarios del centro: los DOS roles que existen. El de recepción se fue con el rol — este
+  // centro no tiene mostrador: los profesionales se agendan solos y la administración la lleva
+  // el dueño. El borrado de arriba sigue incluyendo ana@email.com para limpiar las bases que
+  // quedaron sembradas antes del cambio.
   const hash = await hashPassword(PASSWORD_DEMO);
   const ramiro = await prisma.usuario.create({ data: { email: "ramirojrano@gmail.com", nombre: "Ramiro Raño", passwordHash: hash } });
   const gomez = await prisma.usuario.create({ data: { email: "maria@email.com", nombre: PROFESIONALES[0]!.nombre, passwordHash: hash } });
-  const ana = await prisma.usuario.create({ data: { email: "ana@email.com", nombre: "Ana Torres", passwordHash: hash } });
 
   await prisma.usuarioOperador.createMany({
     data: [
       { usuarioId: ramiro.id, operadorId: operador.id, rol: Rol.owner },
       { usuarioId: gomez.id, operadorId: operador.id, rol: Rol.inquilino_titular, inquilinoId: maria.id },
-      { usuarioId: ana.id, operadorId: operador.id, rol: Rol.recepcion },
     ],
   });
 
@@ -287,9 +288,8 @@ async function main() {
   console.log(`  ocupaciones: ${filas.length}`);
   console.log("");
   console.log(`  Entrá en /panel/${SLUG} con:`);
-  console.log(`    owner      ramirojrano@gmail.com / ${PASSWORD_DEMO}`);
-  console.log(`    inquilino  maria@email.com       / ${PASSWORD_DEMO}`);
-  console.log(`    recepción  ana@email.com         / ${PASSWORD_DEMO}`);
+  console.log(`    administrador  ramirojrano@gmail.com / ${PASSWORD_DEMO}`);
+  console.log(`    profesional    maria@email.com       / ${PASSWORD_DEMO}`);
 }
 
 main()

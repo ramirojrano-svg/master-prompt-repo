@@ -5,30 +5,27 @@ import { puede, type Permiso, type Rol } from "./permisos.ts";
 
 // Celdas críticas de la matriz, declaradas a mano (no generadas del propio módulo).
 const ESPERADO: { rol: Rol; permiso: Permiso; puede: boolean }[] = [
-  // solo el owner: cerrar período, editar tarifas, forzar solape
+  // El administrador puede todo lo del centro.
   { rol: "owner", permiso: "periodo.cerrar", puede: true },
-  { rol: "gestor", permiso: "periodo.cerrar", puede: false },
   { rol: "owner", permiso: "tarifa.administrar", puede: true },
-  { rol: "gestor", permiso: "tarifa.administrar", puede: false },
   { rol: "owner", permiso: "reserva.forzar_solape", puede: true },
-  { rol: "gestor", permiso: "reserva.forzar_solape", puede: false },
-  // gestor sí ve finanzas agregada y administra salas
-  { rol: "gestor", permiso: "finanzas.ver.agregada", puede: true },
-  { rol: "gestor", permiso: "sala.administrar", puede: true },
-  // recepción cobra pero NO ve finanzas agregada ni administra salas
-  { rol: "recepcion", permiso: "cobro.registrar", puede: true },
-  { rol: "recepcion", permiso: "finanzas.ver.agregada", puede: false },
-  { rol: "recepcion", permiso: "sala.administrar", puede: false },
-  { rol: "recepcion", permiso: "cuenta.ver.todas", puede: false },
-  // inquilino: lo suyo, nada del de al lado
+  { rol: "owner", permiso: "finanzas.ver.agregada", puede: true },
+  { rol: "owner", permiso: "sala.administrar", puede: true },
+  { rol: "owner", permiso: "cobro.registrar", puede: true },
+  // El profesional: lo suyo, nada del de al lado. Estas cinco negaciones son las que dejan las
+  // pantallas de administración fuera de su alcance — el menú las esconde, pero el que manda es
+  // el permiso: sin esto, escribir la URL a mano alcanzaría.
   { rol: "inquilino_titular", permiso: "cuenta.ver.propia", puede: true },
   { rol: "inquilino_titular", permiso: "reserva.crear.propia", puede: true },
+  { rol: "inquilino_titular", permiso: "reserva.editar.propia", puede: true },
   { rol: "inquilino_titular", permiso: "agenda.ver.identidad", puede: false },
   { rol: "inquilino_titular", permiso: "reserva.crear.ajena", puede: false },
   { rol: "inquilino_titular", permiso: "cobro.registrar", puede: false },
-  // staff = titular menos plata
-  { rol: "inquilino_staff", permiso: "reserva.crear.propia", puede: true },
-  { rol: "inquilino_staff", permiso: "cuenta.ver.propia", puede: false },
+  { rol: "inquilino_titular", permiso: "sala.administrar", puede: false },
+  { rol: "inquilino_titular", permiso: "inquilino.administrar", puede: false },
+  { rol: "inquilino_titular", permiso: "tarifa.administrar", puede: false },
+  { rol: "inquilino_titular", permiso: "finanzas.ver.agregada", puede: false },
+  { rol: "inquilino_titular", permiso: "cuenta.ver.todas", puede: false },
   // soporte: lee, nunca escribe
   { rol: "soporte_plataforma", permiso: "auditoria.ver", puede: true },
   { rol: "soporte_plataforma", permiso: "sala.administrar", puede: false },

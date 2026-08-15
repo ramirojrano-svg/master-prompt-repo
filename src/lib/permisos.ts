@@ -3,13 +3,25 @@
 // o permiso desconocido. Los alcances finos ("solo hoy", "±7 días", "contrato vigente") viven en
 // la server action; acá está el gate grueso por rol.
 
-export type Rol =
-  | "owner"
-  | "gestor"
-  | "recepcion"
-  | "inquilino_titular"
-  | "inquilino_staff"
-  | "soporte_plataforma";
+// Dos roles de centro y nada más: ADMIN (owner) y PROFESIONAL (inquilino_titular).
+//
+// Había tres más —gestor, recepción y el staff del profesional— pensados para un centro con
+// mostrador. Este no lo tiene: los profesionales se agendan solos y la administración la lleva el
+// dueño. Un rol que nadie usa no es gratis: aparece en cada matriz, en cada test y en cada
+// pantalla que muestra "quién puede qué", y el día que alguien lo asigna hereda permisos que
+// nadie volvió a mirar.
+//
+// `soporte_plataforma` NO es un usuario del centro: es el acceso de solo lectura de quien mantiene
+// la app, con consentimiento y expiración. Se queda porque no ocupa lugar en la operación diaria y
+// sacarlo eliminaría un control que existe para poder mirar sin poder tocar.
+export type Rol = "owner" | "inquilino_titular" | "soporte_plataforma";
+
+/** Cómo se llama cada rol en pantalla. */
+export const ETIQUETA_ROL: Record<Rol, string> = {
+  owner: "Administrador",
+  inquilino_titular: "Profesional",
+  soporte_plataforma: "Soporte",
+};
 
 export type Permiso =
   | "agenda.ver.identidad" // ver de QUIÉN es cada reserva
@@ -61,57 +73,16 @@ const TODOS: Permiso[] = [
 ];
 
 const MATRIZ: Readonly<Record<Rol, ReadonlySet<Permiso>>> = {
-  // El único que borra el centro, cambia tarifas, cierra período y fuerza solapes.
+  // El administrador del centro: la agenda entera, los precios, la plata y los gastos.
   owner: new Set(TODOS),
 
-  // Todo lo operativo y comercial MENOS: editar tarifas, cerrar período, forzar solape.
-  gestor: new Set<Permiso>([
-    "agenda.ver.identidad",
-    "agenda.ver.disponibilidad",
-    "reserva.crear.propia",
-    "reserva.crear.ajena",
-    "reserva.editar.propia",
-    "reserva.editar.ajena",
-    "bloqueo.crear",
-    "sala.administrar",
-    "inquilino.administrar",
-    "cobro.registrar",
-    "cuenta.ver.todas",
-    "finanzas.ver.agregada",
-    "acceso.codigo.ver",
-    "acceso.codigo.rotar",
-    "publica.configurar",
-    "usuarios.administrar", // pero NO puede crear un owner: se cierra en la action de invitación
-    "auditoria.ver",
-    "datos.exportar",
-  ]),
-
-  // El mostrador: cobra y agenda (con alcance ±7 días / solo hoy en la action). NO ve agregados.
-  recepcion: new Set<Permiso>([
-    "agenda.ver.identidad",
-    "agenda.ver.disponibilidad",
-    "reserva.crear.propia",
-    "reserva.crear.ajena",
-    "reserva.editar.ajena",
-    "bloqueo.crear",
-    "cobro.registrar",
-    "acceso.codigo.ver",
-  ]),
-
-  // El profesional: lo suyo y nada del de al lado. Disponibilidad sin identidad ajena.
+  // El profesional: lo suyo y nada del de al lado. Ve disponibilidad, no identidad ajena, y no
+  // alcanza ninguna pantalla de administración — ni por el menú ni escribiendo la URL.
   inquilino_titular: new Set<Permiso>([
     "agenda.ver.disponibilidad",
     "reserva.crear.propia",
     "reserva.editar.propia",
     "cuenta.ver.propia",
-    "acceso.codigo.ver",
-  ]),
-
-  // Igual al titular MENOS todo lo que sea plata (no ve la cuenta corriente).
-  inquilino_staff: new Set<Permiso>([
-    "agenda.ver.disponibilidad",
-    "reserva.crear.propia",
-    "reserva.editar.propia",
     "acceso.codigo.ver",
   ]),
 

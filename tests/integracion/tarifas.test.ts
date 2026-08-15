@@ -14,7 +14,6 @@ const db = new PrismaClient({ datasourceUrl: URL_DB });
 const tarifas = tarifasCon(db);
 
 const owner: Actor = { usuarioId: "u1", operadorId: "op1", rol: "owner", inquilinoId: null };
-const gestor: Actor = { usuarioId: "u2", operadorId: "op1", rol: "gestor", inquilinoId: null };
 const profesional: Actor = { usuarioId: "u4", operadorId: "op1", rol: "inquilino_titular", inquilinoId: "in1" };
 
 const HORARIO = ((): CtxReserva["horario"] => {
@@ -66,8 +65,8 @@ after(async () => {
 });
 
 // ── QUIÉN PUEDE ─────────────────────────────────────────────────────────────
-test("§6.2 · el gestor NO toca precios: SIN_PERMISO y cero filas escritas", async () => {
-  const r = await tarifas.poner(gestor, { precioHora: 1 });
+test("§6.2 · un PROFESIONAL no toca precios: SIN_PERMISO y cero filas escritas", async () => {
+  const r = await tarifas.poner(profesional, { precioHora: 1 });
   assert.equal(r.ok, false);
   assert.equal(r.ok === false && r.error, "SIN_PERMISO");
   assert.equal(await db.tarifa.count(), 0, "un rechazo de permiso no deja rastro escrito");

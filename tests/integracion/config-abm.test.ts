@@ -15,7 +15,7 @@ const salas = salasCon(db);
 const inquilinos = inquilinosCon(db);
 
 const owner: Actor = { usuarioId: "u1", operadorId: "op1", rol: "owner", inquilinoId: null };
-const recepcion: Actor = { usuarioId: "u3", operadorId: "op1", rol: "recepcion", inquilinoId: null };
+const profesional: Actor = { usuarioId: "u3", operadorId: "op1", rol: "inquilino_titular", inquilinoId: "in1" };
 
 const salaBase = { nombre: "Consultorio 9", color: "#157f4a", dias: [1, 2, 3, 4, 5], desde: "08:00", hasta: "22:00" };
 
@@ -47,9 +47,9 @@ test("el owner crea una sala con su horario semanal", async () => {
   assert.ok(s.orden > 0, "toma el siguiente orden (el pasillo no es alfabético)");
 });
 
-test("§6.2 · la recepción NO administra salas: SIN_PERMISO y cero escrituras", async () => {
+test("§6.2 · la un profesional NO administra salas: SIN_PERMISO y cero escrituras", async () => {
   const antes = await db.sala.count({ where: { operadorId: "op1" } });
-  const r = await salas.crear(recepcion, salaBase);
+  const r = await salas.crear(profesional, salaBase);
   assert.deepEqual(r, { ok: false, error: "SIN_PERMISO" });
   assert.equal(await db.sala.count({ where: { operadorId: "op1" } }), antes);
 });
@@ -129,7 +129,7 @@ test("editar el nombre no toca las reservas ya existentes", async () => {
   assert.equal(oc.inquilinoId, "in1", "la reserva sigue apuntando al mismo inquilino");
 });
 
-test("§6.2 · la recepción NO administra profesionales", async () => {
-  const r = await inquilinos.crear(recepcion, { nombre: "X" });
+test("§6.2 · la un profesional NO administra profesionales", async () => {
+  const r = await inquilinos.crear(profesional, { nombre: "X" });
   assert.deepEqual(r, { ok: false, error: "SIN_PERMISO" });
 });

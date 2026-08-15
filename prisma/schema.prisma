@@ -85,12 +85,13 @@ model Usuario {
   operadores UsuarioOperador[]
 }
 
+/// Dos roles de centro: administrador y profesional. Los de un centro con mostrador —gestor,
+/// recepción, staff del profesional— se sacaron: acá los profesionales se agendan solos y la
+/// administración la lleva el dueño. `soporte_plataforma` no es un usuario del centro, es el
+/// acceso de solo lectura de quien mantiene la app.
 enum Rol {
-  owner // dueño del centro
-  gestor // encargado/administradora
-  recepcion // mostrador
+  owner // administrador del centro
   inquilino_titular // el profesional que alquila
-  inquilino_staff // su secretaria (todo menos plata)
   soporte_plataforma // nosotros, solo lectura con consentimiento
 }
 

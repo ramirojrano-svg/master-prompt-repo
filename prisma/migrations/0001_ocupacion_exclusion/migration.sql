@@ -14,7 +14,7 @@
 CREATE SCHEMA IF NOT EXISTS "public";
 
 -- CreateEnum
-CREATE TYPE "Rol" AS ENUM ('owner', 'gestor', 'recepcion', 'inquilino_titular', 'inquilino_staff', 'soporte_plataforma');
+CREATE TYPE "Rol" AS ENUM ('owner', 'inquilino_titular', 'soporte_plataforma');
 
 -- CreateEnum
 CREATE TYPE "EstadoInquilino" AS ENUM ('activo', 'suspendido', 'baja');

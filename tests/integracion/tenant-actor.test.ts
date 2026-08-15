@@ -48,9 +48,11 @@ test("resolverActor con un slug ajeno => null (no confirma la existencia del cen
 });
 
 test("el rol se lee FRESCO de la DB: cambiarlo surte efecto en el próximo request", async () => {
-  await pgPool.query(`UPDATE "UsuarioOperador" SET "rol"='gestor' WHERE "usuarioId"='u1'`);
+  // Degradar de administrador a profesional es el caso que importa: tiene que pegar en el
+  // próximo click y no cuando venza el token (§9).
+  await pgPool.query(`UPDATE "UsuarioOperador" SET "rol"='inquilino_titular' WHERE "usuarioId"='u1'`);
   const a = await resolverActor(prisma, { usuarioId: "u1", slug: "centro" });
-  assert.equal(a?.rol, "gestor");
+  assert.equal(a?.rol, "inquilino_titular");
   await pgPool.query(`UPDATE "UsuarioOperador" SET "rol"='owner' WHERE "usuarioId"='u1'`);
 });
 

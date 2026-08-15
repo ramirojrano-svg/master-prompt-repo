@@ -10,17 +10,9 @@
 // estado, y un GET que cambia estado lo dispara cualquier precargador del navegador.
 
 import { auth } from "../../../src/lib/auth.ts";
+import { ETIQUETA_ROL, type Rol } from "../../../src/lib/permisos.ts";
 import { IconoSalir, IconoTuerca } from "../../Iconos.tsx";
 import { cerrarSesion } from "./salir.ts";
-
-const ETIQUETA_ROL: Record<string, string> = {
-  owner: "Dueño",
-  gestor: "Gestor",
-  recepcion: "Recepción",
-  inquilino_titular: "Profesional",
-  inquilino_staff: "Equipo del profesional",
-  soporte_plataforma: "Soporte",
-};
 
 /**
  * El email lo resuelve el propio menú leyendo la sesión, en vez de recibirlo por prop. La barra
@@ -28,7 +20,7 @@ const ETIQUETA_ROL: Record<string, string> = {
  * hoy el email a mano: el Actor trae rol e ids, no datos del usuario. Pasarlo por prop obligaba a
  * consultarlo en las cuatro pantallas y a acordarse de hacerlo en la quinta.
  */
-export async function MenuConfig({ rol }: { rol: string }) {
+export async function MenuConfig({ rol }: { rol: Rol }) {
   const sesion = await auth();
   const email = sesion?.user?.email ?? "";
 
@@ -41,7 +33,7 @@ export async function MenuConfig({ rol }: { rol: string }) {
         {/* Quién está adentro, arriba de todo: en una recepción compartida es lo primero que hay
             que poder verificar antes de tocar nada. */}
         <p style={{ margin: "0 0 2px", fontWeight: 600, fontSize: 14, wordBreak: "break-all" }}>{email}</p>
-        <p className="tenue" style={{ margin: "0 0 12px", fontSize: 12 }}>{ETIQUETA_ROL[rol] ?? rol}</p>
+        <p className="tenue" style={{ margin: "0 0 12px", fontSize: 12 }}>{ETIQUETA_ROL[rol]}</p>
 
         <form action={cerrarSesion}>
           <button type="submit" className="btn-suave" style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>

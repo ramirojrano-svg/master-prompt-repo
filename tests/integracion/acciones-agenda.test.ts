@@ -15,7 +15,6 @@ const db = new PrismaClient({ datasourceUrl: `${URL_DB}?connection_limit=15` });
 const accion = crearReservaAjenaCon(db);
 
 const owner: Actor = { usuarioId: "u1", operadorId: "op1", rol: "owner", inquilinoId: null };
-const recepcion: Actor = { usuarioId: "u3", operadorId: "op1", rol: "recepcion", inquilinoId: null };
 const inquilino: Actor = { usuarioId: "u2", operadorId: "op1", rol: "inquilino_titular", inquilinoId: "in1" };
 
 // Fecha FUTURA calculada desde el reloj: una fecha fija se vuelve pasado y el test empieza a
@@ -45,11 +44,6 @@ test("el owner crea una reserva desde el panel", async () => {
   assert.ok(r.ok && r.data.ok, "debería crearse");
   const n = await db.ocupacion.count({ where: { operadorId: "op1" } });
   assert.equal(n, 1);
-});
-
-test("la recepción también puede cargar a nombre de otro (es su trabajo)", async () => {
-  const r = await accion(recepcion, base);
-  assert.ok(r.ok && r.data.ok);
 });
 
 test("§6.2 · un INQUILINO no puede cargar a nombre de otro: SIN_PERMISO y cero escrituras", async () => {
