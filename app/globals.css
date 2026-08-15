@@ -48,6 +48,15 @@ body {
   height: 100%;
 }
 
+/* Los saltos a un ancla (#editor en Profesionales) se animan en vez de teletransportar: el salto
+   seco deja al que aprieta "Editar" sin saber si cambió de pantalla o si la página se movió sola.
+   Se respeta a quien pidió menos movimiento en el sistema operativo. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 body {
   margin: 0;
   background: var(--fondo);
@@ -461,4 +470,32 @@ tfoot td {
   .oculta-mobile {
     display: none !important;
   }
+}
+
+/* ── Menú de configuración (la tuerca de la barra) ────────────────────────── */
+.menu-config {
+  position: relative;
+}
+.menu-config > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.menu-config > summary::-webkit-details-marker {
+  display: none;
+}
+.menu-config[open] > summary {
+  background: var(--agua-clara);
+  color: var(--marca-900);
+}
+.menu-config > .globo-config {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  z-index: 50;
+  width: 250px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra-alta);
 }

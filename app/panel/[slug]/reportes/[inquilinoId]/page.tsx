@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { BarraNav } from "../../BarraNav.tsx";
+import { MenuConfig } from "../../MenuConfig.tsx";
 import { actorDeSesion } from "../../../../../src/lib/sesion.ts";
 import { puede } from "../../../../../src/lib/permisos.ts";
 import { detalleProfesional } from "../../../../../src/servicios/reportes/mensual.ts";
@@ -127,6 +128,7 @@ export default async function DetalleProfesionalPage({
           ‹ Todas las métricas
         </Link>
         <BarraNav slug={slug} rol={actor.rol} actual="reportes" />
+        <MenuConfig rol={actor.rol} />
       </header>
 
       <main style={{ padding: 20, maxWidth: 1000, margin: "0 auto" }}>

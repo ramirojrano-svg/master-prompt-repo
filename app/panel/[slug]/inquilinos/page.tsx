@@ -68,10 +68,19 @@ export default async function InquilinosPage({
     <>
       <Cabecera slug={slug} rol={actor.rol} actual="inquilinos" titulo="Profesionales" />
       <main style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>
-      <p className="tenue">
-        {inquilinos.length} listados
-        {deBaja > 0 && (verTodos ? <> · <Link href="?">ocultar los de baja</Link></> : <> · {deBaja} de baja (<Link href="?ver=todos">ver</Link>)</>)}
-      </p>
+      {/* El formulario de alta vive al pie, y con treinta profesionales queda tan abajo que no se
+          encuentra: la pantalla parecía no tener forma de agregar a nadie. Este botón lo trae a la
+          vista de arriba, que es donde se lo busca. El `?` limpia un ?editar= que hubiera quedado,
+          así "Agregar" siempre abre el formulario en blanco y no encima de una edición a medias. */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <p className="tenue" style={{ margin: 0 }}>
+          {inquilinos.length} listados
+          {deBaja > 0 && (verTodos ? <> · <Link href="?">ocultar los de baja</Link></> : <> · {deBaja} de baja (<Link href="?ver=todos">ver</Link>)</>)}
+        </p>
+        <Link href={`?${verTodos ? "ver=todos" : ""}#editor`} className="pastilla" style={{ marginLeft: "auto" }}>
+          + Agregar profesional
+        </Link>
+      </div>
 
       <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
         <tbody>
@@ -85,7 +94,10 @@ export default async function InquilinosPage({
               </td>
               <td style={{ padding: "8px 4px" }} className="tenue">{ETIQUETA[i.estado]}</td>
               <td style={{ padding: "8px 4px", textAlign: "right", whiteSpace: "nowrap" }}>
-                <Link href={`?editar=${i.id}${verTodos ? "&ver=todos" : ""}`}>Editar</Link>{" "}
+                {/* El #editor no es decorativo: el panel de edición está al pie de la lista, y sin
+                    el ancla apretar "Editar" no movía la pantalla — parecía que el botón no hacía
+                    nada, con el formulario cargado treinta filas más abajo. */}
+                <Link href={`?editar=${i.id}${verTodos ? "&ver=todos" : ""}#editor`}>Editar</Link>{" "}
                 <form action={cambiarEstado} style={{ display: "inline" }}>
                   <input type="hidden" name="inquilinoId" value={i.id} />
                   <input type="hidden" name="estado" value={i.estado === "activo" ? "baja" : "activo"} />
@@ -99,8 +111,10 @@ export default async function InquilinosPage({
         </tbody>
       </table>
 
-      <form className="panel" action={guardar} style={{ marginTop: 20 }}>
-        <h2 style={{ marginTop: 0 }}>{enEdicion ? "Editar profesional" : "Nuevo profesional"}</h2>
+      <form id="editor" className="panel" action={guardar} style={{ marginTop: 20, scrollMarginTop: 76 }}>
+        {/* scrollMarginTop deja el panel por DEBAJO de la barra superior, que es fija: sin eso el
+            salto lo pone justo atrás del encabezado y el título queda tapado. */}
+        <h2 style={{ marginTop: 0 }}>{enEdicion ? `Editar: ${enEdicion.nombre}` : "Nuevo profesional"}</h2>
         {enEdicion && <input type="hidden" name="inquilinoId" value={enEdicion.id} />}
         <label htmlFor="nombre">Nombre y especialidad</label>
         <input id="nombre" name="nombre" required maxLength={120} defaultValue={enEdicion?.nombre ?? ""} placeholder="Marta Terrón (Alergista)" />

@@ -8,6 +8,7 @@ import Link from "next/link";
 import type { Rol } from "../../../src/lib/permisos.ts";
 import { Logo } from "../../Logo.tsx";
 import { BarraNav, type Seccion } from "./BarraNav.tsx";
+import { MenuConfig } from "./MenuConfig.tsx";
 
 export function Cabecera({ slug, rol, actual, titulo }: { slug: string; rol: Rol; actual: Seccion; titulo: string }) {
   return (
@@ -20,6 +21,7 @@ export function Cabecera({ slug, rol, actual, titulo }: { slug: string; rol: Rol
       </h1>
       <span style={{ marginLeft: "auto" }} />
       <BarraNav slug={slug} rol={rol} actual={actual} />
+      <MenuConfig rol={rol} />
     </header>
   );
 }

@@ -31,6 +31,7 @@ import { horasYMinutos } from "../../../src/dominio/reporte.ts";
 import { Logo } from "../../Logo.tsx";
 import { IconoMas } from "../../Iconos.tsx";
 import { BarraNav } from "./BarraNav.tsx";
+import { MenuConfig } from "./MenuConfig.tsx";
 import { Grilla } from "./Grilla.tsx";
 import { VistaMes } from "./VistaMes.tsx";
 import { MiniCalendario } from "./MiniCalendario.tsx";
@@ -265,6 +266,7 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
         </nav>
 
         <BarraNav slug={slug} rol={actor.rol} actual="agenda" />
+        <MenuConfig rol={actor.rol} />
       </header>
 
       <div className="marco">

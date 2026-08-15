@@ -7,6 +7,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { BarraNav } from "../BarraNav.tsx";
+import { MenuConfig } from "../MenuConfig.tsx";
 import { AnilloVolumen, BarrasVolumen } from "./Graficos.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
@@ -93,6 +94,7 @@ export default async function ReportesPage({
         </nav>
         <span style={{ marginLeft: "auto" }} />
         <BarraNav slug={slug} rol={actor.rol} actual="reportes" />
+        <MenuConfig rol={actor.rol} />
       </header>
 
       <main style={{ padding: 20, maxWidth: 1120, margin: "0 auto" }}>
