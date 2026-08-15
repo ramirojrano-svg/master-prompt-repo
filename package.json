@@ -13,6 +13,7 @@
     "verify": "npm run typecheck && npm test",
     "postinstall": "prisma generate",
     "build": "next build",
+    "predev": "node scripts/entorno-limpio.mjs",
     "dev": "next dev",
     "seed": "node prisma/seed.ts",
     "db:esquema": "node scripts/esquema.mjs",
