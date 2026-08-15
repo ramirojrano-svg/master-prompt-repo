@@ -48,6 +48,9 @@ export type NuevoAsiento = {
   motivo?: string;
   creadoPorUserId?: string;
   revierteAId?: string;
+  /** Solo en cobros: cómo entró la plata y el nº de comprobante, para conciliar. */
+  medio?: "transferencia" | "mercado_pago";
+  referencia?: string;
 };
 
 /** Escribe un asiento; si la clave ya existe (renotificación / doble corrida), no hace nada. */
@@ -72,6 +75,8 @@ export async function asentarIdempotente(
         motivo: a.motivo ?? null,
         creadoPorUserId: a.creadoPorUserId ?? null,
         revierteAId: a.revierteAId ?? null,
+        medio: a.medio ?? null,
+        referencia: a.referencia ?? null,
       },
       select: { id: true },
     });

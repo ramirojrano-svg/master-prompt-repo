@@ -5,11 +5,13 @@
 // detalle que lo forma no se puede defender.
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { BarraNav } from "../../BarraNav.tsx";
 import { actorDeSesion } from "../../../../../src/lib/sesion.ts";
 import { puede } from "../../../../../src/lib/permisos.ts";
 import { detalleProfesional } from "../../../../../src/servicios/reportes/mensual.ts";
+import { anularCobro, cobrosDelMes, ETIQUETA_MEDIO, MEDIOS, registrarCobro } from "../../../../../src/servicios/plata/cobros.ts";
 import { formatearPesos } from "../../../../../src/dominio/tarifa.ts";
 import { esPeriodoValido, horasYMinutos, periodoAnterior } from "../../../../../src/dominio/reporte.ts";
 import { fechaEnZona } from "../../../../../src/dominio/motor/zona.ts";
@@ -25,10 +27,10 @@ export default async function DetalleProfesionalPage({
   searchParams,
 }: {
   params: Promise<{ slug: string; inquilinoId: string }>;
-  searchParams: Promise<{ periodo?: string }>;
+  searchParams: Promise<{ periodo?: string; ok?: string; error?: string }>;
 }) {
   const { slug, inquilinoId } = await params;
-  const { periodo: periodoParam } = await searchParams;
+  const { periodo: periodoParam, ok: okParam, error: errorParam } = await searchParams;
 
   const actor = await actorDeSesion(slug);
   if (!actor) redirect(`/login?centro=${encodeURIComponent(slug)}`);
@@ -48,6 +50,55 @@ export default async function DetalleProfesionalPage({
 
   const plata = (c: bigint) => formatearPesos(c, d.moneda);
   const conUso = d.porDiaSemana.filter((x) => x.minutos > 0);
+
+  const puedeCobrar = puede(actor.rol, "cobro.registrar");
+  const cobros = await cobrosDelMes({ operadorId: actor.operadorId, inquilinoId, periodo });
+  const hoy = fechaEnZona(new Date(), sede.zonaHoraria);
+  const volverA = `/panel/${slug}/reportes/${inquilinoId}?periodo=${periodo}`;
+
+  async function registrarPago(formData: FormData) {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+
+    const r = await registrarCobro(a, {
+      inquilinoId,
+      monto: formData.get("monto"),
+      medio: formData.get("medio"),
+      referencia: formData.get("referencia") ?? undefined,
+      fecha: formData.get("fecha") ?? undefined,
+    });
+
+    revalidatePath(volverA);
+    // El duplicado se avisa distinto que el alta: para el operador "ya estaba cargado" y "listo"
+    // son dos cosas muy diferentes, y confundirlas hace que busque un pago que nunca se asentó.
+    const q = !r.ok ? `&error=${r.error}` : !r.data.ok ? `&error=${r.data.error}` : r.data.duplicado ? "&ok=repetido" : "&ok=1";
+    redirect(`${volverA}${q}`);
+  }
+
+  async function anularPago(formData: FormData) {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+
+    const r = await anularCobro(a, { asientoId: formData.get("asientoId"), motivo: formData.get("motivo") });
+    revalidatePath(volverA);
+    const q = !r.ok ? `&error=${r.error}` : !r.data.ok ? `&error=${r.data.error}` : "&ok=anulado";
+    redirect(`${volverA}${q}`);
+  }
+
+  const AVISO: Record<string, string> = {
+    "1": "Cobro registrado.",
+    repetido: "Ese comprobante ya estaba cargado: no se asentó de nuevo (sigue siendo un solo cobro).",
+    anulado: "Cobro anulado. Queda asentado, con el motivo, y el saldo volvió a incluir esa deuda.",
+  };
+  const FALLA: Record<string, string> = {
+    MES_CERRADO: "Ese mes ya está cerrado: el cobro no se puede anular sin reabrir la liquidación.",
+    YA_ANULADO: "Ese cobro ya estaba anulado.",
+    COBRO_INEXISTENTE: "No se encontró ese cobro.",
+    INQUILINO_INEXISTENTE: "No se encontró ese profesional.",
+    SIN_SEDE: "El centro no tiene una sede activa.",
+  };
 
   return (
     <>
@@ -97,6 +148,98 @@ export default async function DetalleProfesionalPage({
               <p className="tenue" style={{ margin: 0, fontSize: 12 }}>{c.p}</p>
             </div>
           ))}
+        </section>
+
+        {/* ── Cobros del mes ─────────────────────────────────────────────── */}
+        <section style={{ marginTop: 26 }}>
+          <h2 style={{ margin: "0 0 10px" }}>Cobros de {nombreDePeriodo(periodo)}</h2>
+
+          {okParam && AVISO[okParam] && (
+            <p className="panel" style={{ padding: "10px 14px", margin: "0 0 12px", fontSize: 14 }}>{AVISO[okParam]}</p>
+          )}
+          {errorParam && (
+            <p className="panel" style={{ padding: "10px 14px", margin: "0 0 12px", fontSize: 14, color: "var(--error)" }}>
+              {FALLA[errorParam] ?? "No se pudo completar la operación."}
+            </p>
+          )}
+
+          {puedeCobrar && (
+            <form action={registrarPago} className="panel" style={{ padding: 16, marginBottom: 12, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+              <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                <span className="tenue">Importe</span>
+                <input name="monto" type="number" min="1" step="1" required placeholder="50000" style={{ width: 130 }} />
+              </label>
+              <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                <span className="tenue">Medio</span>
+                <select name="medio" required defaultValue="transferencia">
+                  {MEDIOS.map((m) => (
+                    <option key={m} value={m}>{ETIQUETA_MEDIO[m]}</option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                <span className="tenue">Nº de operación</span>
+                <input name="referencia" type="text" maxLength={80} placeholder="del comprobante" style={{ width: 170 }} />
+              </label>
+              <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                <span className="tenue">Fecha del pago</span>
+                <input name="fecha" type="date" defaultValue={hoy} max={hoy} />
+              </label>
+              <button type="submit">Registrar cobro</button>
+              {/* El nº de operación es opcional pero es lo que evita cargar dos veces lo mismo al
+                  conciliar el resumen, así que se dice acá y no en una ayuda escondida. */}
+              <p className="tenue" style={{ margin: 0, fontSize: 12, flexBasis: "100%" }}>
+                Con el nº de operación cargado, si el mismo comprobante se carga de nuevo no se
+                duplica el cobro.
+              </p>
+            </form>
+          )}
+
+          {cobros.length === 0 ? (
+            <p className="tenue" style={{ margin: 0 }}>
+              No hay cobros registrados en {nombreDePeriodo(periodo)}.
+            </p>
+          ) : (
+            <div className="panel" style={{ padding: 0, overflowX: "auto" }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Medio</th>
+                    <th>Nº de operación</th>
+                    <th className="num">Importe</th>
+                    {puedeCobrar && <th />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {cobros.map((c) => (
+                    <tr key={c.id} style={c.anulado ? { textDecoration: "line-through", opacity: 0.55 } : undefined}>
+                      <td style={{ whiteSpace: "nowrap" }}>{fechaEnZona(c.fecha, sede.zonaHoraria)}</td>
+                      <td>{c.medio ? ETIQUETA_MEDIO[c.medio as (typeof MEDIOS)[number]] ?? c.medio : <span className="tenue">—</span>}</td>
+                      <td>{c.referencia ?? <span className="tenue">sin comprobante</span>}</td>
+                      <td className="num">{plata(c.montoCent)}</td>
+                      {puedeCobrar && (
+                        <td className="num">
+                          {c.anulado ? (
+                            <span className="tenue" style={{ fontSize: 12 }}>anulado</span>
+                          ) : (
+                            // Un cobro no se edita: se anula y se carga de nuevo. El motivo es
+                            // obligatorio porque es lo único que explica, meses después, por qué
+                            // en el libro hay un pago y su contraasiento.
+                            <form action={anularPago} style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                              <input type="hidden" name="asientoId" value={c.id} />
+                              <input name="motivo" type="text" required minLength={3} maxLength={200} placeholder="motivo" style={{ width: 150 }} />
+                              <button type="submit" className="tenue" style={{ fontSize: 12 }}>Anular</button>
+                            </form>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
 
         {d.totales.reservas === 0 ? (

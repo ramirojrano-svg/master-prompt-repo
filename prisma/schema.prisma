@@ -350,6 +350,13 @@ enum Concepto {
   deposito_ejecucion
 }
 
+/// Cómo entró la plata. Solo los dos medios que usa el centro: los dos dejan comprobante, así que
+/// el asiento puede guardar la referencia y la conciliación contra el resumen bancario es directa.
+enum MedioPago {
+  mercado_pago
+  transferencia
+}
+
 model Asiento {
   id           String     @id @default(cuid())
   operadorId   String
@@ -364,6 +371,11 @@ model Asiento {
   reservaId       String?
   liquidacionId   String? // se sella al cerrar el período; después no se toca
   pagoId          String?
+  // Solo en los asientos de cobro. `referencia` es el nº de operación del comprobante: es lo que
+  // permite conciliar contra el resumen, y además vuelve idempotente la carga — dos veces el
+  // mismo comprobante es el MISMO cobro, no dos (va dentro de `clave`).
+  medio           MedioPago?
+  referencia      String?
   revierteAId     String? // asiento original de una reversa
   motivo          String? // obligatorio en ajuste_*, deposito_ejecucion, nota_credito
   creadoPorUserId String? // null = sistema

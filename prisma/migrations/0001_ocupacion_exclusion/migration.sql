@@ -31,6 +31,9 @@ CREATE TYPE "CuentaTipo" AS ENUM ('corriente', 'garantia');
 -- CreateEnum
 CREATE TYPE "Concepto" AS ENUM ('cargo_uso', 'cargo_excedente', 'cargo_membresia', 'cargo_exclusividad', 'cargo_bono', 'penalidad_tardia', 'penalidad_noshow', 'ajuste_debito', 'deposito_alta', 'interes_mora', 'pago', 'pago_con_deposito', 'nota_credito', 'penalidad_revertida', 'reintegro', 'ajuste_credito', 'deposito_devolucion', 'deposito_ejecucion');
 
+-- CreateEnum
+CREATE TYPE "MedioPago" AS ENUM ('mercado_pago', 'transferencia');
+
 -- CreateTable
 CREATE TABLE "Operador" (
     "id" TEXT NOT NULL,
@@ -218,6 +221,8 @@ CREATE TABLE "Asiento" (
     "reservaId" TEXT,
     "liquidacionId" TEXT,
     "pagoId" TEXT,
+    "medio" "MedioPago",
+    "referencia" TEXT,
     "revierteAId" TEXT,
     "motivo" TEXT,
     "creadoPorUserId" TEXT,
