@@ -75,6 +75,51 @@ ok(".env.local con DATABASE_URL y AUTH_SECRET");
 //
 // Además se IMPRIME lo que se entendió (con la clave tapada). Cuando el problema es la URL, la
 // mitad de las veces se ve de un vistazo en esa línea y no hay nada más que deducir.
+
+/** Tapa la contraseña de una URL de conexión para poder imprimirla. */
+const tapar = (s) => String(s).replace(/:\/\/([^:/@]*):[^@]*@/, "://$1:***@");
+
+/**
+ * El valor CRUDO de una clave en .env.local, leído del archivo y sin pasar por el entorno.
+ *
+ * Existe para poder CONTRASTAR: "el archivo dice esto, en uso hay esto otro". Mientras el doctor
+ * solo mostraba el valor efectivo, un archivo perfecto y un mensaje de error se contradecían en
+ * pantalla sin forma de saber cuál de los dos mentía — y no mentía ninguno: eran dos valores
+ * distintos, y nada lo decía.
+ */
+function delArchivo(clave) {
+  const ruta = join(RAIZ, ".env.local");
+  if (!existsSync(ruta)) return null;
+  for (const linea of readFileSync(ruta, "utf8").split(/\r?\n/)) {
+    const m = new RegExp(`^\\s*(?:export\\s+)?${clave}\\s*=\\s*(.*)$`).exec(linea);
+    if (!m) continue;
+    const v = m[1].trim();
+    const entrecomillado = (v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"));
+    return entrecomillado ? v.slice(1, -1) : v;
+  }
+  return null;
+}
+
+/**
+ * Las dos líneas que cierran cualquier discusión sobre qué se está usando: el valor EN USO y el
+ * del archivo, los dos tal cual, con JSON.stringify. Las comillas no son decorativas — hacen
+ * visibles el \r de un archivo guardado en Windows, un espacio al final o unas comillas de más,
+ * que es justo la clase de carácter que rompe la URL sin que el archivo se vea mal en pantalla.
+ */
+function comoLlegoLaUrl() {
+  const enUso = process.env.DATABASE_URL;
+  const enArchivo = delArchivo("DATABASE_URL");
+  const lineas = [`Valor EN USO:        ${JSON.stringify(tapar(enUso))}`];
+  if (enArchivo === null) {
+    lineas.push("En .env.local no hay ninguna línea DATABASE_URL=");
+  } else if (enArchivo !== enUso) {
+    lineas.push(`Valor en .env.local: ${JSON.stringify(tapar(enArchivo))}`);
+    lineas.push("NO son el mismo: el archivo está siendo ignorado, lo que manda es lo de arriba.");
+    if (URL_DEL_ENTORNO) lineas.push("Viene exportado en esta terminal:  unset DATABASE_URL DIRECT_URL");
+  }
+  return lineas;
+}
+
 function revisarUrlBase(crudo) {
   let u;
   try {
@@ -83,6 +128,7 @@ function revisarUrlBase(crudo) {
     morir(
       "DATABASE_URL no tiene forma de URL.",
       "Tiene que ser:  postgresql://USUARIO:CLAVE@HOST:PUERTO/BASE",
+      ...comoLlegoLaUrl(),
       "Corregila en .env.local (hay un ejemplo en .env.example)",
     );
   }
@@ -104,17 +150,11 @@ function revisarUrlBase(crudo) {
     morir(
       `A DATABASE_URL le falta ${falta.join(" y ")}.`,
       "Forma completa:  postgresql://USUARIO:CLAVE@HOST:PUERTO/BASE",
-      `Lo que hay ahora:  postgresql://${u.username || "(vacío)"}:${u.password === "" ? "(VACÍA)" : "***"}@${u.hostname || "(vacío)"}:${u.port || "(sin puerto)"}/${base || "(vacía)"}`,
-      // DE DÓNDE salió ese valor, dicho acá adentro y no más abajo. Si la rota es la exportada en
-      // la terminal, el .env.local puede estar impecable: sin esta línea se abre el archivo, se
-      // ve la contraseña ahí, y el mensaje parece estar mintiendo. Es el caso más desconcertante
-      // de todos y el que más vueltas costó.
-      ...(URL_DEL_ENTORNO
-        ? [
-            "Y OJO: ese valor NO sale de .env.local, está exportado en esta terminal y le gana al archivo.",
-            "Sacalo y volvé a probar:   unset DATABASE_URL DIRECT_URL && npm run doctor",
-          ]
-        : ["Ese valor sale de .env.local"]),
+      `Lo que se entendió:  postgresql://${u.username || "(vacío)"}:${u.password === "" ? "(VACÍA)" : "***"}@${u.hostname || "(vacío)"}:${u.port || "(sin puerto)"}/${base || "(vacía)"}`,
+      // El valor crudo y el del archivo, DENTRO del error y no en una línea aparte más arriba. Si
+      // el que está roto no es el del archivo, el archivo se ve impecable y el mensaje parece
+      // estar mintiendo: es el caso más desconcertante de todos y el que más vueltas costó.
+      ...comoLlegoLaUrl(),
       // Solo cuando la contraseña es la que falta: si la clave real tiene alguno de estos
       // caracteres, la URL se parte en el lugar equivocado y el síntoma es exactamente este —
       // campos vacíos sin que el archivo se vea mal. En los otros casos es ruido que distrae.
