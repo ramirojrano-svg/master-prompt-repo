@@ -13,7 +13,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import pg from "pg";
-import { cargarEnv } from "../src/lib/entorno.ts";
+import { cargarEnv, parsearEnv } from "../src/lib/entorno.ts";
 import { autorizar } from "../src/lib/auth-core.ts";
 
 const CLAVE_DEMO = process.env.SEED_PASSWORD ?? "emoapp-2026";
@@ -87,17 +87,12 @@ const tapar = (s) => String(s).replace(/:\/\/([^:/@]*):[^@]*@/, "://$1:***@");
  * pantalla sin forma de saber cuál de los dos mentía — y no mentía ninguno: eran dos valores
  * distintos, y nada lo decía.
  */
-function delArchivo(clave) {
-  const ruta = join(RAIZ, ".env.local");
+function delArchivo(clave, archivo = ".env.local") {
+  const ruta = join(RAIZ, archivo);
   if (!existsSync(ruta)) return null;
-  for (const linea of readFileSync(ruta, "utf8").split(/\r?\n/)) {
-    const m = new RegExp(`^\\s*(?:export\\s+)?${clave}\\s*=\\s*(.*)$`).exec(linea);
-    if (!m) continue;
-    const v = m[1].trim();
-    const entrecomillado = (v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"));
-    return entrecomillado ? v.slice(1, -1) : v;
-  }
-  return null;
+  // El MISMO parser que usa cargarEnv. Si el doctor leyera los .env a su manera, podría entender
+  // algo distinto que la app y volver a decir "todo en orden" sobre una conexión que no es.
+  return parsearEnv(readFileSync(ruta, "utf8")).get(clave) ?? null;
 }
 
 /**
@@ -180,6 +175,19 @@ if (URL_DEL_ENTORNO) {
   console.log();
 } else {
   ok("la conexión sale de .env.local (no hay nada exportado pisándola)");
+}
+
+// Un .env al lado del .env.local, con OTRA conexión. La precedencia ya está resuelta —.env.local
+// gana, y hay tests que lo fijan— pero el archivo sigue siendo una trampa: Next también lo lee, y
+// cualquiera que abra el proyecto y encuentre dos archivos con dos bases distintas no tiene cómo
+// saber cuál manda. Casi siempre es una copia de .env.example que quedó con el nombre equivocado.
+const OTRA_URL = delArchivo("DATABASE_URL", ".env");
+if (OTRA_URL !== null && OTRA_URL !== delArchivo("DATABASE_URL")) {
+  err("Hay un .env con una conexión DISTINTA a la de .env.local.");
+  pista(`.env dice:        ${tapar(OTRA_URL)}`);
+  pista("Manda .env.local, no se está usando esa — pero el archivo confunde y conviene sacarlo.");
+  pista("Si es una copia de .env.example que quedó dando vueltas:   mv .env .env.viejo");
+  console.log();
 }
 
 // ── 2. Conexión ─────────────────────────────────────────────────────────────
