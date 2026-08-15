@@ -16,10 +16,12 @@ export default async function InquilinosPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string; ok?: string; editar?: string; ver?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; editar?: string; ver?: string; q?: string }>;
 }) {
   const { slug } = await params;
-  const { error, ok, editar, ver } = await searchParams;
+  const { error, ok, editar, ver, q } = await searchParams;
+  // El texto buscado, normalizado una vez: se usa para filtrar y para repintar el campo.
+  const busca = (q ?? "").trim();
 
   const actor = await actorDeSesion(slug);
   if (!actor) redirect(`/login?centro=${encodeURIComponent(slug)}`);
@@ -29,7 +31,17 @@ export default async function InquilinosPage({
   // hacer desaparecer una fila sin que haya forma de alcanzarla (§6.4).
   const verTodos = ver === "todos";
   const inquilinos = await prisma.inquilino.findMany({
-    where: { operadorId: actor.operadorId, ...(verTodos ? {} : { estado: { not: "baja" } }) },
+    where: {
+      operadorId: actor.operadorId,
+      ...(verTodos ? {} : { estado: { not: "baja" } }),
+      // El filtro va en la CONSULTA, no en memoria: con 29 se notaría poco, pero traer todo para
+      // descartar en el servidor es la forma de que una lista que crece deje de andar sin aviso.
+      // `insensitive` porque nadie busca respetando mayúsculas, y también por pagador: "quién le
+      // paga a quién" es justo lo que se busca al facturar.
+      ...(busca
+        ? { OR: [{ nombre: { contains: busca, mode: "insensitive" as const } }, { pagador: { contains: busca, mode: "insensitive" as const } }] }
+        : {}),
+    },
     orderBy: [{ estado: "asc" }, { nombre: "asc" }],
     select: { id: true, nombre: true, estado: true, pagador: true },
   });
@@ -68,15 +80,37 @@ export default async function InquilinosPage({
     <>
       <Cabecera slug={slug} rol={actor.rol} actual="inquilinos" titulo="Profesionales" />
       <main style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>
-      {/* El formulario de alta vive al pie, y con treinta profesionales queda tan abajo que no se
-          encuentra: la pantalla parecía no tener forma de agregar a nadie. Este botón lo trae a la
-          vista de arriba, que es donde se lo busca. El `?` limpia un ?editar= que hubiera quedado,
-          así "Agregar" siempre abre el formulario en blanco y no encima de una edición a medias. */}
+      {/* Buscador. Es un form GET —no un input con JavaScript— así que la búsqueda queda en la
+          URL: se puede recargar, compartir y volver con el botón de atrás sin perderla. */}
+      <form method="get" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {verTodos && <input type="hidden" name="ver" value="todos" />}
+        <input
+          type="search"
+          name="q"
+          defaultValue={busca}
+          placeholder="Buscar por nombre o por quién abona…"
+          aria-label="Buscar profesional"
+          style={{ flex: 1 }}
+        />
+        <button type="submit" className="btn-suave">Buscar</button>
+        {busca && (
+          <Link href={verTodos ? "?ver=todos" : "?"} className="pastilla">
+            Limpiar
+          </Link>
+        )}
+      </form>
+
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <p className="tenue" style={{ margin: 0 }}>
-          {inquilinos.length} listados
+          {busca
+            ? `${inquilinos.length} ${inquilinos.length === 1 ? "resultado" : "resultados"} para "${busca}"`
+            : `${inquilinos.length} listados`}
           {deBaja > 0 && (verTodos ? <> · <Link href="?">ocultar los de baja</Link></> : <> · {deBaja} de baja (<Link href="?ver=todos">ver</Link>)</>)}
         </p>
+        {/* El formulario de alta vive al pie, y con treinta profesionales queda tan abajo que no
+            se encuentra: la pantalla parecía no tener forma de agregar a nadie. Este botón lo trae
+            a la vista de arriba, que es donde se lo busca — y sin `q` ni `editar`, así "Agregar"
+            abre el formulario en blanco y no encima de una edición a medias. */}
         <Link href={`?${verTodos ? "ver=todos" : ""}#editor`} className="pastilla" style={{ marginLeft: "auto" }}>
           + Agregar profesional
         </Link>
@@ -97,7 +131,7 @@ export default async function InquilinosPage({
                 {/* El #editor no es decorativo: el panel de edición está al pie de la lista, y sin
                     el ancla apretar "Editar" no movía la pantalla — parecía que el botón no hacía
                     nada, con el formulario cargado treinta filas más abajo. */}
-                <Link href={`?editar=${i.id}${verTodos ? "&ver=todos" : ""}#editor`}>Editar</Link>{" "}
+                <Link href={`?editar=${i.id}${verTodos ? "&ver=todos" : ""}${busca ? `&q=${encodeURIComponent(busca)}` : ""}#editor`}>Editar</Link>{" "}
                 <form action={cambiarEstado} style={{ display: "inline" }}>
                   <input type="hidden" name="inquilinoId" value={i.id} />
                   <input type="hidden" name="estado" value={i.estado === "activo" ? "baja" : "activo"} />

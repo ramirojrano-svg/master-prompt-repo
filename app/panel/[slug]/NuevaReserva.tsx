@@ -2,6 +2,7 @@
 // El <form action={...}> apunta a una server action que resuelve la sesión y delega en la acción
 // de dominio (que ya declara su permiso). Sin JS del lado del cliente: es un form HTML.
 
+import type { GrupoConflicto } from "../../../src/dominio/conflictos.ts";
 import { etiquetaDeRepeticion, REPETICIONES } from "../../../src/dominio/repeticion.ts";
 
 export type OpcionSala = { id: string; nombre: string };
@@ -21,8 +22,8 @@ export function NuevaReserva({
   fecha: string;
   accion: (formData: FormData) => Promise<void>;
   error?: string;
-  /** Resultado del alta: cuántos turnos se crearon y cuántas fechas quedaron afuera. */
-  creada?: { creadas: number; conflictos: number };
+  /** Resultado del alta: cuántos se crearon, y qué fechas quedaron afuera agrupadas por motivo. */
+  creada?: { creadas: number; total: number; grupos: GrupoConflicto[] };
   /** Aviso de precio, ya formateado por el servidor. null = quien mira no administra precios. */
   precios?: { texto: string; href: string } | null;
 }) {
@@ -102,15 +103,35 @@ export function NuevaReserva({
         </p>
       )}
       {creada && (
-        <p className="exito" style={{ marginTop: 12, marginBottom: 0, fontSize: 13 }}>
-          {creada.creadas === 1 ? "Turno creado." : `${creada.creadas} turnos creados.`}
-          {creada.conflictos > 0 && (
-            <span className="tenue" style={{ display: "block", fontWeight: 400, marginTop: 4 }}>
-              {creada.conflictos} fecha{creada.conflictos === 1 ? "" : "s"} quedaron afuera porque
-              el consultorio ya estaba ocupado o cerrado.
-            </span>
+        <div style={{ marginTop: 12, fontSize: 13 }}>
+          <p className="exito" style={{ margin: 0 }}>
+            {creada.creadas === 0
+              ? "No se creó ningún turno."
+              : creada.creadas === 1
+                ? "Turno creado."
+                : `${creada.creadas} turnos creados.`}
+          </p>
+
+          {/* Las que NO entraron, con fecha y motivo. El motivo importa tanto como la fecha: que
+              el consultorio esté tomado se arregla eligiendo otro; que el profesional ya tenga
+              turno a esa hora se arregla cambiando la hora; que esté cerrado, cambiando el día.
+              "Ocupado o cerrado" las juntaba y borraba justo la parte accionable. */}
+          {creada.total > 0 && (
+            <div style={{ marginTop: 6 }}>
+              <p style={{ margin: 0, fontWeight: 600, color: "var(--alerta)" }}>
+                {creada.total === 1 ? "1 fecha quedó afuera:" : `${creada.total} fechas quedaron afuera:`}
+              </p>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                {creada.grupos.map((g) => (
+                  <li key={g.motivo} className="tenue" style={{ marginBottom: 3 }}>
+                    {g.fechas.join(", ")}
+                    {g.ocultas > 0 && ` y ${g.ocultas} más`} — {g.motivo}.
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
-        </p>
+        </div>
       )}
 
       <p style={{ marginTop: 14, marginBottom: 0 }}>

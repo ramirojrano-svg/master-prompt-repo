@@ -31,6 +31,7 @@ import { horasYMinutos } from "../../../src/dominio/reporte.ts";
 import { Logo } from "../../Logo.tsx";
 import { IconoMas } from "../../Iconos.tsx";
 import { BarraNav } from "./BarraNav.tsx";
+import { describirConflictos, parsearConflictos, resumirConflictos, serializarConflictos } from "../../../src/dominio/conflictos.ts";
 import { MenuConfig } from "./MenuConfig.tsx";
 import { Grilla } from "./Grilla.tsx";
 import { VistaMes } from "./VistaMes.tsx";
@@ -39,7 +40,7 @@ import { NuevaReserva } from "./NuevaReserva.tsx";
 import { DetalleTurno } from "./DetalleTurno.tsx";
 
 type Params = { slug: string };
-type Query = { fecha?: string; vista?: string; mes?: string; salas?: string; error?: string; creada?: string; chocaron?: string; turno?: string; errorTurno?: string };
+type Query = { fecha?: string; vista?: string; mes?: string; salas?: string; error?: string; creada?: string; chocaron?: string; dias?: string; turno?: string; errorTurno?: string };
 
 /**
  * El cuerpo compartido de las acciones sobre un turno. Vive FUERA del componente a propósito:
@@ -180,9 +181,13 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
     else if (!r.data.ok) q.set("error", r.data.error); // SLOT_OCUPADO, FUERA_DE_HORARIO, …
     else {
       q.set("creada", String(r.data.creadas));
-      // Las ocurrencias que no entraron se CUENTAN en la URL: una serie que crea 6 de 8 sin
-      // decirlo son dos profesionales que llegan a la puerta cerrada (§4.9).
-      if (r.data.conflictos.length > 0) q.set("chocaron", String(r.data.conflictos.length));
+      // Las ocurrencias que no entraron viajan con FECHA Y MOTIVO, no como un número. "3 fechas
+      // quedaron afuera" obliga a recorrer la agenda a mano buscando cuáles; el motor ya sabe que
+      // fue el lunes 17 y que ese consultorio lo tenía otro profesional (§4.9).
+      if (r.data.conflictos.length > 0) {
+        q.set("chocaron", String(r.data.conflictos.length));
+        q.set("dias", serializarConflictos(resumirConflictos(r.data.conflictos)));
+      }
     }
 
     revalidatePath(`/panel/${slug}`);
@@ -377,7 +382,11 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
               fecha={agenda.fecha}
               accion={crear}
               error={sp.error ? mensajeDeError(sp.error) : undefined}
-              creada={sp.creada ? { creadas: Number(sp.creada), conflictos: Number(sp.chocaron ?? 0) } : undefined}
+              creada={
+                sp.creada
+                  ? { creadas: Number(sp.creada), total: Number(sp.chocaron ?? 0), grupos: describirConflictos(parsearConflictos(sp.dias)) }
+                  : undefined
+              }
               precios={precios}
             />
           </div>
