@@ -34,6 +34,9 @@ CREATE TYPE "Concepto" AS ENUM ('cargo_uso', 'cargo_excedente', 'cargo_membresia
 -- CreateEnum
 CREATE TYPE "MedioPago" AS ENUM ('mercado_pago', 'transferencia');
 
+-- CreateEnum
+CREATE TYPE "RubroGasto" AS ENUM ('alquiler', 'expensas', 'servicios', 'limpieza', 'mantenimiento', 'insumos', 'sueldos', 'impuestos', 'seguros', 'marketing', 'otros');
+
 -- CreateTable
 CREATE TABLE "Operador" (
     "id" TEXT NOT NULL,
@@ -207,6 +210,26 @@ CREATE TABLE "BolsaAsiento" (
 );
 
 -- CreateTable
+CREATE TABLE "Gasto" (
+    "id" TEXT NOT NULL,
+    "operadorId" TEXT NOT NULL,
+    "rubro" "RubroGasto" NOT NULL,
+    "detalle" VARCHAR(200) NOT NULL,
+    "montoCent" BIGINT NOT NULL,
+    "moneda" VARCHAR(3) NOT NULL,
+    "periodo" VARCHAR(7) NOT NULL,
+    "fecha" TIMESTAMPTZ(6) NOT NULL,
+    "proveedor" VARCHAR(120),
+    "anuladoEl" TIMESTAMPTZ(6),
+    "anuladoPor" TEXT,
+    "motivoAnulado" VARCHAR(200),
+    "creadoPorUserId" TEXT,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Gasto_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Asiento" (
     "id" TEXT NOT NULL,
     "operadorId" TEXT NOT NULL,
@@ -318,6 +341,12 @@ CREATE INDEX "BolsaAsiento_operadorId_inquilinoId_bolsa_periodo_idx" ON "BolsaAs
 CREATE UNIQUE INDEX "BolsaAsiento_operadorId_clave_key" ON "BolsaAsiento"("operadorId", "clave");
 
 -- CreateIndex
+CREATE INDEX "Gasto_operadorId_periodo_idx" ON "Gasto"("operadorId", "periodo");
+
+-- CreateIndex
+CREATE INDEX "Gasto_operadorId_rubro_periodo_idx" ON "Gasto"("operadorId", "rubro", "periodo");
+
+-- CreateIndex
 CREATE INDEX "Asiento_operadorId_inquilinoId_cuenta_fechaHecho_idx" ON "Asiento"("operadorId", "inquilinoId", "cuenta", "fechaHecho");
 
 -- CreateIndex
@@ -382,6 +411,9 @@ ALTER TABLE "EsperaSlot" ADD CONSTRAINT "EsperaSlot_operadorId_fkey" FOREIGN KEY
 
 -- AddForeignKey
 ALTER TABLE "BolsaAsiento" ADD CONSTRAINT "BolsaAsiento_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Gasto" ADD CONSTRAINT "Gasto_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Asiento" ADD CONSTRAINT "Asiento_operadorId_fkey" FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;

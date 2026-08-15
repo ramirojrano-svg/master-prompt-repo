@@ -40,6 +40,7 @@ model Operador {
   liquidaciones Liquidacion[]
   membresias    Membresia[]
   tarifas       Tarifa[]
+  gastos        Gasto[]
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -355,6 +356,53 @@ enum Concepto {
 enum MedioPago {
   mercado_pago
   transferencia
+}
+
+/// En qué se va la plata del espacio. Cerrado a propósito: con texto libre, "Luz", "luz" y "EDESUR"
+/// terminan siendo tres categorías distintas y el mes deja de poder compararse contra el anterior.
+enum RubroGasto {
+  alquiler // el alquiler del inmueble, si el centro no es propio
+  expensas
+  servicios // luz, gas, agua, internet, teléfono
+  limpieza
+  mantenimiento // arreglos, pintura, plomería, service de equipos
+  insumos // descartables, papelería, café
+  sueldos // recepción y personal
+  impuestos // ABL, ingresos brutos, tasas
+  seguros
+  marketing
+  otros
+}
+
+/// Un gasto del espacio, del lado de AFUERA del libro de inquilinos.
+///
+/// No entra en Asiento a propósito. Ese libro es la cuenta corriente CONTRA CADA PROFESIONAL: todo
+/// lo que tiene adentro suma o resta de lo que alguien debe. Un gasto de luz no lo debe nadie, y
+/// meterlo ahí ensuciaría los saldos —que es justo lo que se cuidó al no mover la deuda a la
+/// cuenta del pagador—. Son dos libros distintos porque responden dos preguntas distintas: uno
+/// "quién me debe", el otro "cuánto me cuesta tener esto abierto".
+model Gasto {
+  id           String     @id @default(cuid())
+  operadorId   String
+  rubro        RubroGasto
+  detalle      String     @db.VarChar(200)
+  montoCent    BigInt
+  moneda       String     @db.VarChar(3)
+  periodo      String     @db.VarChar(7) // 'YYYY-MM' en la tz del CENTRO
+  fecha        DateTime   @db.Timestamptz(6) // el día del gasto, no el de carga
+  proveedor    String?    @db.VarChar(120)
+  // Anular en vez de borrar, igual que un cobro: el mes que ya se miró tiene que seguir dando lo
+  // mismo. `anuladoEl` null = vigente (fecha, no booleano — §9 regla 11).
+  anuladoEl    DateTime?  @db.Timestamptz(6)
+  anuladoPor   String?
+  motivoAnulado String?   @db.VarChar(200)
+  creadoPorUserId String?
+  createdAt    DateTime   @default(now()) @db.Timestamptz(6)
+
+  operador Operador @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+
+  @@index([operadorId, periodo])
+  @@index([operadorId, rubro, periodo])
 }
 
 model Asiento {

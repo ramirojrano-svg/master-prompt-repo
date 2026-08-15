@@ -97,3 +97,24 @@ export function IconoSalir({ tam = 16 }: Props) {
     </svg>
   );
 }
+
+/** Gastos: un billete saliendo. Es lo contrario de Precios, que es lo que entra. */
+export function IconoGasto({ tam = 16 }: Props) {
+  return (
+    <svg {...base(tam)}>
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M6 12h.01M18 12h.01" />
+    </svg>
+  );
+}
+
+/** Negocio: la flecha de tendencia. Es la lectura, no el dato. */
+export function IconoNegocio({ tam = 16 }: Props) {
+  return (
+    <svg {...base(tam)}>
+      <path d="M3 17l6-6 4 4 7-7" />
+      <path d="M16 8h5v5" />
+    </svg>
+  );
+}

@@ -56,6 +56,9 @@ export default async function DetalleProfesionalPage({
   const cobros = await cobrosDelMes({ operadorId: actor.operadorId, inquilinoId, periodo });
   const hoy = fechaEnZona(new Date(), sede.zonaHoraria);
   const volverA = `/panel/${slug}/reportes/${inquilinoId}?periodo=${periodo}`;
+  // Sin la query: `revalidatePath` toma un path, y con "?periodo=..." no invalida nada — se
+  // registra un cobro, la acción contesta "ok", y la lista sigue mostrando lo de antes.
+  const rutaDetalle = `/panel/${slug}/reportes/${inquilinoId}`;
 
   async function registrarPago(formData: FormData) {
     "use server";
@@ -70,7 +73,7 @@ export default async function DetalleProfesionalPage({
       fecha: formData.get("fecha") ?? undefined,
     });
 
-    revalidatePath(volverA);
+    revalidatePath(rutaDetalle);
     // El duplicado se avisa distinto que el alta: para el operador "ya estaba cargado" y "listo"
     // son dos cosas muy diferentes, y confundirlas hace que busque un pago que nunca se asentó.
     const q = !r.ok ? `&error=${r.error}` : !r.data.ok ? `&error=${r.data.error}` : r.data.duplicado ? "&ok=repetido" : "&ok=1";
@@ -83,7 +86,7 @@ export default async function DetalleProfesionalPage({
     if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
 
     const r = await anularCobro(a, { asientoId: formData.get("asientoId"), motivo: formData.get("motivo") });
-    revalidatePath(volverA);
+    revalidatePath(rutaDetalle);
     const q = !r.ok ? `&error=${r.error}` : !r.data.ok ? `&error=${r.data.error}` : "&ok=anulado";
     redirect(`${volverA}${q}`);
   }
