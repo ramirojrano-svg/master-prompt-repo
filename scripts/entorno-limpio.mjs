@@ -19,6 +19,35 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
+const amarillo = "\x1b[33m", limpio = "\x1b[0m";
+
+// ── Lockfiles huérfanos por encima del proyecto ─────────────────────────────
+// Next deduce la raíz del workspace buscando lockfiles hacia arriba. Si hay uno suelto en una
+// carpeta de más arriba —lo deja un `npm install` corrido por error fuera del proyecto— elige ESA
+// como raíz, y entonces resuelve los módulos contra el node_modules de allá. El error que sale es
+// `Cannot find module 'next-auth'` con una ruta a la que le falta la carpeta del proyecto en el
+// medio: C:\Users\vos\src\lib\sesion.ts en vez de C:\Users\vos\proyecto\src\lib\sesion.ts. Nada
+// en ese mensaje dice "tenés un lockfile de más", y el warning de Next se pierde en el arranque.
+//
+// Se avisa, no se corrige: borrar archivos fuera del proyecto no es algo que este script deba
+// hacer solo. Y NO se intenta arreglar con `turbopack.root` — se probó, y pasarle una ruta
+// absoluta de Windows colgaba el servidor entero sin loguear nada.
+const huerfanos = [];
+for (let dir = dirname(RAIZ), previo = null; dir !== previo; previo = dir, dir = dirname(dir)) {
+  for (const lock of ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb"]) {
+    if (existsSync(join(dir, lock))) huerfanos.push(join(dir, lock));
+  }
+}
+
+if (huerfanos.length > 0) {
+  console.log(`\n${amarillo}⚠  Hay un lockfile FUERA del proyecto, en una carpeta de más arriba.${limpio}`);
+  for (const h of huerfanos) console.log(`   ${h}`);
+  console.log("   Next puede tomar esa carpeta como raíz y buscar los módulos ahí.");
+  console.log("   El síntoma es:  Cannot find module 'next-auth'  con una ruta a la que le falta");
+  console.log("   la carpeta del proyecto en el medio.");
+  console.log(`   Si sobra (un npm install corrido por error), borralo:  ${amarillo}rm "${huerfanos[0]}"${limpio}\n`);
+}
+
 const expuesta = process.env.DATABASE_URL;
 
 // Sin nada exportado no hay conflicto posible: el archivo manda y no hay nada que decir. El
