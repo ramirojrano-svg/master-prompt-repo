@@ -13,6 +13,7 @@
     "verify": "npm run typecheck && npm test",
     "postinstall": "prisma generate",
     "build": "next build",
+    "limpiar": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true});console.log('.next borrado: la proxima compilacion arranca de cero')\"",
     "predev": "node scripts/entorno-limpio.mjs",
     "dev": "next dev",
     "seed": "node prisma/seed.ts",
