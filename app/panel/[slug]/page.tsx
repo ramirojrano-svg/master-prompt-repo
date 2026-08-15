@@ -28,9 +28,11 @@ import { fechaEnZona, formatHora } from "../../../src/dominio/motor/zona.ts";
 import { formatearPesos } from "../../../src/dominio/tarifa.ts";
 import { esVista, fechaDeParam, navegar, type Vista } from "../../../src/dominio/calendario.ts";
 import { horasYMinutos } from "../../../src/dominio/reporte.ts";
+import { nombreDePeriodo } from "./reportes/page.tsx";
 import { Logo } from "../../Logo.tsx";
 import { IconoMas } from "../../Iconos.tsx";
 import { BarraNav } from "./BarraNav.tsx";
+import { ocupacionMensualPorSala } from "../../../src/servicios/reportes/mensual.ts";
 import { describirConflictos, parsearConflictos, resumirConflictos, serializarConflictos } from "../../../src/dominio/conflictos.ts";
 import { MenuConfig } from "./MenuConfig.tsx";
 import { Grilla } from "./Grilla.tsx";
@@ -110,6 +112,12 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
   const ahora = new Date();
   const hoy = fechaEnZona(ahora, agenda.tz); // HOY del CENTRO, no el del navegador
   const mesLateral = fechaDeParam(sp.mes) ?? agenda.fecha;
+
+  // Ocupación del mes por consultorio, para la barrita del lateral. Es el mes que se está
+  // mirando en el minicalendario, no "el mes actual": si alguien navega a septiembre, las
+  // barras tienen que hablar de septiembre o estarían contando otra cosa que lo que se ve.
+  const ocupacionMes = await ocupacionMensualPorSala({ operadorId: actor.operadorId, periodo: mesLateral.slice(0, 7) });
+  const ocupPorSala = new Map(ocupacionMes.map((o) => [o.salaId, o]));
 
   /** Arma un link conservando lo que no cambia. Las URLs son el estado de la pantalla. */
   function href(fecha: string, extra: Record<string, string> = {}): string {
@@ -283,9 +291,16 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           <h2 style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--tenue)", margin: "18px 0 6px" }}>
             Consultorios
           </h2>
+          {/* De qué mes hablan las barras, dicho una vez acá y no repetido en cada fila. Sin esto
+              el porcentaje al lado de cada consultorio no se sabe si es del día, de la semana o
+              del mes — y son tres números muy distintos. */}
+          <p className="tenue" style={{ margin: "-2px 0 6px", fontSize: 11 }}>
+            Ocupación de {nombreDePeriodo(mesLateral.slice(0, 7))}
+          </p>
           <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 2 }}>
             {agenda.salas.map((s) => {
               const prendida = agenda.salasVisibles.includes(s.id);
+              const ocup = ocupPorSala.get(s.id);
               return (
                 <li key={s.id}>
                   <Link
@@ -303,10 +318,26 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
                         background: prendida ? s.color : "transparent",
                       }}
                     />
-                    <span style={{ opacity: prendida ? 1 : 0.55, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span style={{ opacity: prendida ? 1 : 0.55, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
                       {s.nombre}
                       {!s.activa && <span className="tenue"> (archivado)</span>}
                     </span>
+                    {/* La ocupación del mes, con el número al lado de la barra. Una barra sola se
+                        compara entre consultorios pero no se puede leer en valor absoluto, y acá
+                        las dos lecturas importan: cuál rinde más, y cuánto rinde. */}
+                    {ocup && ocup.aperturaMin > 0 && (
+                      <span
+                        title={`${horasYMinutos(ocup.minutos)} de ${horasYMinutos(ocup.aperturaMin)} en ${nombreDePeriodo(mesLateral.slice(0, 7))}`}
+                        style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}
+                      >
+                        <span style={{ width: 34, height: 5, borderRadius: 999, background: "var(--borde)", overflow: "hidden" }}>
+                          <span style={{ display: "block", width: `${ocup.pct}%`, height: "100%", borderRadius: 999, background: s.color }} />
+                        </span>
+                        <span className="tenue" style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", minWidth: 26, textAlign: "right" }}>
+                          {ocup.pct}%
+                        </span>
+                      </span>
+                    )}
                   </Link>
                 </li>
               );

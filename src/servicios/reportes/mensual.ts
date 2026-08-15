@@ -383,3 +383,63 @@ export async function detalleProfesional(
     },
   };
 }
+
+// ── Ocupación por consultorio, sola ─────────────────────────────────────────
+// La agenda muestra una barrita por consultorio en su lateral, y ahí no se puede llamar a
+// `reporteMensual`: pide permiso de finanzas (un profesional no lo tiene) y calcula facturación,
+// deuda y detalle por profesional para usar dos números. Esta función hace SOLO la ocupación.
+//
+// Usa los mismos helpers y el mismo criterio de "hora vendida" que el reporte. Que den lo mismo no
+// se deja librado a que nadie los toque: hay un test que compara las dos salidas para el mismo
+// período. Dos porcentajes de ocupación distintos en dos pantallas es de los errores más caros de
+// explicar, porque los dos parecen correctos.
+
+export type OcupacionSala = { salaId: string; minutos: number; aperturaMin: number; pct: number };
+
+export async function ocupacionMensualPorSala(
+  a: { operadorId: string; periodo: string },
+  db: PrismaClient = prisma,
+): Promise<OcupacionSala[]> {
+  if (!esPeriodoValido(a.periodo)) return [];
+
+  const sede = await db.sede.findFirst({ where: { operadorId: a.operadorId, activa: true }, select: { zonaHoraria: true } });
+  if (!sede) return [];
+
+  const dias = diasDelPeriodo(a.periodo);
+  const primero = rangoDiaEnZona(dias[0]!, sede.zonaHoraria);
+  const ultimo = rangoDiaEnZona(dias.at(-1)!, sede.zonaHoraria);
+  if (!primero || !ultimo) return [];
+
+  // Los bordes salen a variables antes del SQL, igual que en `reporteMensual`: el guardarraíl de
+  // §4.2 prohíbe `>=` pegado a un `.inicio`/`.fin` fuera de intervalos.ts, y tiene razón — es la
+  // forma en que se cuela un solape mal comparado. Acá son los bordes de un mes, no un intervalo
+  // de reserva, y con los extremos nombrados la consulta también se lee mejor.
+  const desde = primero.inicio;
+  const hasta = ultimo.fin;
+
+  const [salas, porSala] = await Promise.all([
+    db.sala.findMany({ where: { operadorId: a.operadorId }, select: { id: true, activa: true, horarioJson: true } }),
+    db.$queryRaw<{ id: string; minutos: number | null }[]>`
+      SELECT o."salaId" AS id,
+             COALESCE(SUM(EXTRACT(EPOCH FROM (o."fin" - o."inicio")) / 60), 0)::float8 AS minutos
+      FROM "Ocupacion" o
+      WHERE o."operadorId" = ${a.operadorId}
+        AND o."tipo" = 'reserva'
+        AND o."estado"::text = ANY(${ESTADOS_VENDIDOS})
+        AND o."salaId" IS NOT NULL
+        AND o."inicio" >= ${desde} AND o."inicio" < ${hasta}
+      GROUP BY o."salaId"`,
+  ]);
+
+  const usados = new Map(porSala.map((r) => [r.id, Math.round(r.minutos ?? 0)]));
+  return salas.map((s) => {
+    const h = parseHorarios(s.horarioJson);
+    // Igual que en el reporte: una sala archivada dejó de abrir, así que su denominador es 0 y el
+    // porcentaje no se muestra — mejor un guion que un número inventado.
+    const aperturaMin = s.activa
+      ? aperturaDelPeriodoMin((d) => h[d as 0 | 1 | 2 | 3 | 4 | 5 | 6].map((f) => ({ desdeMin: hm(f.desde), hastaMin: hm(f.hasta) })), diaSemanaDeFecha, dias)
+      : 0;
+    const minutos = usados.get(s.id) ?? 0;
+    return { salaId: s.id, minutos, aperturaMin, pct: porcentaje(minutos, aperturaMin) };
+  });
+}
