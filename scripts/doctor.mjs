@@ -44,6 +44,13 @@ function morir(mensaje, ...pasos) {
 console.log("\nEMOAPP — revisión de la instalación\n");
 
 // ── 1. Entorno ──────────────────────────────────────────────────────────────
+// Se mira ANTES de cargar los archivos: `loadEnvFile` no pisa lo que ya está en el entorno (de
+// eso dependen los tests para apuntar a motor_test), así que un DATABASE_URL exportado en la
+// terminal le gana al .env.local EN SILENCIO. Ahí el archivo puede estar impecable —se lo puede
+// abrir y leer y no tiene nada malo— mientras todo corre contra otra base. Sin esta línea no hay
+// forma de notarlo: es la pista que no existía.
+const URL_DEL_ENTORNO = process.env.DATABASE_URL;
+
 cargarEnv(RAIZ);
 
 if (!existsSync(join(RAIZ, ".env.local"))) {
@@ -98,6 +105,16 @@ function revisarUrlBase(crudo) {
       `A DATABASE_URL le falta ${falta.join(" y ")}.`,
       "Forma completa:  postgresql://USUARIO:CLAVE@HOST:PUERTO/BASE",
       `Lo que hay ahora:  postgresql://${u.username || "(vacío)"}:${u.password === "" ? "(VACÍA)" : "***"}@${u.hostname || "(vacío)"}:${u.port || "(sin puerto)"}/${base || "(vacía)"}`,
+      // DE DÓNDE salió ese valor, dicho acá adentro y no más abajo. Si la rota es la exportada en
+      // la terminal, el .env.local puede estar impecable: sin esta línea se abre el archivo, se
+      // ve la contraseña ahí, y el mensaje parece estar mintiendo. Es el caso más desconcertante
+      // de todos y el que más vueltas costó.
+      ...(URL_DEL_ENTORNO
+        ? [
+            "Y OJO: ese valor NO sale de .env.local, está exportado en esta terminal y le gana al archivo.",
+            "Sacalo y volvé a probar:   unset DATABASE_URL DIRECT_URL && npm run doctor",
+          ]
+        : ["Ese valor sale de .env.local"]),
       // Solo cuando la contraseña es la que falta: si la clave real tiene alguno de estos
       // caracteres, la URL se parte en el lugar equivocado y el síntoma es exactamente este —
       // campos vacíos sin que el archivo se vea mal. En los otros casos es ruido que distrae.
@@ -110,6 +127,20 @@ function revisarUrlBase(crudo) {
 
 const URL_OK = revisarUrlBase(process.env.DATABASE_URL);
 ok(`DATABASE_URL bien formada (${URL_OK.usuario}:***@${URL_OK.host}:${URL_OK.puerto}/${URL_OK.base})`);
+
+// Y de dónde salió. Va DESPUÉS de la línea de arriba a propósito: primero se ve la conexión que
+// se va a usar, e inmediatamente después quién la puso. Cuando el archivo se ve perfecto pero
+// nada funciona, la respuesta está acá.
+if (URL_DEL_ENTORNO) {
+  err("Ojo: DATABASE_URL viene de la TERMINAL, no de .env.local.");
+  pista("Está exportada en esta sesión de la consola y le gana al archivo, aunque el archivo esté bien.");
+  pista(`La de la terminal es:  ${URL_DEL_ENTORNO.replace(/:\/\/([^:]+):[^@]*@/, "://$1:***@")}`);
+  pista("Para sacarla y usar el archivo:   unset DATABASE_URL DIRECT_URL");
+  pista("Y volvé a correr:  npm run doctor");
+  console.log();
+} else {
+  ok("la conexión sale de .env.local (no hay nada exportado pisándola)");
+}
 
 // ── 2. Conexión ─────────────────────────────────────────────────────────────
 /**
