@@ -282,3 +282,89 @@ export function mensajeDeTurno(codigo: string): string {
       return "No se pudo completar la acción sobre el turno.";
   }
 }
+
+// ── Lo que hace un PROFESIONAL con sus propios turnos (§6.2) ────────────────
+//
+// Hasta acá solo existían las acciones "ajena": el profesional entraba a la agenda y no podía
+// crear, mover ni cancelar nada. La app está pensada para que se agenden solos, y esa mitad no
+// estaba escrita.
+//
+// La diferencia con las "ajena" no es el permiso: es DE QUIÉN es el turno. En las propias el
+// inquilino NO viaja en el formulario, se toma de la sesión. Aceptarlo del cliente sería dejar que
+// cualquiera agende (o cancele) a nombre de otro cambiando un campo oculto — y el permiso
+// `reserva.crear.propia` no lo frenaría, porque desde su punto de vista la acción es legítima.
+
+/** Igual que NuevaReservaInput pero SIN inquilinoId: no se pregunta, se sabe. */
+export const NuevaReservaPropiaInput = NuevaReservaInput.omit({ inquilinoId: true });
+export type NuevaReservaPropia = z.infer<typeof NuevaReservaPropiaInput>;
+
+/** El vínculo del actor con su ficha de profesional. Sin él no hay turno propio posible. */
+function suInquilino(actor: Actor): string | null {
+  return actor.inquilinoId;
+}
+
+async function crearPropia(actor: Actor, input: NuevaReservaPropia, db: PrismaClient = prisma): Promise<ResultadoAlta> {
+  const inquilinoId = suInquilino(actor);
+  // Un usuario con rol de profesional pero sin ficha vinculada no puede reservar "para nadie".
+  // Es un estado real (alguien creó el acceso y no lo asoció) y tiene que decirlo, no fallar raro.
+  if (!inquilinoId) return { ok: false, error: "SIN_FICHA" };
+  return crearDesdePanel(actor, { ...input, inquilinoId }, db);
+}
+
+export const crearReservaPropia = definirAccion(
+  { permiso: "reserva.crear.propia", schema: NuevaReservaPropiaInput },
+  (actor, input) => crearPropia(actor, input),
+);
+
+export const crearReservaPropiaCon = (db: PrismaClient) =>
+  definirAccion({ permiso: "reserva.crear.propia", schema: NuevaReservaPropiaInput }, (actor, input) => crearPropia(actor, input, db));
+
+/**
+ * Cancela un turno PROPIO. El chequeo de que la fila sea suya se hace acá, contra la base: el id
+ * viene del cliente, y sin verificar el dueño alcanzaría con cambiar un id en el formulario para
+ * cancelarle el turno a otro.
+ */
+async function cancelarPropia(actor: Actor, input: z.infer<typeof TurnoInput>, db: PrismaClient = prisma) {
+  const inquilinoId = suInquilino(actor);
+  if (!inquilinoId) return { ok: false as const, error: "SIN_FICHA" as const };
+
+  const fila = await db.ocupacion.findFirst({
+    where: { id: input.ocupacionId, operadorId: actor.operadorId },
+    select: { inquilinoId: true },
+  });
+  // Mismo resultado para "no existe" y "no es tuyo": responder distinto convierte la pantalla en
+  // un detector de turnos ajenos (§6.11).
+  if (!fila || fila.inquilinoId !== inquilinoId) return { ok: false as const, error: "NO_ENCONTRADO" as const };
+
+  return cancelarOcupacion(input, { operadorId: actor.operadorId }, db);
+}
+
+export const cancelarReservaPropia = definirAccion(
+  { permiso: "reserva.editar.propia", schema: TurnoInput },
+  (actor, input) => cancelarPropia(actor, input),
+);
+
+export const cancelarReservaPropiaCon = (db: PrismaClient) =>
+  definirAccion({ permiso: "reserva.editar.propia", schema: TurnoInput }, (actor, input) => cancelarPropia(actor, input, db));
+
+/** Mueve un turno PROPIO arrastrándolo. Mismo chequeo de dueño que al cancelar. */
+async function moverPropia(actor: Actor, input: z.infer<typeof MoverReservaInput>, db: PrismaClient = prisma) {
+  const inquilinoId = suInquilino(actor);
+  if (!inquilinoId) return { ok: false as const, error: "SIN_FICHA" as const };
+
+  const fila = await db.ocupacion.findFirst({
+    where: { id: input.ocupacionId, operadorId: actor.operadorId },
+    select: { inquilinoId: true },
+  });
+  if (!fila || fila.inquilinoId !== inquilinoId) return { ok: false as const, error: "NO_ENCONTRADO" as const };
+
+  return moverDesdePanel(actor, input, db);
+}
+
+export const moverReservaPropia = definirAccion(
+  { permiso: "reserva.editar.propia", schema: MoverReservaInput },
+  (actor, input) => moverPropia(actor, input),
+);
+
+export const moverReservaPropiaCon = (db: PrismaClient) =>
+  definirAccion({ permiso: "reserva.editar.propia", schema: MoverReservaInput }, (actor, input) => moverPropia(actor, input, db));

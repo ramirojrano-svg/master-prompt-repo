@@ -32,6 +32,11 @@ export type EventoAgenda = ReservaDTO & {
   horaTexto: string; // "09:00 – 10:30", ya formateado en la zona de la SEDE
   esBloqueo: boolean; // mantenimiento/bloqueo: se dibuja rayado y no cuenta como hora vendida
   titulo: string;
+  /** ¿Este actor puede abrir el detalle? Falso para el turno del de al lado, que se proyecta sin
+   *  identidad y por lo tanto no tiene detalle que mostrar. Sale de la PROYECCIÓN y no de mirar si
+   *  el título dice "Ocupado": el día que ese texto cambie, la regla de privacidad seguiría
+   *  colgada de una cadena. */
+  abrible: boolean;
 };
 
 export type AgendaVista = {
@@ -161,6 +166,7 @@ export async function cargarAgenda(
       // ocupado y se dibuja igual que un mantenimiento (§6.3).
       esBloqueo: conIdentidad?.tipo === "mantenimiento" || conIdentidad?.tipo === "bloqueo",
       titulo: conIdentidad?.inquilinoNombre ?? conIdentidad?.motivo ?? "Ocupado",
+      abrible: Boolean(conIdentidad),
     };
   });
 

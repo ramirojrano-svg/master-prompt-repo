@@ -31,18 +31,27 @@ export function NuevaReserva({
     <form className="panel" action={accion} style={{ padding: 14 }}>
       <input type="hidden" name="fecha" value={fecha} />
 
-      <label htmlFor="inquilinoId" style={{ marginTop: 0 }}>
-        Profesional
-      </label>
-      <select id="inquilinoId" name="inquilinoId" required>
-        {inquilinos.map((i) => (
-          <option key={i.id} value={i.id}>
-            {i.nombre}
-          </option>
-        ))}
-      </select>
+      {/* Sin lista, el turno es de quien lo está creando y el campo no va: un profesional no elige
+          de quién es su turno. El servidor tampoco lo aceptaría —la acción propia no tiene ese
+          campo en su esquema— así que esconderlo no es el control, es solo no preguntar al pedo. */}
+      {inquilinos.length > 0 && (
+        <>
+          <label htmlFor="inquilinoId" style={{ marginTop: 0 }}>
+            Profesional
+          </label>
+          <select id="inquilinoId" name="inquilinoId" required>
+            {inquilinos.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.nombre}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
 
-      <label htmlFor="salaId">Consultorio</label>
+      <label htmlFor="salaId" style={inquilinos.length === 0 ? { marginTop: 0 } : undefined}>
+        Consultorio
+      </label>
       <select id="salaId" name="salaId" required defaultValue={salas[0]?.id ?? ""}>
         {salas.map((s) => (
           <option key={s.id} value={s.id}>

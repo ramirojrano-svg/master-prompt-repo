@@ -16,6 +16,8 @@ import { cargarAgenda } from "../../../src/servicios/agenda/dia.ts";
 import {
   cancelarReservaAjena,
   crearReservaAjena,
+  cancelarReservaPropia,
+  crearReservaPropia,
   mensajeDeError,
   mensajeDeMovimiento,
   mensajeDeTurno,
@@ -59,9 +61,15 @@ async function ejecutarSobreTurno(
   if (!actor) redirect(`/login?centro=${encodeURIComponent(ctx.slug)}`);
 
   const ocupacionId = String(fd.get("ocupacionId") ?? "");
+  // Cancelar tiene dos caminos por el mismo motivo que crear: el del profesional verifica contra
+  // la base que la fila sea SUYA. Marcar no-show es del centro y no tiene versión propia — que
+  // alguien declare que no vino a su propio turno para no pagarlo no es una función, es un agujero.
+  const puedeAjena = puede(actor.rol, "reserva.editar.ajena");
   const r =
     cual === "cancelar"
-      ? await cancelarReservaAjena(actor, { ocupacionId, alcance: fd.get("alcance") ?? "solo" })
+      ? puedeAjena
+        ? await cancelarReservaAjena(actor, { ocupacionId, alcance: fd.get("alcance") ?? "solo" })
+        : await cancelarReservaPropia(actor, { ocupacionId, alcance: fd.get("alcance") ?? "solo" })
       : await noShowReservaAjena(actor, { ocupacionId, accion: fd.get("accion") });
 
   const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
@@ -139,6 +147,9 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
   }
 
   const puedeCargar = puede(actor.rol, "reserva.crear.ajena");
+  // El profesional también agenda: lo suyo. Sin esto entraba a la agenda y no tenía botón —
+  // podía mirar y nada más, que es justo lo contrario de para qué está la app.
+  const puedeCargarPropia = puede(actor.rol, "reserva.crear.propia") && actor.inquilinoId !== null;
   const inquilinos = puedeCargar
     ? await prisma.inquilino.findMany({
         where: { operadorId: actor.operadorId, estado: "activo" },
@@ -175,14 +186,19 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
     if (!actorAccion) redirect(`/login?centro=${encodeURIComponent(slug)}`);
 
     const fechaForm = String(formData.get("fecha") ?? "");
-    const r = await crearReservaAjena(actorAccion, {
+    // Dos caminos, no uno con un `if` adentro: el del profesional NO acepta inquilinoId. Si la
+    // acción propia lo tomara del formulario, un campo oculto cambiado en el navegador alcanzaría
+    // para agendar a nombre de otro, y el permiso no lo frenaría — la acción parecería legítima.
+    const comun = {
       salaId: formData.get("salaId"),
       fecha: fechaForm,
       hora: formData.get("hora"),
       duracionMin: formData.get("duracionMin"),
-      inquilinoId: formData.get("inquilinoId"),
       repeticion: formData.get("repeticion") ?? "no",
-    });
+    };
+    const r = puede(actorAccion.rol, "reserva.crear.ajena")
+      ? await crearReservaAjena(actorAccion, { ...comun, inquilinoId: formData.get("inquilinoId") })
+      : await crearReservaPropia(actorAccion, comun);
 
     const q = new URLSearchParams({ fecha: fechaForm, vista });
     if (!r.ok) q.set("error", r.error); // SIN_PERMISO / ENTRADA_INVALIDA (del envoltorio)
@@ -221,6 +237,9 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
   // Acciones sobre un turno existente. Vuelven al mismo día y vista, con el detalle CERRADO si
   // salió bien (el turno ya no es lo que era) y abierto con el error si no.
   const puedeEditarTurnos = puede(actor.rol, "reserva.editar.ajena");
+  // El profesional edita lo suyo. `turnoAbierto` ya viene proyectado según el actor, así que si
+  // llegó con identidad es porque es propio: un turno ajeno se proyecta como "ocupado" sin dueño.
+  const puedeEditarPropio = puede(actor.rol, "reserva.editar.propia") && actor.inquilinoId !== null;
 
   async function cancelarTurno(fd: FormData) {
     "use server";
@@ -376,7 +395,10 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
               mover={puedeEditarTurnos ? mover : undefined}
               // Sin identidad el turno es un "ocupado" y no hay detalle que abrir: no se ofrece
               // el link en vez de abrir un panel vacío.
-              baseTurno={puede(actor.rol, "agenda.ver.identidad") ? href(agenda.fecha) : undefined}
+              // Clickeable para quien ve identidad (el centro) y también para el profesional, que
+              // ve la suya: sin esto podía crear un turno y después no tenía forma de abrirlo para
+              // cancelarlo. Los ajenos igual se proyectan como "ocupado" y su detalle no existe.
+              baseTurno={puede(actor.rol, "agenda.ver.identidad") || puedeEditarPropio ? href(agenda.fecha) : undefined}
             />
           )}
         </section>
@@ -387,7 +409,7 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           turno={turnoAbierto}
           moneda={agenda.moneda}
           cerrarHref={href(agenda.fecha)}
-          puedeEditar={puedeEditarTurnos}
+          puedeEditar={puedeEditarTurnos || puedeEditarPropio}
           cancelar={cancelarTurno}
           noShow={marcarNoShowTurno}
           error={sp.errorTurno ? mensajeDeTurno(sp.errorTurno) : undefined}
@@ -401,7 +423,7 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           Queda abierto SOLO si hubo error: con el turno ya creado el formulario no tiene nada más
           que hacer, y dejarlo abierto obliga a cerrarlo a mano para ver la agenda que se acaba de
           modificar. El aviso de "turno creado" aparece arriba, sobre la grilla. */}
-      {puedeCargar && (
+      {(puedeCargar || puedeCargarPropia) && (
         <details className="crear-flotante" open={Boolean(sp.error)}>
           <summary aria-label="Crear turno" title="Crear turno">
             <IconoMas />
@@ -409,7 +431,8 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           <div className="globo">
             <NuevaReserva
               salas={agenda.salas.filter((s) => s.activa).map((s) => ({ id: s.id, nombre: s.nombre }))}
-              inquilinos={inquilinos}
+              // Vacío para el profesional: no elige de quién es el turno, es suyo.
+              inquilinos={puedeCargar ? inquilinos : []}
               fecha={agenda.fecha}
               accion={crear}
               error={sp.error ? mensajeDeError(sp.error) : undefined}

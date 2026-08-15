@@ -258,7 +258,10 @@ export function Grilla({ dia, hoy, mover, baseTurno }: { dia: AgendaVista; hoy: 
                   const seEstaMoviendo = arrastre?.id === u.id;
                   // Link real y no un onClick: el detalle vive en la URL, así que abrirlo tiene
                   // que funcionar con el botón del medio, con "copiar dirección" y sin JS.
-                  const destino = baseTurno ? `${baseTurno}${baseTurno.includes("?") ? "&" : "?"}turno=${u.id}` : undefined;
+                  // Solo los que TIENEN detalle son links. Un profesional ve los turnos ajenos
+                  // como "Ocupado": ofrecerle un link que abre una pantalla vacía es prometer algo
+                  // que no existe.
+                  const destino = baseTurno && r.abrible ? `${baseTurno}${baseTurno.includes("?") ? "&" : "?"}turno=${u.id}` : undefined;
                   const Bloque = (destino ? "a" : "div") as "a" | "div";
                   return (
                     <Bloque
