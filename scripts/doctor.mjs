@@ -59,6 +59,58 @@ if (!process.env.AUTH_SECRET) {
 }
 ok(".env.local con DATABASE_URL y AUTH_SECRET");
 
+// ── 1.5 La URL, ANTES de intentar usarla ────────────────────────────────────
+// Una DATABASE_URL mal formada no es "la base no responde", pero terminaba reportada así. Cuando
+// a la URL le falta la contraseña, pg ni siquiera llega a hablar con el servidor: corta con
+// "SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string" —que no menciona la URL
+// por ningún lado— y eso caía en el mensaje genérico "Postgres no responde: levantá la base".
+// Mandar a revisar el servidor cuando el servidor está perfecto es peor que no decir nada.
+//
+// Además se IMPRIME lo que se entendió (con la clave tapada). Cuando el problema es la URL, la
+// mitad de las veces se ve de un vistazo en esa línea y no hay nada más que deducir.
+function revisarUrlBase(crudo) {
+  let u;
+  try {
+    u = new URL(crudo);
+  } catch {
+    morir(
+      "DATABASE_URL no tiene forma de URL.",
+      "Tiene que ser:  postgresql://USUARIO:CLAVE@HOST:PUERTO/BASE",
+      "Corregila en .env.local (hay un ejemplo en .env.example)",
+    );
+  }
+  if (!/^postgres(ql)?:$/.test(u.protocol)) {
+    morir(`DATABASE_URL empieza con "${u.protocol}" y tiene que empezar con postgresql://`, "Corregila en .env.local");
+  }
+
+  const base = u.pathname.slice(1);
+  // La contraseña vacía y la contraseña ausente se ven IGUAL desde la URL (las dos dan ""), pero
+  // pg las trata distinto: ausente corta antes de conectar (el SASL de arriba) y vacía llega al
+  // servidor y vuelve como 28P01. Para el que lee, las dos se arreglan igual: poner la clave.
+  if (!u.username || u.password === "" || !u.hostname || !base) {
+    const falta = [
+      !u.username && "el usuario",
+      u.password === "" && "la contraseña",
+      !u.hostname && "el host",
+      !base && "el nombre de la base",
+    ].filter(Boolean);
+    morir(
+      `A DATABASE_URL le falta ${falta.join(" y ")}.`,
+      "Forma completa:  postgresql://USUARIO:CLAVE@HOST:PUERTO/BASE",
+      `Lo que hay ahora:  postgresql://${u.username || "(vacío)"}:${u.password === "" ? "(VACÍA)" : "***"}@${u.hostname || "(vacío)"}:${u.port || "(sin puerto)"}/${base || "(vacía)"}`,
+      // Solo cuando la contraseña es la que falta: si la clave real tiene alguno de estos
+      // caracteres, la URL se parte en el lugar equivocado y el síntoma es exactamente este —
+      // campos vacíos sin que el archivo se vea mal. En los otros casos es ruido que distrae.
+      ...(u.password === "" ? ["Si tu contraseña tiene @ : / ? # o %, hay que escaparla: @ es %40, # es %23, % es %25"] : []),
+      "Corregila en .env.local y volvé a correr:  npm run doctor",
+    );
+  }
+  return { usuario: u.username, host: u.hostname, puerto: u.port || "5432", base };
+}
+
+const URL_OK = revisarUrlBase(process.env.DATABASE_URL);
+ok(`DATABASE_URL bien formada (${URL_OK.usuario}:***@${URL_OK.host}:${URL_OK.puerto}/${URL_OK.base})`);
+
 // ── 2. Conexión ─────────────────────────────────────────────────────────────
 /**
  * Traduce por qué no se pudo conectar.
@@ -95,6 +147,18 @@ function morirPorConexion(e) {
       `El servidor responde, pero no existe la base "${base}".`,
       `docker exec -it emoapp-db createdb -U ${usuario} ${base}`,
       "y después:  npm run instalar",
+    );
+  }
+  // Red de seguridad: pg corta con esto cuando el servidor pide SCRAM y él no tiene contraseña
+  // que mandar. Es un problema de la URL, no del servidor — y el chequeo de arriba ya debería
+  // haberlo atajado, así que si llega hasta acá la clave se perdió en otro lado (una variable de
+  // entorno del shell pisando el archivo es la sospechosa habitual).
+  if (/SASL|client password must be a string/i.test(e.message ?? "")) {
+    morir(
+      "La conexión se intentó SIN contraseña, y el servidor pide una.",
+      "El servidor está bien: lo que falta es la clave en la conexión.",
+      "Revisá que DATABASE_URL en .env.local tenga la forma  postgresql://USUARIO:CLAVE@HOST:PUERTO/BASE",
+      'Y que no haya un DATABASE_URL exportado en la terminal pisándolo:  echo "$DATABASE_URL"',
     );
   }
   morir(
