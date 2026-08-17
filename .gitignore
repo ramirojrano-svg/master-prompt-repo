@@ -232,3 +232,6 @@ coverage/
 
 # capturas de la prueba de humo (se regeneran con: node scripts/humo.mjs)
 capturas/
+
+# Vercel
+.vercel

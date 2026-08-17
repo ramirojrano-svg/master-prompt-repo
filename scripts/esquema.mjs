@@ -28,10 +28,15 @@ const err = (m) => console.error(`  \x1b[31m✗\x1b[0m ${m}`);
 
 cargarEnv(RAIZ);
 
-const URL_BASE = process.env.DATABASE_URL;
+// DIRECT_URL primero: esto ejecuta DDL (CREATE TABLE, CREATE EXTENSION, EXCLUDE), y contra un
+// Postgres administrado —Supabase, Neon— DATABASE_URL suele apuntar a un pooler en modo
+// transacción que RECHAZA o rompe el DDL. La conexión directa existe exactamente para esto. En
+// local las dos apuntan al mismo lado y no cambia nada.
+const URL_BASE = process.env.DIRECT_URL || process.env.DATABASE_URL;
 if (!URL_BASE) {
-  err("No hay DATABASE_URL (ni en el entorno ni en .env.local).");
-  err("Copiá .env.example a .env.local y completá la conexión.");
+  err("No hay DATABASE_URL ni DIRECT_URL (ni en el entorno ni en .env.local).");
+  err("En local: copiá .env.example a .env.local y completá la conexión.");
+  err("En Vercel: cargalas en Settings → Environment Variables.");
   process.exit(1);
 }
 

@@ -22,9 +22,8 @@ const CLAVE_DEMO = process.env.SEED_PASSWORD ?? "emoapp-2026";
 // final: una sola lista, así el cartel de "entrá con esto" no puede quedar prometiendo una cuenta
 // que nadie verificó.
 const CUENTAS = [
-  { rol: "Dueño", email: "ramirojrano@gmail.com" },
+  { rol: "Administrador", email: "ramirojrano@gmail.com" },
   { rol: "Profesional", email: "maria@email.com" },
-  { rol: "Recepción", email: "ana@email.com" },
 ];
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -53,8 +52,11 @@ const URL_DEL_ENTORNO = process.env.DATABASE_URL;
 
 cargarEnv(RAIZ);
 
-if (!existsSync(join(RAIZ, ".env.local"))) {
-  morir("No existe .env.local", "Copiá .env.example a .env.local y completá la conexión");
+// El .env.local solo hace falta si la conexión no vino ya del entorno. Apuntar el doctor a la
+// base de producción es `DATABASE_URL=... npm run doctor`, y exigir el archivo ahí frenaba por
+// algo que no falta — el dato estaba, solo que en otro lado.
+if (!process.env.DATABASE_URL && !existsSync(join(RAIZ, ".env.local"))) {
+  morir("No existe .env.local y tampoco hay DATABASE_URL en el entorno", "Copiá .env.example a .env.local y completá la conexión");
 }
 if (!process.env.DATABASE_URL) morir("Falta DATABASE_URL en .env.local", "Mirá .env.example");
 if (!process.env.AUTH_SECRET) {
@@ -64,7 +66,7 @@ if (!process.env.AUTH_SECRET) {
     'Generá uno:  node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))"',
   );
 }
-ok(".env.local con DATABASE_URL y AUTH_SECRET");
+ok(URL_DEL_ENTORNO ? "DATABASE_URL y AUTH_SECRET (del entorno)" : ".env.local con DATABASE_URL y AUTH_SECRET");
 
 // ── 1.5 La URL, ANTES de intentar usarla ────────────────────────────────────
 // Una DATABASE_URL mal formada no es "la base no responde", pero terminaba reportada así. Cuando

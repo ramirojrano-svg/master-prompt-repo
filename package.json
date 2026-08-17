@@ -4,25 +4,26 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22.6"
   },
   "scripts": {
+    "acceso": "node scripts/acceso.mjs",
+    "build": "next build",
+    "db:esquema": "node scripts/esquema.mjs",
+    "db:reset": "node scripts/esquema.mjs --reset",
+    "dev": "next dev",
+    "doctor": "node scripts/doctor.mjs",
+    "humo": "node scripts/humo.mjs",
+    "instalar": "npm run db:esquema && npm run seed && npm run doctor",
+    "limpiar": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true});console.log('.next borrado: la proxima compilacion arranca de cero')\"",
+    "postinstall": "prisma generate",
+    "predev": "node scripts/entorno-limpio.mjs",
+    "seed": "node prisma/seed.ts",
     "test": "node --test \"src/**/*.test.ts\"",
     "test:db": "node --test --test-concurrency=1 \"tests/integracion/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.json",
-    "verify": "npm run typecheck && npm test",
-    "postinstall": "prisma generate",
-    "build": "next build",
-    "limpiar": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true});console.log('.next borrado: la proxima compilacion arranca de cero')\"",
-    "predev": "node scripts/entorno-limpio.mjs",
-    "dev": "next dev",
-    "seed": "node prisma/seed.ts",
-    "db:esquema": "node scripts/esquema.mjs",
-    "db:reset": "node scripts/esquema.mjs --reset",
-    "doctor": "node scripts/doctor.mjs",
-    "acceso": "node scripts/acceso.mjs",
-    "instalar": "npm run db:esquema && npm run seed && npm run doctor",
-    "humo": "node scripts/humo.mjs"
+    "vercel-build": "node scripts/esquema.mjs && next build",
+    "verify": "npm run typecheck && npm test"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
