@@ -25,6 +25,38 @@ export async function autorizar(
   return { id: u.id, email: u.email, nombre: u.nombre, sessionVersion: u.sessionVersion };
 }
 
+/** Lo que manda un proveedor externo sobre quién dice ser. Todo `unknown`: viene de afuera. */
+export type PerfilExterno = { email?: unknown; email_verified?: unknown };
+
+/**
+ * ¿Se admite a alguien que se identificó con Google?
+ *
+ * Google NO da de alta a nadie: solo prueba que quien entra es dueño de un email. Si eso alcanzara
+ * para entrar, tener un Gmail sería la credencial de la app de un consultorio. Acá se exige además
+ * que ese email YA tenga acceso activo a algún centro — el alta la hace el administrador desde la
+ * ficha del profesional (§6.2).
+ *
+ * Se exige `email_verified`: sin eso, alguien puede registrar en su proveedor un email ajeno y
+ * presentarlo acá como propio. Es el mismo motivo por el que no se confía en un `From:`.
+ *
+ * Vive acá y no dentro del callback de Auth.js para poder probarla: es la puerta de entrada, y una
+ * puerta que no se prueba es una puerta que se abre sola.
+ */
+export async function accesoPorProveedor(
+  db: Pick<PrismaClient, "usuarioOperador">,
+  perfil: PerfilExterno,
+): Promise<boolean> {
+  if (perfil.email_verified !== true) return false;
+  const email = typeof perfil.email === "string" ? perfil.email.trim().toLowerCase() : "";
+  if (!email) return false;
+
+  const acceso = await db.usuarioOperador.findFirst({
+    where: { activo: true, usuario: { email } },
+    select: { usuarioId: true },
+  });
+  return acceso !== null;
+}
+
 /**
  * ¿La versión de sesión del token sigue siendo válida? sv de la fila:
  *  - null (usuario borrado) => INVÁLIDA (fail-closed: la fila ausente es una respuesta definitiva).

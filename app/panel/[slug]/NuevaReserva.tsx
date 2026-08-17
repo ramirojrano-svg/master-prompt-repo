@@ -4,6 +4,7 @@
 
 import type { GrupoConflicto } from "../../../src/dominio/conflictos.ts";
 import { etiquetaDeRepeticion, REPETICIONES } from "../../../src/dominio/repeticion.ts";
+import { Horario } from "./Horario.tsx";
 
 export type OpcionSala = { id: string; nombre: string };
 export type OpcionInquilino = { id: string; nombre: string };
@@ -60,25 +61,7 @@ export function NuevaReserva({
         ))}
       </select>
 
-      <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
-        <div>
-          <label htmlFor="hora">Empieza</label>
-          <input id="hora" name="hora" type="time" step={1800} required defaultValue="09:00" />
-        </div>
-        <div>
-          <label htmlFor="duracionMin">Dura</label>
-          <select id="duracionMin" name="duracionMin" defaultValue="60">
-            <option value="30">30 minutos</option>
-            {/* 1 a 12 horas correlativas. 12 h es el máximo que admite el motor
-                (DURACION_MAX_MIN), y el CHECK de la base lo respalda. */}
-            {Array.from({ length: 12 }, (_, k) => k + 1).map((h) => (
-              <option key={h} value={h * 60}>
-                {h} {h === 1 ? "hora" : "horas"}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <Horario />
 
       {/* Repetición, con las etiquetas armadas desde la fecha elegida ("el segundo viernes", no
           "mensual"): la etiqueta ES la explicación. El campo "veces" solo aparece cuando hay algo

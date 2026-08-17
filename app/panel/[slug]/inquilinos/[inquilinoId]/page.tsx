@@ -17,6 +17,7 @@ import { actorDeSesion } from "../../../../../src/lib/sesion.ts";
 import { puede } from "../../../../../src/lib/permisos.ts";
 import { detalleProfesional } from "../../../../../src/servicios/reportes/mensual.ts";
 import { editarInquilino } from "../../../../../src/servicios/config/inquilinos.ts";
+import { accesoDeInquilino, crearAcceso, LARGO_MIN_CLAVE, restablecerClave } from "../../../../../src/servicios/config/accesos.ts";
 import { anularCobro, cobrosDelMes, ETIQUETA_MEDIO, MEDIOS, registrarCobro } from "../../../../../src/servicios/plata/cobros.ts";
 import { formatearPesos } from "../../../../../src/dominio/tarifa.ts";
 import { esPeriodoValido, horasYMinutos, nombreDePeriodo, periodoAnterior, periodoSiguiente } from "../../../../../src/dominio/reporte.ts";
@@ -57,6 +58,8 @@ export default async function DetalleProfesionalPage({
   const conUso = d.porDiaSemana.filter((x) => x.minutos > 0);
 
   const puedeCobrar = puede(actor.rol, "cobro.registrar");
+  const administraUsuarios = puede(actor.rol, "usuarios.administrar");
+  const acceso = administraUsuarios ? await accesoDeInquilino({ operadorId: actor.operadorId, inquilinoId }) : null;
   const cobros = await cobrosDelMes({ operadorId: actor.operadorId, inquilinoId, periodo });
   const hoy = fechaEnZona(new Date(), sede.zonaHoraria);
   const volverA = `/panel/${slug}/inquilinos/${inquilinoId}?periodo=${periodo}`;
@@ -110,14 +113,40 @@ export default async function DetalleProfesionalPage({
     redirect(`${volverA}${r.ok && r.data.ok ? "&ok=datos" : "&error=DATOS"}`);
   }
 
+  async function darAcceso(formData: FormData) {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+    const r = await crearAcceso(a, { inquilinoId, email: formData.get("email"), password: formData.get("password") });
+    revalidatePath(rutaDetalle);
+    const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
+    redirect(`${volverA}${codigo ? `&error=${codigo}` : "&ok=acceso"}`);
+  }
+
+  async function resetearClave(formData: FormData) {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+    const r = await restablecerClave(a, { inquilinoId, password: formData.get("password") });
+    revalidatePath(rutaDetalle);
+    const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
+    redirect(`${volverA}${codigo ? `&error=${codigo}` : "&ok=clave"}`);
+  }
+
   const AVISO: Record<string, string> = {
     "1": "Cobro registrado.",
     datos: "Datos del profesional guardados.",
+    acceso: "Acceso creado. Pasale el email y la contraseña que cargaste: con eso entra.",
+    clave: "Contraseña cambiada. Si tenía la app abierta en algún lado, quedó afuera.",
     repetido: "Ese comprobante ya estaba cargado: no se asentó de nuevo (sigue siendo un solo cobro).",
     anulado: "Cobro anulado. Queda asentado, con el motivo, y el saldo volvió a incluir esa deuda.",
   };
   const FALLA: Record<string, string> = {
     DATOS: "No se pudieron guardar los datos. Revisá que el nombre no esté vacío.",
+    YA_TIENE_ACCESO: "Este profesional ya tiene acceso.",
+    EMAIL_DE_OTRO: "Ese email ya lo usa otro profesional de este centro.",
+    SIN_ACCESO: "Todavía no tiene acceso: creáselo primero.",
+    ENTRADA_INVALIDA: `Revisá el email y que la contraseña tenga al menos ${LARGO_MIN_CLAVE} caracteres.`,
     MES_CERRADO: "Ese mes ya está cerrado: el cobro no se puede anular sin reabrir la liquidación.",
     YA_ANULADO: "Ese cobro ya estaba anulado.",
     COBRO_INEXISTENTE: "No se encontró ese cobro.",
@@ -351,6 +380,53 @@ export default async function DetalleProfesionalPage({
             )}
           </>
         )}
+        {/* Estas dos secciones van FUERA del bloque de actividad del mes: son de la PERSONA, no
+            del período. Adentro solo se veían cuando el profesional tenía turnos ese mes — o sea
+            que a quien todavía no usó la app, que es justo el que necesita que le creen el
+            acceso, no se le podía crear. */}
+
+        {/* ── Acceso a la app ────────────────────────────────────────────── */}
+        {administraUsuarios && (
+          <section style={{ marginTop: 26 }}>
+            <h2>Acceso a la app</h2>
+            {acceso ? (
+              <div className="panel">
+                <p style={{ margin: 0, fontSize: 14 }}>
+                  Entra con <strong>{acceso.email}</strong>
+                  {!acceso.activo && <span className="tenue"> · acceso desactivado</span>}
+                </p>
+                {/* Restablecer, no "ver": una contraseña guardada no se puede mostrar —está
+                    hasheada— y poder verla sería peor que no tenerla. Se pone una nueva y se la
+                    pasa; la anterior deja de servir en el acto. */}
+                <form action={resetearClave} style={{ marginTop: 12 }}>
+                  <label htmlFor="clave-nueva" style={{ marginTop: 0 }}>Contraseña nueva</label>
+                  <input id="clave-nueva" name="password" type="text" required minLength={LARGO_MIN_CLAVE} maxLength={200} placeholder={`al menos ${LARGO_MIN_CLAVE} caracteres`} />
+                  <p className="tenue" style={{ margin: "4px 0 0", fontSize: 12 }}>
+                    Se muestra mientras la escribís para que puedas pasársela. Al guardar, si tenía
+                    la app abierta en otro lado queda afuera.
+                  </p>
+                  <p style={{ marginTop: 12, marginBottom: 0 }}>
+                    <button type="submit" className="btn-suave">Restablecer contraseña</button>
+                  </p>
+                </form>
+              </div>
+            ) : (
+              <form action={darAcceso} className="panel">
+                <p className="tenue" style={{ margin: 0, fontSize: 13 }}>
+                  Todavía no puede entrar a la app. Creale un acceso y pasale estos datos.
+                </p>
+                <label htmlFor="acc-email">Email</label>
+                <input id="acc-email" name="email" type="email" required placeholder="profesional@email.com" />
+                <label htmlFor="acc-clave">Contraseña</label>
+                <input id="acc-clave" name="password" type="text" required minLength={LARGO_MIN_CLAVE} maxLength={200} placeholder={`al menos ${LARGO_MIN_CLAVE} caracteres`} />
+                <p style={{ marginTop: 14, marginBottom: 0 }}>
+                  <button type="submit">Crear acceso</button>
+                </p>
+              </form>
+            )}
+          </section>
+        )}
+
         {/* ── Datos del profesional ──────────────────────────────────────── */}
         {puede(actor.rol, "inquilino.administrar") && (
           <section style={{ marginTop: 26 }}>

@@ -84,11 +84,49 @@ orden**, esas credenciales entran de verdad.
 
 ---
 
+## Opcional: entrar con Google
+
+Es **gratis** y la app funciona igual sin esto: si no cargás las credenciales, el botón
+"Entrar con Google" no aparece y se entra con email y contraseña, como hasta ahora.
+
+Google **no da de alta a nadie**. Solo confirma que quien entra es dueño de un email que vos ya
+habilitaste desde *Profesionales → Acceso a la app*. Una cuenta de Google desconocida no entra —
+si entrara, tener un Gmail sería la contraseña del centro.
+
+1. Entrá a [console.cloud.google.com](https://console.cloud.google.com) y creá un proyecto.
+2. **APIs & Services → OAuth consent screen**: tipo *External*, poné el nombre de la app y tu mail.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID**, tipo *Web application*.
+4. En **Authorized redirect URIs** cargá una línea por dominio desde el que se vaya a entrar:
+
+   ```
+   https://<tu-dominio>.vercel.app/api/auth/callback/google
+   http://localhost:3000/api/auth/callback/google
+   ```
+
+   Tiene que ser **exacta**. Es el error más común: si no coincide carácter por carácter, Google
+   corta con `redirect_uri_mismatch` antes de mostrar la pantalla de cuentas.
+
+5. Copiá el *Client ID* y el *Client secret* a las variables de Vercel:
+
+   | Variable | Valor |
+   |---|---|
+   | `AUTH_GOOGLE_ID` | el Client ID (termina en `.apps.googleusercontent.com`) |
+   | `AUTH_GOOGLE_SECRET` | el Client secret |
+
+6. Volvé a desplegar. El botón aparece solo cuando las dos variables están cargadas.
+
+> Mientras la pantalla de consentimiento esté en modo *Testing*, Google solo deja entrar a los
+> emails que agregues en **Test users**. Para que entre cualquier profesional del centro hay que
+> pasarla a *In production* (el botón está en esa misma pantalla; para este uso no pide revisión
+> porque no se piden permisos sensibles).
+
 ## Después de subir
 
 - Entrá a `https://<tu-dominio>.vercel.app/login`.
 - Cambiá la contraseña del administrador. La del seed (`emoapp-2026`) está escrita en este
   repositorio: sirve para probar, no para producción.
+- Dale acceso a cada profesional desde **Profesionales → tocá su nombre → Acceso a la app**, y
+  pasale el email y la contraseña que cargaste. Si la pierde, desde ahí mismo se la restablecés.
 
 ## Si algo falla
 
@@ -98,5 +136,7 @@ orden**, esas credenciales entran de verdad.
 | Entra al login y rebota | Falta `AUTH_SECRET` o `AUTH_TRUST_HOST` |
 | "Email o contraseña incorrectos" | Falta el paso 5: la base tiene tablas pero no datos |
 | `Cannot find module` al compilar | Hay un lockfile suelto arriba del proyecto (lo avisa el arranque) |
+| No aparece "Entrar con Google" | Faltan `AUTH_GOOGLE_ID` o `AUTH_GOOGLE_SECRET` (el botón se esconde a propósito) |
+| Google dice `redirect_uri_mismatch` | La URI autorizada no coincide exacto con `https://<dominio>/api/auth/callback/google` |
 
 Cualquiera de los cuatro lo diagnostica `npm run doctor` apuntando a la base de producción.

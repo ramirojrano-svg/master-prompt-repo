@@ -8,10 +8,11 @@
 // estaban perfectas. Distinguirlo no filtra nada del padrón: el fallo de infraestructura no
 // depende de qué email se tipeó.
 import { redirect } from "next/navigation";
-import { signIn } from "../../../src/lib/auth.ts";
+import { GOOGLE_LISTO, signIn } from "../../../src/lib/auth.ts";
 import { prisma } from "../../../src/db/prisma.ts";
 import { Logo } from "../../Logo.tsx";
 import { CampoClave } from "./CampoClave.tsx";
+import { IconoGoogle } from "../../Iconos.tsx";
 
 /**
  * A qué centro mandar a un usuario que entró sin decir a cuál. Devuelve el slug del primer centro
@@ -61,6 +62,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     // Entró bien pero no tiene acceso a ningún centro: es un caso real (un acceso dado de baja) y
     // no puede terminar en la portada, que solo ofrece crear un centro nuevo.
     redirect(destino ? `/panel/${destino}` : "/login?error=sin-centro");
+  }
+
+  async function entrarConGoogle() {
+    "use server";
+    // `redirectTo` a la raíz del panel del centro si vino en la URL; si no, el login resuelve el
+    // centro por el usuario igual que con la contraseña.
+    await signIn("google", { redirectTo: sp.centro ? `/panel/${sp.centro}` : "/login" });
   }
 
   return (
@@ -120,6 +128,22 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             </button>
           </p>
         </form>
+
+        {/* Google solo aparece si está configurado: un botón que lleva a una pantalla de error de
+            Google es peor que no tenerlo. Y NO da de alta a nadie — solo confirma que quien entra
+            es dueño de un email que el centro ya habilitó. */}
+        {GOOGLE_LISTO && (
+          <form action={entrarConGoogle} style={{ marginTop: 12 }}>
+            <button
+              type="submit"
+              className="btn-suave"
+              style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10, background: "#fff", border: "1px solid var(--borde-fuerte)" }}
+            >
+              <IconoGoogle />
+              Entrar con Google
+            </button>
+          </form>
+        )}
 
         <p className="tenue" style={{ textAlign: "center", fontSize: 12, marginTop: 18 }}>
           Espacio Montes de Oca S.R.L. · espaciomontesdeoca@gmail.com
