@@ -1,8 +1,12 @@
-// app/panel/[slug]/reportes/[inquilinoId]/page.tsx — el detalle de UN profesional en el mes.
+// app/panel/[slug]/inquilinos/[inquilinoId]/page.tsx — la ficha de UN profesional.
 //
-// Responde las tres preguntas que aparecen cuando alguien discute su resumen: cuántas horas usó,
-// qué días y a qué hora, y cuánto factura. Con las filas reales a la vista: un total sin el
-// detalle que lo forma no se puede defender.
+// Vivía colgada de Métricas, y ahí no es donde se la busca: cuando hay que ver o cobrarle a
+// alguien, se entra por Profesionales y se toca su nombre. Métricas es para mirar el centro
+// entero; esto es para mirar a una persona.
+//
+// Responde las tres preguntas que aparecen cuando alguien discute su resumen —cuántas horas usó,
+// qué días y a qué hora, y cuánto factura— con las filas reales a la vista: un total sin el
+// detalle que lo forma no se puede defender. Y desde acá se registran sus cobros.
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -12,14 +16,14 @@ import { MenuConfig } from "../../MenuConfig.tsx";
 import { actorDeSesion } from "../../../../../src/lib/sesion.ts";
 import { puede } from "../../../../../src/lib/permisos.ts";
 import { detalleProfesional } from "../../../../../src/servicios/reportes/mensual.ts";
+import { editarInquilino } from "../../../../../src/servicios/config/inquilinos.ts";
 import { anularCobro, cobrosDelMes, ETIQUETA_MEDIO, MEDIOS, registrarCobro } from "../../../../../src/servicios/plata/cobros.ts";
 import { formatearPesos } from "../../../../../src/dominio/tarifa.ts";
-import { esPeriodoValido, horasYMinutos, periodoAnterior } from "../../../../../src/dominio/reporte.ts";
+import { esPeriodoValido, horasYMinutos, nombreDePeriodo, periodoAnterior, periodoSiguiente } from "../../../../../src/dominio/reporte.ts";
 import { fechaEnZona } from "../../../../../src/dominio/motor/zona.ts";
 import { prisma } from "../../../../../src/db/prisma.ts";
 import { Logo } from "../../../../Logo.tsx";
-import { AnilloVolumen, BarrasVolumen } from "../Graficos.tsx";
-import { nombreDePeriodo, periodoSiguiente } from "../page.tsx";
+import { AnilloVolumen, BarrasVolumen } from "../../reportes/Graficos.tsx";
 
 const DIA_LARGO = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
@@ -47,7 +51,7 @@ export default async function DetalleProfesionalPage({
 
   // Un id de otro centro no existe acá: se vuelve al reporte, sin confirmar que exista en otro lado.
   const d = await detalleProfesional({ actor, periodo, inquilinoId });
-  if (!d) redirect(`/panel/${slug}/reportes?periodo=${periodo}`);
+  if (!d) redirect(`/panel/${slug}/inquilinos`);
 
   const plata = (c: bigint) => formatearPesos(c, d.moneda);
   const conUso = d.porDiaSemana.filter((x) => x.minutos > 0);
@@ -55,10 +59,10 @@ export default async function DetalleProfesionalPage({
   const puedeCobrar = puede(actor.rol, "cobro.registrar");
   const cobros = await cobrosDelMes({ operadorId: actor.operadorId, inquilinoId, periodo });
   const hoy = fechaEnZona(new Date(), sede.zonaHoraria);
-  const volverA = `/panel/${slug}/reportes/${inquilinoId}?periodo=${periodo}`;
+  const volverA = `/panel/${slug}/inquilinos/${inquilinoId}?periodo=${periodo}`;
   // Sin la query: `revalidatePath` toma un path, y con "?periodo=..." no invalida nada — se
   // registra un cobro, la acción contesta "ok", y la lista sigue mostrando lo de antes.
-  const rutaDetalle = `/panel/${slug}/reportes/${inquilinoId}`;
+  const rutaDetalle = `/panel/${slug}/inquilinos/${inquilinoId}`;
 
   async function registrarPago(formData: FormData) {
     "use server";
@@ -91,12 +95,29 @@ export default async function DetalleProfesionalPage({
     redirect(`${volverA}${q}`);
   }
 
+  // Editar los datos del profesional vive ACÁ y ya no en la lista: es donde uno está mirando a esa
+  // persona. En la lista quedaron solo las dos acciones que se hacen sin abrir a nadie.
+  async function guardarDatos(formData: FormData) {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+    const r = await editarInquilino(a, {
+      inquilinoId,
+      nombre: formData.get("nombre"),
+      pagador: formData.get("pagador"),
+    });
+    revalidatePath(rutaDetalle);
+    redirect(`${volverA}${r.ok && r.data.ok ? "&ok=datos" : "&error=DATOS"}`);
+  }
+
   const AVISO: Record<string, string> = {
     "1": "Cobro registrado.",
+    datos: "Datos del profesional guardados.",
     repetido: "Ese comprobante ya estaba cargado: no se asentó de nuevo (sigue siendo un solo cobro).",
     anulado: "Cobro anulado. Queda asentado, con el motivo, y el saldo volvió a incluir esa deuda.",
   };
   const FALLA: Record<string, string> = {
+    DATOS: "No se pudieron guardar los datos. Revisá que el nombre no esté vacío.",
     MES_CERRADO: "Ese mes ya está cerrado: el cobro no se puede anular sin reabrir la liquidación.",
     YA_ANULADO: "Ese cobro ya estaba anulado.",
     COBRO_INEXISTENTE: "No se encontró ese cobro.",
@@ -127,10 +148,10 @@ export default async function DetalleProfesionalPage({
           )}
         </nav>
         <span className="pildora">{nombreDePeriodo(periodo)}</span>
-        <Link href={`/panel/${slug}/reportes?periodo=${periodo}`} style={{ marginLeft: "auto", color: "var(--tenue)", fontWeight: 500, fontSize: 14 }}>
-          ‹ Todas las métricas
+        <Link href={`/panel/${slug}/inquilinos`} style={{ marginLeft: "auto", color: "var(--tenue)", fontWeight: 500, fontSize: 14 }}>
+          ‹ Profesionales
         </Link>
-        <BarraNav slug={slug} rol={actor.rol} actual="reportes" />
+        <BarraNav slug={slug} rol={actor.rol} actual="inquilinos" />
         <MenuConfig rol={actor.rol} />
       </header>
 
@@ -156,7 +177,9 @@ export default async function DetalleProfesionalPage({
         </section>
 
         {/* ── Cobros del mes ─────────────────────────────────────────────── */}
-        <section style={{ marginTop: 26 }}>
+        <section id="cobros" style={{ marginTop: 26, scrollMarginTop: 76 }}>
+          {/* El ancla la usa "Gestionar pagos" desde la lista: lleva directo acá en vez de
+              dejar a media pantalla de scroll. scrollMarginTop por la barra fija. */}
           <h2 style={{ margin: "0 0 10px" }}>Cobros de {nombreDePeriodo(periodo)}</h2>
 
           {okParam && AVISO[okParam] && (
@@ -327,6 +350,27 @@ export default async function DetalleProfesionalPage({
               </p>
             )}
           </>
+        )}
+        {/* ── Datos del profesional ──────────────────────────────────────── */}
+        {puede(actor.rol, "inquilino.administrar") && (
+          <section style={{ marginTop: 26 }}>
+            <h2>Datos</h2>
+            <form action={guardarDatos} className="panel">
+              <label htmlFor="nombre">Nombre y especialidad</label>
+              <input id="nombre" name="nombre" required maxLength={120} defaultValue={d.inquilino.nombre} />
+
+              <label htmlFor="pagador">Quién abona (si no es el mismo profesional)</label>
+              <input id="pagador" name="pagador" maxLength={120} defaultValue={d.inquilino.pagador ?? ""} placeholder="Federico Terrón" />
+              <p className="tenue" style={{ margin: "4px 0 0", fontSize: 12 }}>
+                Solo para facturar y cobrar. La deuda sigue siendo de quien usó el consultorio:
+                pasarla a otra cuenta descuadraría las dos.
+              </p>
+
+              <p style={{ marginTop: 14, marginBottom: 0 }}>
+                <button type="submit">Guardar</button>
+              </p>
+            </form>
+          </section>
         )}
       </main>
     </>

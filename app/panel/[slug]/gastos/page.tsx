@@ -16,9 +16,8 @@ import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { anularGasto, cargarGasto, ETIQUETA_RUBRO, gastosDelMes, RUBROS } from "../../../../src/servicios/plata/gastos.ts";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
-import { esPeriodoValido, periodoAnterior } from "../../../../src/dominio/reporte.ts";
+import { esPeriodoValido, nombreDePeriodo, periodoAnterior, periodoSiguiente } from "../../../../src/dominio/reporte.ts";
 import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
-import { nombreDePeriodo, periodoSiguiente } from "../reportes/page.tsx";
 
 export default async function GastosPage({
   params,

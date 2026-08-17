@@ -104,17 +104,24 @@ export default async function InquilinosPage({
           {inquilinos.map((i) => (
             <tr key={i.id} style={{ borderBottom: "1px solid var(--borde)", opacity: i.estado === "baja" ? 0.6 : 1 }}>
               <td style={{ padding: "8px 4px" }}>
-                {i.nombre}
+                {/* El nombre ES el acceso a la ficha: es lo que uno toca cuando quiere ver a
+                    alguien, y tenerlo como texto muerto obligaba a buscar el camino en otra
+                    pantalla. */}
+                <Link href={`/panel/${slug}/inquilinos/${i.id}`} style={{ fontWeight: 500 }}>
+                  {i.nombre}
+                </Link>
                 {/* Quién abona se ve en la lista: es lo que hace falta saber al momento de
                     facturar, y buscarlo abriendo cada ficha no sirve para eso. */}
                 {i.pagador && <span className="tenue" style={{ fontSize: 12 }}> · abona {i.pagador}</span>}
               </td>
               <td style={{ padding: "8px 4px" }} className="tenue">{ETIQUETA[i.estado]}</td>
               <td style={{ padding: "8px 4px", textAlign: "right", whiteSpace: "nowrap" }}>
-                {/* El #editor no es decorativo: el panel de edición está al pie de la lista, y sin
-                    el ancla apretar "Editar" no movía la pantalla — parecía que el botón no hacía
-                    nada, con el formulario cargado treinta filas más abajo. */}
-                <Link href={`?editar=${i.id}${verTodos ? "&ver=todos" : ""}${busca ? `&q=${encodeURIComponent(busca)}` : ""}#editor`}>Editar</Link>{" "}
+                {/* "Editar" se fue de acá: los datos del profesional se cambian DENTRO de su ficha,
+                    que es donde se está mirando a esa persona. En la lista quedan las dos acciones
+                    que se hacen sin abrir a nadie: cobrarle y darlo de baja. */}
+                <Link href={`/panel/${slug}/inquilinos/${i.id}#cobros`} className="pastilla" style={{ padding: "5px 12px", fontSize: 12 }}>
+                  Gestionar pagos
+                </Link>{" "}
                 <form action={cambiarEstado} style={{ display: "inline" }}>
                   <input type="hidden" name="inquilinoId" value={i.id} />
                   <input type="hidden" name="estado" value={i.estado === "activo" ? "baja" : "activo"} />

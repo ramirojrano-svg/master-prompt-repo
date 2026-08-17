@@ -12,10 +12,10 @@
 
 import Link from "next/link";
 import { puede, type Rol } from "../../../src/lib/permisos.ts";
-import { IconoConsultorio, IconoGasto, IconoMetrica, IconoNegocio, IconoPrecio, IconoProfesional } from "../../Iconos.tsx";
+import { IconoConsultorio, IconoGasto, IconoMetrica, IconoPrecio, IconoProfesional } from "../../Iconos.tsx";
 
 /** Qué pantalla es la actual, para marcarla. `agenda` = ninguna de las cuatro. */
-export type Seccion = "agenda" | "salas" | "inquilinos" | "tarifas" | "gastos" | "negocio" | "reportes";
+export type Seccion = "agenda" | "salas" | "inquilinos" | "tarifas" | "gastos" | "reportes";
 
 export function BarraNav({ slug, rol, actual }: { slug: string; rol: Rol; actual: Seccion }) {
   const accesos = [
@@ -24,9 +24,10 @@ export function BarraNav({ slug, rol, actual }: { slug: string; rol: Rol; actual
     { id: "tarifas", permiso: "tarifa.administrar", texto: "Precios", icono: <IconoPrecio /> },
     // Gastos va ANTES de Métricas: se carga durante el mes, y Métricas es la lectura que lo usa.
     { id: "gastos", permiso: "finanzas.ver.agregada", texto: "Gastos", icono: <IconoGasto /> },
+    // Métricas y Negocio eran dos accesos a la misma pregunta partida al medio: uno mostraba lo
+    // facturado y el otro lo que quedaba. Ahora es una pantalla sola — el resultado arriba, el
+    // detalle que lo explica abajo.
     { id: "reportes", permiso: "finanzas.ver.agregada", texto: "Métricas", icono: <IconoMetrica /> },
-    // El negocio va ÚLTIMO: es la lectura que usa todo lo anterior.
-    { id: "negocio", permiso: "finanzas.ver.agregada", texto: "Negocio", icono: <IconoNegocio /> },
   ] as const;
 
   return (

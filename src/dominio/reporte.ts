@@ -29,6 +29,22 @@ export function diasDelPeriodo(p: Periodo): FechaLocal[] {
 }
 
 /** El período anterior a uno dado ('2026-01' => '2025-12'). */
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+/** 'YYYY-MM' → 'agosto de 2026'. Vivía exportado desde una PÁGINA y lo importaban otras cuatro:
+ *  un archivo de ruta no es una biblioteca, y esa dependencia ataba pantallas entre sí sin motivo
+ *  (mover o borrar una rompía las otras tres). */
+export function nombreDePeriodo(p: string): string {
+  const mes = MESES[Number(p.slice(5, 7)) - 1] ?? p;
+  return `${mes} de ${p.slice(0, 4)}`;
+}
+
+export function periodoSiguiente(p: Periodo): Periodo {
+  const anio = Number(p.slice(0, 4));
+  const mes = Number(p.slice(5, 7));
+  return mes === 12 ? `${anio + 1}-01` : `${anio}-${String(mes + 1).padStart(2, "0")}`;
+}
+
 export function periodoAnterior(p: Periodo): Periodo {
   const anio = Number(p.slice(0, 4));
   const mes = Number(p.slice(5, 7));

@@ -23,7 +23,11 @@ const ESPERA_MS = 220;
 export function Buscador({ inicial, verTodos }: { inicial: string; verTodos: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
-  const params = useSearchParams();
+  // `.toString()` y no el objeto: useSearchParams devuelve una instancia NUEVA en cada render, y
+  // como identidad cambiante en las dependencias del efecto lo re-dispara solo — cada vuelta pide
+  // otra navegación, que provoca otro render. El bucle no se nota como error: se nota como que la
+  // pantalla "se come" los clics, porque se está remontando todo el tiempo.
+  const params = useSearchParams().toString();
   const [texto, setTexto] = useState(inicial);
   // El primer render no navega: si no, entrar a la pantalla dispararía una recarga al pedo.
   const montado = useRef(false);
@@ -34,7 +38,7 @@ export function Buscador({ inicial, verTodos }: { inicial: string; verTodos: boo
       return;
     }
     const id = setTimeout(() => {
-      const q = new URLSearchParams(params.toString());
+      const q = new URLSearchParams(params);
       if (texto.trim()) q.set("q", texto.trim());
       else q.delete("q");
       // Al cambiar la búsqueda se sale de cualquier edición abierta: el que estaba editando ya no

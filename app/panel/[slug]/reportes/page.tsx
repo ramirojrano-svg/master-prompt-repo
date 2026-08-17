@@ -12,24 +12,13 @@ import { AnilloVolumen, BarrasVolumen } from "./Graficos.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { reporteMensual } from "../../../../src/servicios/reportes/mensual.ts";
+import { rentabilidad } from "../../../../src/servicios/reportes/rentabilidad.ts";
+import { ETIQUETA_RUBRO, gastosDelMes } from "../../../../src/servicios/plata/gastos.ts";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
-import { esPeriodoValido, horasYMinutos, periodoAnterior } from "../../../../src/dominio/reporte.ts";
+import { esPeriodoValido, horasYMinutos, nombreDePeriodo, periodoAnterior, periodoSiguiente } from "../../../../src/dominio/reporte.ts";
 import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
 import { Logo } from "../../../Logo.tsx";
-
-const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-
-export function nombreDePeriodo(p: string): string {
-  const mes = MESES[Number(p.slice(5, 7)) - 1] ?? p;
-  return `${mes} de ${p.slice(0, 4)}`;
-}
-
-export function periodoSiguiente(p: string): string {
-  const anio = Number(p.slice(0, 4));
-  const mes = Number(p.slice(5, 7));
-  return mes === 12 ? `${anio + 1}-01` : `${anio}-${String(mes + 1).padStart(2, "0")}`;
-}
 
 export default async function ReportesPage({
   params,
@@ -58,6 +47,12 @@ export default async function ReportesPage({
   const r = await reporteMensual({ actor, periodo });
   if (!r) redirect(`/panel/${slug}`);
 
+  // Métricas y Negocio eran dos pantallas y son una sola pregunta hecha en dos mitades: "cuánto
+  // facturé y quién me debe" no se puede leer sin "cuánto me costó". Separadas, la del resultado
+  // se miraba poco y la de facturación se leía como si fuera la ganancia.
+  const neg = await rentabilidad({ actor, periodo });
+  const { porRubro } = await gastosDelMes({ operadorId: actor.operadorId, periodo });
+
   const plata = (c: bigint) => formatearPesos(c, r.moneda);
   const conActividad = r.profesionales.filter((p) => p.reservas > 0 || p.facturadoCent !== 0n || p.pagadoCent !== 0n || p.saldoCent !== 0n);
   const quietos = r.profesionales.length - conActividad.length;
@@ -67,6 +62,16 @@ export default async function ReportesPage({
   const conFacturacion = r.salas.filter((s) => s.importeCent > 0n);
   const conApertura = r.salas.filter((s) => s.aperturaMin > 0);
   const topHoras = [...conActividad].filter((p) => p.minutos > 0).sort((a, b) => b.minutos - a.minutos).slice(0, 6);
+
+  /** Un porcentaje que viaja en décimas de punto. 703 ⇒ "70,3%". */
+  const pct = (d: number) => `${(d / 10).toFixed(1).replace(".", ",")}%`;
+  const color = (c: bigint) => (c < 0n ? "var(--error)" : "var(--ok)");
+  const tope = (neg?.historia ?? []).reduce((max, m) => {
+    const alto = m.facturadoCent > m.gastosCent ? m.facturadoCent : m.gastosCent;
+    return alto > max ? alto : max;
+  }, 1n);
+  // El mínimo de 2% es para que un mes chico se vea, no para inventar volumen: un CERO va en cero.
+  const altura = (c: bigint) => (c <= 0n ? "0%" : `${Math.max(2, Number((c * 100n) / tope))}%`);
 
   const tarjetas = [
     { titulo: "Facturado en el mes", valor: plata(r.totales.facturadoCent), pie: `${r.totales.reservas} turnos · ${r.totales.profesionalesConActividad} profesionales` },
@@ -98,6 +103,130 @@ export default async function ReportesPage({
       </header>
 
       <main style={{ padding: 20, maxWidth: 1120, margin: "0 auto" }}>
+        {neg && (
+          <>
+          {/* ── Los dos resultados ────────────────────────────────────────────── */}
+          <section style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+            <div className="panel">
+              <p className="tenue" style={{ margin: 0, fontSize: 13 }}>Resultado del mes</p>
+              <p style={{ fontSize: 30, margin: "6px 0 2px", fontWeight: 600, letterSpacing: "-0.02em", color: color(neg.resultadoDevengadoCent) }}>
+                {plata(neg.resultadoDevengadoCent)}
+              </p>
+              <p className="tenue" style={{ margin: 0, fontSize: 12 }}>
+                facturado − gastos · margen {pct(neg.margenDevengadoDecimas)}
+              </p>
+              <p className="tenue" style={{ margin: "8px 0 0", fontSize: 12 }}>
+                Lo que el mes generó, esté cobrado o no. Es el número que dice si el modelo cierra.
+              </p>
+            </div>
+
+            <div className="panel">
+              <p className="tenue" style={{ margin: 0, fontSize: 13 }}>Caja del mes</p>
+              <p style={{ fontSize: 30, margin: "6px 0 2px", fontWeight: 600, letterSpacing: "-0.02em", color: color(neg.resultadoCajaCent) }}>
+                {plata(neg.resultadoCajaCent)}
+              </p>
+              <p className="tenue" style={{ margin: 0, fontSize: 12 }}>
+                cobrado − gastos · margen {pct(neg.margenCajaDecimas)}
+              </p>
+              <p className="tenue" style={{ margin: "8px 0 0", fontSize: 12 }}>
+                La plata que realmente pasó por la cuenta. Es la que paga la luz.
+              </p>
+            </div>
+          </section>
+
+          {/* ── De dónde salen esos dos números ───────────────────────────────── */}
+          <section style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", marginTop: 14 }}>
+            {[
+              { t: "Facturado", v: plata(neg.facturadoCent), p: "cargado a los profesionales" },
+              { t: "Cobrado", v: plata(neg.cobradoCent), p: `${pct(neg.cobranzaDecimas)} de lo facturado` },
+              { t: "Gastos", v: plata(neg.gastosCent), p: <Link href={`/panel/${slug}/gastos?periodo=${periodo}`}>ver el detalle</Link> },
+            ].map((c) => (
+              <div key={c.t} className="panel" style={{ padding: 18 }}>
+                <p className="tenue" style={{ margin: 0, fontSize: 13 }}>{c.t}</p>
+                <p style={{ fontSize: 23, margin: "6px 0 2px", fontWeight: 600, letterSpacing: "-0.02em" }}>{c.v}</p>
+                <p className="tenue" style={{ margin: 0, fontSize: 12 }}>{c.p}</p>
+              </div>
+            ))}
+          </section>
+
+          {/* Una diferencia grande entre los dos resultados no es un detalle: es el aviso de que el
+              problema es de cobranza y no de precios. Se dice con palabras, no solo con números. */}
+          {neg.facturadoCent > 0n && neg.cobranzaDecimas < 700 && (
+            <p className="panel" style={{ padding: "12px 16px", marginTop: 14, fontSize: 14, borderLeft: `3px solid var(--alerta)` }}>
+              Se cobró el <strong>{pct(neg.cobranzaDecimas)}</strong> de lo facturado este mes. La
+              diferencia entre el resultado y la caja es deuda de los profesionales, no un problema
+              de precios: se corrige cobrando, no aumentando.
+            </p>
+          )}
+
+          {/* ── La tendencia ──────────────────────────────────────────────────── */}
+          <h2 style={{ marginTop: 26 }}>Los últimos seis meses</h2>
+          <div className="panel">
+            <div style={{ display: "flex", gap: 18, alignItems: "flex-end", height: 190, padding: "8px 0" }}>
+              {neg.historia.map((m) => (
+                <div key={m.periodo} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, height: "100%" }}>
+                  <div style={{ flex: 1, display: "flex", gap: 4, alignItems: "flex-end", width: "100%", justifyContent: "center" }}>
+                    {/* Facturado y gastos, lado a lado: la distancia entre las dos barras ES el
+                        resultado, y se lee de un vistazo sin hacer la resta. */}
+                    <span title={`Facturado ${plata(m.facturadoCent)}`} style={{ width: "38%", height: altura(m.facturadoCent), background: "var(--marca-500)", borderRadius: "4px 4px 0 0" }} />
+                    <span title={`Gastos ${plata(m.gastosCent)}`} style={{ width: "38%", height: altura(m.gastosCent), background: "var(--alerta)", borderRadius: "4px 4px 0 0", opacity: 0.75 }} />
+                  </div>
+                  <span className="tenue" style={{ fontSize: 11, whiteSpace: "nowrap" }}>{m.periodo.slice(5)}/{m.periodo.slice(2, 4)}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: color(m.resultadoCent) }}>
+                    {m.resultadoCent === 0n ? "—" : plata(m.resultadoCent)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="tenue" style={{ margin: "10px 0 0", fontSize: 12, display: "flex", gap: 16 }}>
+              <span><span style={{ display: "inline-block", width: 10, height: 10, background: "var(--marca-500)", borderRadius: 2, marginRight: 6 }} />Facturado</span>
+              <span><span style={{ display: "inline-block", width: 10, height: 10, background: "var(--alerta)", opacity: 0.75, borderRadius: 2, marginRight: 6 }} />Gastos</span>
+              <span>Debajo de cada mes, el resultado.</span>
+            </p>
+          </div>
+
+          {/* ── En qué se fue ─────────────────────────────────────────────────── */}
+          {porRubro.length > 0 && (
+            <>
+              <h2 style={{ marginTop: 26 }}>Los costos del mes, por rubro</h2>
+              <div className="panel" style={{ padding: 0, overflowX: "auto" }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Rubro</th>
+                      <th className="num">Importe</th>
+                      <th className="num">De los gastos</th>
+                      <th className="num">De lo facturado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {porRubro.map((x) => (
+                      <tr key={x.rubro}>
+                        <td>{ETIQUETA_RUBRO[x.rubro]}</td>
+                        <td className="num">{plata(x.montoCent)}</td>
+                        <td className="num">{neg.gastosCent > 0n ? pct(Number((x.montoCent * 1000n) / neg.gastosCent)) : "—"}</td>
+                        {/* Cuánto se lleva cada rubro de la facturación: es la lectura que dice si un
+                            costo está fuera de escala para el tamaño del centro. */}
+                        <td className="num">{neg.facturadoCent > 0n ? pct(Number((x.montoCent * 1000n) / neg.facturadoCent)) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td>Total</td>
+                      <td className="num">{plata(neg.gastosCent)}</td>
+                      <td className="num">100,0%</td>
+                      <td className="num">{neg.facturadoCent > 0n ? pct(Number((neg.gastosCent * 1000n) / neg.facturadoCent)) : "—"}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </>
+          )}
+          </>
+        )}
+
+        <h2 style={{ marginTop: 26 }}>El mes en números</h2>
         <section style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" }}>
           {tarjetas.map((t) => (
             <div key={t.titulo} className="panel" style={{ padding: 18 }}>
@@ -190,7 +319,7 @@ export default async function ReportesPage({
                 {conActividad.map((p) => (
                   <tr key={p.id}>
                     <td>
-                      <Link href={`/panel/${slug}/reportes/${p.id}?periodo=${periodo}`}>{p.nombre}</Link>{" "}
+                      <Link href={`/panel/${slug}/inquilinos/${p.id}?periodo=${periodo}`}>{p.nombre}</Link>{" "}
                       {!p.activo && <span className="tenue">(de baja)</span>}
                     </td>
                     <td className="num">{p.reservas}</td>
