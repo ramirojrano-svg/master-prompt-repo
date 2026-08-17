@@ -29,7 +29,8 @@ export function DetalleTurno({
   cerrarHref,
   puedeEditar,
   cancelar,
-  noShow,
+  editar,
+  salas,
   error,
 }: {
   turno: EventoAgenda;
@@ -37,14 +38,15 @@ export function DetalleTurno({
   cerrarHref: string;
   puedeEditar: boolean;
   cancelar: (fd: FormData) => Promise<void>;
-  noShow: (fd: FormData) => Promise<void>;
+  editar: (fd: FormData) => Promise<void>;
+  /** Los consultorios activos, para poder mover el turno de sala desde acá. */
+  salas: { id: string; nombre: string }[];
   error?: string;
 }) {
   // `estado` y `motivo` solo existen en la proyección de quien ve identidad; para el resto el
   // turno es un "ocupado" sin más, y no hay nada que ofrecer.
   const estado = "tipo" in turno ? turno.estado : "ocupado";
   const motivo = "motivo" in turno ? turno.motivo : null;
-  const importe = "importeCent" in turno && turno.importeCent != null ? formatearPesos(BigInt(turno.importeCent), moneda) : null;
   const minutos = Math.round((new Date(turno.fin).getTime() - new Date(turno.inicio).getTime()) / 60_000);
   // `serieId` solo existe en la proyección con identidad; para el resto no hay nada que preguntar.
   const esSerie = "serieId" in turno && turno.serieId != null;
@@ -87,12 +89,6 @@ export function DetalleTurno({
         <dd style={{ margin: 0 }}>{turno.salaNombre}</dd>
         <dt className="tenue">Estado</dt>
         <dd style={{ margin: 0 }}>{ROTULO[estado] ?? "Ocupado"}</dd>
-        {importe && (
-          <>
-            <dt className="tenue">Importe</dt>
-            <dd style={{ margin: 0 }}>{importe}</dd>
-          </>
-        )}
         {motivo && (
           <>
             <dt className="tenue">Motivo</dt>
@@ -105,13 +101,40 @@ export function DetalleTurno({
 
       {acciones && (
         <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
-          <form action={noShow}>
-            <input type="hidden" name="ocupacionId" value={turno.id} />
-            <input type="hidden" name="accion" value={estado === "no_show" ? "revertir" : "marcar"} />
-            <button type="submit" className="btn-suave" style={{ width: "100%" }}>
-              {estado === "no_show" ? "Deshacer «no vino»" : "Marcar que no vino"}
-            </button>
-          </form>
+          {/* Editar = cambiar CUÁNDO y DÓNDE. Es lo que se necesita apenas se agenda algo y se ve
+              que iba media hora después, y hasta ahora la única forma era arrastrar el bloque —que
+              no existe en el teléfono, donde justamente se agenda a las apuradas.
+              Va detrás de un <details> para no llenar el panel de campos: lo normal al abrir un
+              turno es mirarlo, no editarlo. */}
+          <details data-burbuja>
+            <summary className="btn-suave" style={{ width: "100%", textAlign: "center", borderRadius: 999, padding: "10px 18px", cursor: "pointer", minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, listStyle: "none" }}>
+              Editar turno
+            </summary>
+            <form action={editar} style={{ marginTop: 10 }}>
+              <input type="hidden" name="ocupacionId" value={turno.id} />
+
+              <label htmlFor="ed-sala" style={{ marginTop: 0 }}>Consultorio</label>
+              <select id="ed-sala" name="salaDestinoId" required defaultValue={turno.salaId ?? ""}>
+                {salas.map((s) => (
+                  <option key={s.id} value={s.id}>{s.nombre}</option>
+                ))}
+              </select>
+
+              <label htmlFor="ed-fecha">Día</label>
+              <input id="ed-fecha" name="fecha" type="date" required defaultValue={turno.fechaLocal} />
+
+              <label htmlFor="ed-hora">Empieza</label>
+              <input id="ed-hora" name="hora" type="time" required step={900} defaultValue={turno.horaTexto.slice(0, 5)} />
+
+              <p className="tenue" style={{ margin: "8px 0 0", fontSize: 12 }}>
+                Dura {minutos} minutos y se conserva: mover un turno no lo estira.
+              </p>
+
+              <p style={{ marginTop: 12, marginBottom: 0 }}>
+                <button type="submit" style={{ width: "100%" }}>Guardar cambios</button>
+              </p>
+            </form>
+          </details>
 
           {estado === "confirmada" && (
             <form action={cancelar}>

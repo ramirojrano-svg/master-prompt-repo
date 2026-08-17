@@ -22,6 +22,7 @@ import {
   mensajeDeMovimiento,
   mensajeDeTurno,
   moverReservaAjena,
+  moverReservaPropia,
   noShowReservaAjena,
 } from "../../../src/servicios/agenda/acciones.ts";
 import { prisma } from "../../../src/db/prisma.ts";
@@ -225,6 +226,41 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
   // Mover un turno arrastrándolo. A diferencia de `crear`, NO redirige: la grilla ya movió el
   // bloque en pantalla y un redirect volvería a montar todo. Devuelve el resultado y la grilla
   // decide si avisa; el revalidate deja la agenda del servidor como fuente de verdad.
+  /**
+   * Editar un turno desde su detalle: cambiar día, hora o consultorio. Usa el MISMO servicio que
+   * arrastrar el bloque —no hay un segundo camino con otras reglas— pero viene de un formulario,
+   * así que redirige. Arrastrar no existe en el teléfono, que es justo donde se agenda apurado.
+   */
+  async function editarTurno(formData: FormData): Promise<void> {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+
+    const ocupacionId = String(formData.get("ocupacionId") ?? "");
+    const entrada = {
+      ocupacionId,
+      salaDestinoId: formData.get("salaDestinoId"),
+      fecha: formData.get("fecha"),
+      hora: formData.get("hora"),
+    };
+    // Dos caminos según el rol, igual que crear y cancelar: el del profesional verifica contra la
+    // base que la fila sea suya antes de tocarla.
+    const r = puede(a.rol, "reserva.editar.ajena")
+      ? await moverReservaAjena(a, entrada)
+      : await moverReservaPropia(a, entrada);
+
+    const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
+    const q = new URLSearchParams({ fecha: String(formData.get("fecha") ?? ""), vista });
+    if (sp.salas) q.set("salas", sp.salas);
+    // Con error el detalle sigue abierto: el mensaje sin el turno adelante no se entiende.
+    if (codigo) {
+      q.set("turno", ocupacionId);
+      q.set("errorTurno", codigo);
+    }
+    revalidatePath(`/panel/${slug}`);
+    redirect(`/panel/${slug}?${q.toString()}`);
+  }
+
   async function mover(input: { ocupacionId: string; salaDestinoId: string; fecha: string; hora: string }) {
     "use server";
     const actorAccion = await actorDeSesion(slug);
@@ -248,10 +284,6 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
   async function cancelarTurno(fd: FormData) {
     "use server";
     await ejecutarSobreTurno("cancelar", fd, { slug, vista, fecha: agenda!.fecha, salas: sp.salas });
-  }
-  async function marcarNoShowTurno(fd: FormData) {
-    "use server";
-    await ejecutarSobreTurno("noShow", fd, { slug, vista, fecha: agenda!.fecha, salas: sp.salas });
   }
 
   // El turno abierto sale de la agenda YA PROYECTADA: si el que mira no lo puede ver, no está en
@@ -432,7 +464,8 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           cerrarHref={href(agenda.fecha)}
           puedeEditar={puedeEditarTurnos || puedeEditarPropio}
           cancelar={cancelarTurno}
-          noShow={marcarNoShowTurno}
+          editar={editarTurno}
+          salas={agenda.salas.filter((s) => s.activa).map((s) => ({ id: s.id, nombre: s.nombre }))}
           error={sp.errorTurno ? mensajeDeTurno(sp.errorTurno) : undefined}
         />
       )}

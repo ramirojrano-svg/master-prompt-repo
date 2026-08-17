@@ -20,7 +20,7 @@ CREATE TYPE "Rol" AS ENUM ('owner', 'inquilino_titular', 'soporte_plataforma');
 CREATE TYPE "EstadoInquilino" AS ENUM ('activo', 'suspendido', 'baja');
 
 -- CreateEnum
-CREATE TYPE "tipo_ocupacion" AS ENUM ('reserva', 'hold', 'bloqueo', 'mantenimiento');
+CREATE TYPE "tipo_ocupacion" AS ENUM ('reserva', 'hold', 'bloqueo');
 
 -- CreateEnum
 CREATE TYPE "estado_ocupacion" AS ENUM ('solicitada', 'confirmada', 'en_curso', 'usada', 'no_show', 'cancelada', 'rechazada', 'reubicada', 'expirada');

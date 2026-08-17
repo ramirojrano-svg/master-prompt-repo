@@ -155,8 +155,8 @@ test("el denominador de la ocupación es lo que la sala ABRIÓ ese mes, no 24×3
   assert.notEqual(sa1.aperturaMin, 31 * 24 * 60);
 });
 
-test("los MANTENIMIENTOS y los holds no cuentan como horas vendidas", async () => {
-  await insertarOcupacion(pgPool, { id: "o1", salaId: "sa1", inquilinoId: null, tipo: "mantenimiento", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T17:00:00Z", bloqueaProfesional: false });
+test("los BLOQUEOS y los holds no cuentan como horas vendidas", async () => {
+  await insertarOcupacion(pgPool, { id: "o1", salaId: "sa1", inquilinoId: null, tipo: "bloqueo", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T17:00:00Z", bloqueaProfesional: false });
   await insertarOcupacion(pgPool, { id: "o2", salaId: "sa1", inquilinoId: "in1", tipo: "hold", inicio: "2026-05-05T13:00:00Z", fin: "2026-05-05T14:00:00Z", bloqueaProfesional: false, expiraAt: "2026-05-05T13:10:00Z" });
   const r = await reporteMensual({ actor: owner, periodo: PERIODO }, db);
   assert.ok(r);

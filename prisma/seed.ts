@@ -232,7 +232,6 @@ async function main() {
     reserva(s3, conSala[9]!.id, hoy, "13:00", "14:00", EstadoOcupacion.no_show),
     reserva(s3, conSala[10]!.id, hoy, "19:00", "21:00"),
     // mantenimiento (se pinta distinto y bloquea la sala)
-    { ...reserva(s3, null, hoy, "12:00", "13:00", EstadoOcupacion.confirmada, TipoOcupacion.mantenimiento), motivo: "Mantenimiento técnico" },
   );
 
   // Resto de la semana, para que la agenda no se vea vacía al navegar. Los consultorios abren

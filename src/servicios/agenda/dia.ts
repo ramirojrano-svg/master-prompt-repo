@@ -30,7 +30,7 @@ export type EventoAgenda = ReservaDTO & {
   desdeMin: number; // minutos desde la medianoche local
   hastaMin: number;
   horaTexto: string; // "09:00 – 10:30", ya formateado en la zona de la SEDE
-  esBloqueo: boolean; // mantenimiento/bloqueo: se dibuja rayado y no cuenta como hora vendida
+  esBloqueo: boolean; // el centro cerró la franja: se dibuja rayado y no cuenta como hora vendida
   titulo: string;
   /** ¿Este actor puede abrir el detalle? Falso para el turno del de al lado, que se proyecta sin
    *  identidad y por lo tanto no tiene detalle que mostrar. Sale de la PROYECCIÓN y no de mirar si
@@ -163,8 +163,8 @@ export async function cargarAgenda(
       hastaMin,
       horaTexto: `${minutosAHora(desdeMin)} – ${minutosAHora(hastaMin % (24 * 60))}`,
       // El tipo solo existe en la vista con identidad; para el de al lado, un ocupado es un
-      // ocupado y se dibuja igual que un mantenimiento (§6.3).
-      esBloqueo: conIdentidad?.tipo === "mantenimiento" || conIdentidad?.tipo === "bloqueo",
+      // ocupado y se dibuja igual que un bloqueo (§6.3).
+      esBloqueo: conIdentidad?.tipo === "bloqueo",
       titulo: conIdentidad?.inquilinoNombre ?? conIdentidad?.motivo ?? "Ocupado",
       abrible: Boolean(conIdentidad),
     };
@@ -199,7 +199,7 @@ export async function cargarAgenda(
   // KPIs (§6.4). Ocupación = horas RESERVADAS ÷ horas DISPONIBLES, donde disponibles = horas de
   // APERTURA de la sala − bloqueos. Ojo con dos errores fáciles y caros:
   //  · usar el rango VISIBLE como denominador (incluye los márgenes de una hora y lo infla);
-  //  · contar el mantenimiento como uso (no es una hora vendida: es una hora que no se pudo vender).
+  //  · contar los bloqueos como uso (no es una hora vendida: es una hora que no se pudo vender).
   // El denominador se muestra siempre: un porcentaje sin denominador no se puede auditar.
   const duracion = (f: { inicio: Date; fin: Date }) => Math.round((f.fin.getTime() - f.inicio.getTime()) / 60_000);
   let ocupadasMin = 0;

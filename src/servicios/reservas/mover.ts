@@ -38,7 +38,7 @@ export type CtxMover = {
 
 export type ErrorMover =
   | "NO_ENCONTRADA"
-  | "NO_MOVIBLE" // bloqueo/mantenimiento: no es un turno de nadie
+  | "NO_MOVIBLE" // un bloqueo no es el turno de nadie
   | "CONGELADA" // usada / no_show / ya cancelada: la fila alimentó un derivado
   | "SALA_INEXISTENTE"
   | "FECHA_INVALIDA"
@@ -69,7 +69,7 @@ export async function moverOcupacion(
     },
   });
   if (!origen || origen.salaId == null || origen.inicio == null || origen.fin == null) return { ok: false, error: "NO_ENCONTRADA" };
-  // Solo se arrastra una reserva de alguien: un bloqueo o un mantenimiento no tiene profesional
+  // Solo se arrastra una reserva de alguien: un bloqueo no tiene profesional
   // al que reasignarle la hora ni cargo que mudar.
   if (origen.tipo !== TipoOcupacion.reserva || origen.inquilinoId == null) return { ok: false, error: "NO_MOVIBLE" };
   if (origen.estado !== EstadoOcupacion.confirmada) return { ok: false, error: "CONGELADA" };

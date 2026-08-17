@@ -5,7 +5,7 @@
 // con horarios y frecuencia, es información de salud POR CONTEXTO aunque no haya diagnóstico.
 // Además es inteligencia comercial (quién trabaja cuánto, qué días está muerto el centro).
 //
-// En la vista AJENA un ocupado tiene que ser INDISTINGUIBLE de un bloqueo de mantenimiento:
+// En la vista AJENA un ocupado tiene que ser INDISTINGUIBLE de un bloqueo del centro:
 // un color distinto ya filtra información.
 
 import { puede, type Rol } from "../lib/permisos.ts";

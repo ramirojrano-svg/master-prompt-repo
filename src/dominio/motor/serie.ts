@@ -44,7 +44,7 @@ function clasificar(intervalo: Intervalo, fecha: FechaLocal, e: EntradaSerie): {
 
   for (const o of e.ocupaciones) {
     if (seSolapan(intervaloBloqueante(o, e.inquilinoId, e.politica), intervalo)) {
-      const estado: EstadoOcurrencia = o.tipo === "bloqueo" || o.tipo === "mantenimiento" ? "choca_bloqueo" : "choca_reserva";
+      const estado: EstadoOcurrencia = o.tipo === "bloqueo" ? "choca_bloqueo" : "choca_reserva";
       return { estado, conflictoCon: { tipo: o.tipo, id: o.id } };
     }
   }

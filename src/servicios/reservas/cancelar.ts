@@ -33,7 +33,7 @@ export type Alcance = "solo" | "siguientes" | "serie";
 
 export type ErrorCancelar =
   | "NO_ENCONTRADA"
-  | "NO_CANCELABLE" // bloqueo/mantenimiento: no es el turno de nadie
+  | "NO_CANCELABLE" // un bloqueo no es el turno de nadie
   | "CONGELADA" // usada / no_show: la fila ya alimentó un derivado
   | "YA_CANCELADA"
   | "MES_CERRADO";

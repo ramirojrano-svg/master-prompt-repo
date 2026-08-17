@@ -243,7 +243,7 @@ export function mensajeDeMovimiento(codigo: string): string {
     case "CONGELADA":
       return "Ese turno ya se usó o se marcó como ausente: no se puede mover.";
     case "NO_MOVIBLE":
-      return "Los bloqueos y el mantenimiento no se arrastran.";
+      return "Los bloqueos no se arrastran.";
     case "MES_CERRADO":
       return "Ese turno ya está en un mes liquidado: moverlo cambiaría plata ya cerrada.";
     case "FECHA_PASADA":
@@ -269,7 +269,7 @@ export function mensajeDeTurno(codigo: string): string {
     case "YA_CANCELADA":
       return "Ese turno ya estaba cancelado.";
     case "NO_CANCELABLE":
-      return "Los bloqueos y el mantenimiento no se cancelan desde acá.";
+      return "Los bloqueos no se cancelan desde acá.";
     case "MES_CERRADO":
       return "Ese turno está en un mes ya liquidado: cancelarlo cambiaría plata cerrada.";
     case "NO_APLICABLE":

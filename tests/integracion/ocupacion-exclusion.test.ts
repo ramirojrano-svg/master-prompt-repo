@@ -69,9 +69,9 @@ test("T-31 · bloqueaProfesional=false permite al inquilino dos salas a la vez",
   assert.equal(rows[0].n, 2);
 });
 
-test("un bloqueo (mantenimiento) sobre la sala tampoco admite una reserva encima", async () => {
-  // El EXCLUDE cruza tipos: reserva encima de mantenimiento choca (la razón de una sola tabla, §4.8.2).
-  await insertarOcupacion(pool, { id: "m", salaId: "sa1", inquilinoId: null, tipo: "mantenimiento", inicio: T(12), fin: T(14) });
+test("un bloqueo sobre la sala tampoco admite una reserva encima", async () => {
+  // El EXCLUDE cruza tipos: una reserva encima de un bloqueo choca (la razón de una sola tabla, §4.8.2).
+  await insertarOcupacion(pool, { id: "m", salaId: "sa1", inquilinoId: null, tipo: "bloqueo", inicio: T(12), fin: T(14) });
   await assert.rejects(
     insertarOcupacion(pool, { id: "r", salaId: "sa1", inquilinoId: "in1", tipo: "reserva", inicio: T(13), fin: T(13, 30) }),
     (e: unknown) => sqlstate(e) === "23P01",

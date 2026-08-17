@@ -211,11 +211,15 @@ enum EstadoInquilino {
 // ─────────────────────────────────────────────────────────────
 // TIEMPO — una sola tabla ocupa la sala (§4.8.2)
 // ─────────────────────────────────────────────────────────────
+/// `mantenimiento` se eliminó. Ocupaba un consultorio en la agenda —a la vista de todos— para
+/// algo que no es un turno de nadie y que, en este centro, no impide usar la sala. Un tipo que se
+/// dibuja pero no se puede mover ni cancelar, y que además bloquea reservas legítimas, era un
+/// caso especial arrastrándose por el motor, la proyección y tres pantallas. `bloqueo` queda: eso
+/// sí es "el centro cerró esta franja a propósito".
 enum TipoOcupacion {
   reserva
   hold
   bloqueo
-  mantenimiento
 
   @@map("tipo_ocupacion")
 }

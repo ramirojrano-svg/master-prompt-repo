@@ -38,7 +38,7 @@ before(async () => {
 
   await ins("r-propia", "sa1", "in1", "09:00", "10:00", "reserva", "Martín 16h");
   await ins("r-ajena", "sa1", "in2", "10:00", "11:00");
-  await ins("r-mant", "sa2", null, "12:00", "13:00", "mantenimiento");
+  await ins("r-mant", "sa2", null, "12:00", "13:00", "bloqueo");
   await ins("r-arch", "saArch", "in1", "15:00", "16:00");
 });
 
@@ -59,9 +59,9 @@ test("el owner ve el día completo, con identidad y KPIs con denominador", async
 
 test("§6.4 · el KPI usa la APERTURA como denominador (no el rango visible) y descuenta bloqueos", async () => {
   const dia = await cargarDia({ actor: owner, fecha: HOY }, db);
-  // 2 salas activas × 14 h de apertura (08-22) = 1680' ; menos 60' de mantenimiento = 1620'.
+  // 2 salas activas × 14 h de apertura (08-22) = 1680' ; menos 60' de bloqueo = 1620'.
   assert.equal(dia!.kpis.disponiblesMin, 2 * 14 * 60 - 60);
-  // Numerador: solo RESERVAS (2 de 1 h en sa1 + 1 h en la archivada), nunca el mantenimiento.
+  // Numerador: solo RESERVAS (2 de 1 h en sa1 + 1 h en la archivada), nunca el bloqueo.
   assert.equal(dia!.kpis.ocupadasMin, 3 * 60);
   assert.equal(dia!.kpis.ocupacionPct, Math.round((180 / 1620) * 100));
 });

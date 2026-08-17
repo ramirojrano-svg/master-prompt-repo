@@ -25,7 +25,7 @@ export type HorarioSemanal = Record<Dia, Franja[]>;
 // ─────────────────────────────────────────────────────────────
 // Ocupación (vista del motor, §4.4) — NO es la fila de Prisma, es la foto que se le pasa.
 // ─────────────────────────────────────────────────────────────
-export type TipoOcup = "reserva" | "hold" | "bloqueo" | "mantenimiento";
+export type TipoOcup = "reserva" | "hold" | "bloqueo";
 
 export type Ocupacion = {
   id: string;
