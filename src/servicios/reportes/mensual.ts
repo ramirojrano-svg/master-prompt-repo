@@ -260,6 +260,8 @@ export type TurnoDelMes = {
   fecha: string; // 'YYYY-MM-DD' en la zona de la SEDE
   diaSemana: number;
   horaTexto: string; // "09:00 – 10:30"
+  /** Para poder mover el turno de sala desde "Mis reservas" sin volver a consultar. */
+  salaId: string | null;
   salaNombre: string;
   minutos: number;
   importeCent: bigint | null; // null = se creó sin tarifa cargada (≠ $0)
@@ -322,7 +324,7 @@ export async function detalleProfesional(
         estado: { in: ESTADOS_VENDIDOS as never[] },
         inicio: { gte: primero.inicio, lt: ultimo.fin },
       },
-      select: { id: true, inicio: true, fin: true, estado: true, importeCent: true, sala: { select: { nombre: true } } },
+      select: { id: true, inicio: true, fin: true, estado: true, importeCent: true, salaId: true, sala: { select: { nombre: true } } },
       orderBy: { inicio: "asc" },
     }),
     db.$queryRaw<{ debe: bigint; haber: bigint }[]>`
@@ -342,6 +344,7 @@ export async function detalleProfesional(
       fecha,
       diaSemana: diaSemanaDeFecha(fecha) ?? 0,
       horaTexto: `${minutosAHora(desdeMin)} – ${minutosAHora(hastaMin % (24 * 60))}`,
+      salaId: f.salaId,
       salaNombre: f.sala?.nombre ?? "—",
       minutos: Math.round((f.fin.getTime() - f.inicio.getTime()) / 60_000),
       importeCent: f.importeCent,

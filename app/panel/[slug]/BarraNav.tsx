@@ -12,10 +12,10 @@
 
 import Link from "next/link";
 import { puede, type Rol } from "../../../src/lib/permisos.ts";
-import { IconoConsultorio, IconoGasto, IconoMetrica, IconoPrecio, IconoProfesional } from "../../Iconos.tsx";
+import { IconoConsultorio, IconoGasto, IconoLista, IconoMetrica, IconoPrecio, IconoProfesional } from "../../Iconos.tsx";
 
 /** Qué pantalla es la actual, para marcarla. `agenda` = ninguna de las cuatro. */
-export type Seccion = "agenda" | "salas" | "inquilinos" | "tarifas" | "gastos" | "reportes";
+export type Seccion = "agenda" | "salas" | "inquilinos" | "tarifas" | "gastos" | "reportes" | "mis-reservas";
 
 export function BarraNav({ slug, rol, actual }: { slug: string; rol: Rol; actual: Seccion }) {
   const accesos = [
@@ -28,6 +28,9 @@ export function BarraNav({ slug, rol, actual }: { slug: string; rol: Rol; actual
     // facturado y el otro lo que quedaba. Ahora es una pantalla sola — el resultado arriba, el
     // detalle que lo explica abajo.
     { id: "reportes", permiso: "finanzas.ver.agregada", texto: "Métricas", icono: <IconoMetrica /> },
+    // El único acceso del PROFESIONAL: la administración no lo ve porque para ella "lo mío" no
+    // significa nada — mira la ficha de cada uno desde Profesionales.
+    { id: "mis-reservas", permiso: "reserva.crear.propia", texto: "Mis reservas", icono: <IconoLista /> },
   ] as const;
 
   return (

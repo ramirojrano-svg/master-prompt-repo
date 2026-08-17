@@ -32,7 +32,7 @@ import { formatearPesos } from "../../../src/dominio/tarifa.ts";
 import { esVista, fechaDeParam, navegar, type Vista } from "../../../src/dominio/calendario.ts";
 import { horasYMinutos, nombreDePeriodo } from "../../../src/dominio/reporte.ts";
 import { Logo } from "../../Logo.tsx";
-import { IconoMas } from "../../Iconos.tsx";
+import { IconoCalendario, IconoMas } from "../../Iconos.tsx";
 import { AvisoAlta } from "./AvisoAlta.tsx";
 import { CerrarBurbujas } from "./CerrarBurbujas.tsx";
 import { BarraNav } from "./BarraNav.tsx";
@@ -324,7 +324,16 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           {formatHora(ahora, agenda.tz)} · {agenda.tz.split("/").at(-1)!.replace(/_/g, " ")}
         </span>
 
-        <nav className="segmentado" style={{ marginLeft: "auto" }}>
+        {/* "Calendario" solo para el profesional: es su forma de volver acá desde Mis reservas.
+            La administración ya vuelve por el logo y por los accesos de la barra. */}
+        {puedeCargarPropia && (
+          <Link href={`/panel/${slug}`} className="pastilla" style={{ marginLeft: "auto" }} aria-current={undefined}>
+            <IconoCalendario />
+            Calendario
+          </Link>
+        )}
+
+        <nav className="segmentado" style={{ marginLeft: puedeCargarPropia ? undefined : "auto" }}>
           <Link href={href(agenda.fecha, { vista: "dia" })} aria-current={vista === "dia" ? "page" : undefined}>
             Día
           </Link>

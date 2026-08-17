@@ -118,3 +118,23 @@ export function IconoNegocio({ tam = 16 }: Props) {
     </svg>
   );
 }
+
+/** Mis reservas: una hoja con renglones. Es la lista, no el calendario. */
+export function IconoLista({ tam = 16 }: Props) {
+  return (
+    <svg {...base(tam)}>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M8 8h8M8 12h8M8 16h5" />
+    </svg>
+  );
+}
+
+/** Calendario: vuelve a la agenda. */
+export function IconoCalendario({ tam = 16 }: Props) {
+  return (
+    <svg {...base(tam)}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
+    </svg>
+  );
+}
