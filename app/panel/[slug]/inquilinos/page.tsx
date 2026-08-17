@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import { Buscador } from "./Buscador.tsx";
 import { Cabecera } from "../Cabecera.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
@@ -80,25 +81,7 @@ export default async function InquilinosPage({
     <>
       <Cabecera slug={slug} rol={actor.rol} actual="inquilinos" titulo="Profesionales" />
       <main style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>
-      {/* Buscador. Es un form GET —no un input con JavaScript— así que la búsqueda queda en la
-          URL: se puede recargar, compartir y volver con el botón de atrás sin perderla. */}
-      <form method="get" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        {verTodos && <input type="hidden" name="ver" value="todos" />}
-        <input
-          type="search"
-          name="q"
-          defaultValue={busca}
-          placeholder="Buscar por nombre o por quién abona…"
-          aria-label="Buscar profesional"
-          style={{ flex: 1 }}
-        />
-        <button type="submit" className="btn-suave">Buscar</button>
-        {busca && (
-          <Link href={verTodos ? "?ver=todos" : "?"} className="pastilla">
-            Limpiar
-          </Link>
-        )}
-      </form>
+      <Buscador inicial={busca} verTodos={verTodos} />
 
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <p className="tenue" style={{ margin: 0 }}>

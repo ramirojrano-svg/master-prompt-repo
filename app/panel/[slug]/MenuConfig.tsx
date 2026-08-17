@@ -25,7 +25,7 @@ export async function MenuConfig({ rol }: { rol: Rol }) {
   const email = sesion?.user?.email ?? "";
 
   return (
-    <details className="menu-config">
+    <details className="menu-config" data-burbuja>
       <summary className="nav-circ" aria-label="Configuración" title="Configuración">
         <IconoTuerca />
       </summary>

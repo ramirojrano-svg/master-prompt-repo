@@ -125,7 +125,9 @@ export function Grilla({ dia, hoy, mover, baseTurno }: { dia: AgendaVista; hoy: 
                 zIndex: 3,
                 background: "var(--panel)",
                 borderBottom: "1px solid var(--borde)",
-                borderLeft: "1px solid var(--borde)",
+                // 2px y con el borde fuerte: en la vista de día cada columna es UN consultorio, y
+                // con la línea fina la grilla se leía como una tabla sola en vez de tres espacios.
+                borderLeft: "2px solid var(--borde-fuerte)",
                 padding: "8px 10px 6px",
                 textAlign: dia.vista === "semana" ? "center" : "left",
               }}
@@ -224,7 +226,9 @@ export function Grilla({ dia, hoy, mover, baseTurno }: { dia: AgendaVista; hoy: 
                   display: "grid",
                   gridTemplateRows: `repeat(${dia.filas}, ${ALTO_CELDA}px)`,
                   gridTemplateColumns: `repeat(${carriles}, 1fr)`,
-                  borderLeft: "1px solid var(--borde)",
+                  // 2px y con el borde fuerte: en la vista de día cada columna es UN consultorio, y
+                // con la línea fina la grilla se leía como una tabla sola en vez de tres espacios.
+                borderLeft: "2px solid var(--borde-fuerte)",
                   background: `repeating-linear-gradient(to bottom, transparent 0 ${ALTO_CELDA - 1}px, var(--borde) ${ALTO_CELDA - 1}px ${ALTO_CELDA}px)`,
                 }}
               >

@@ -33,6 +33,8 @@ import { horasYMinutos } from "../../../src/dominio/reporte.ts";
 import { nombreDePeriodo } from "./reportes/page.tsx";
 import { Logo } from "../../Logo.tsx";
 import { IconoMas } from "../../Iconos.tsx";
+import { AvisoAlta } from "./AvisoAlta.tsx";
+import { CerrarBurbujas } from "./CerrarBurbujas.tsx";
 import { BarraNav } from "./BarraNav.tsx";
 import { ocupacionMensualPorSala } from "../../../src/servicios/reportes/mensual.ts";
 import { describirConflictos, parsearConflictos, resumirConflictos, serializarConflictos } from "../../../src/dominio/conflictos.ts";
@@ -124,7 +126,10 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
   // Ocupación del mes por consultorio, para la barrita del lateral. Es el mes que se está
   // mirando en el minicalendario, no "el mes actual": si alguien navega a septiembre, las
   // barras tienen que hablar de septiembre o estarían contando otra cosa que lo que se ve.
-  const ocupacionMes = await ocupacionMensualPorSala({ operadorId: actor.operadorId, periodo: mesLateral.slice(0, 7) });
+  // La ocupación del centro (el KPI de arriba y las barras del lateral) es información de
+  // negocio: cuánto rinde cada consultorio le importa a quien lo alquila, no a quien lo usa.
+  const veOcupacion = puede(actor.rol, "finanzas.ver.agregada");
+  const ocupacionMes = veOcupacion ? await ocupacionMensualPorSala({ operadorId: actor.operadorId, periodo: mesLateral.slice(0, 7) }) : [];
   const ocupPorSala = new Map(ocupacionMes.map((o) => [o.salaId, o]));
 
   /** Arma un link conservando lo que no cambia. Las URLs son el estado de la pantalla. */
@@ -257,6 +262,9 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
 
   return (
     <>
+      {/* Un solo listener para todas las burbujas de la pantalla (crear turno, tuerca). */}
+      <CerrarBurbujas />
+
       {/* ── Barra superior ──────────────────────────────────────────────── */}
       <header className="barra">
         <Link href={`/panel/${slug}`} style={{ display: "flex", alignItems: "center" }} aria-label="Inicio">
@@ -313,9 +321,11 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           {/* De qué mes hablan las barras, dicho una vez acá y no repetido en cada fila. Sin esto
               el porcentaje al lado de cada consultorio no se sabe si es del día, de la semana o
               del mes — y son tres números muy distintos. */}
-          <p className="tenue" style={{ margin: "-2px 0 6px", fontSize: 11 }}>
-            Ocupación de {nombreDePeriodo(mesLateral.slice(0, 7))}
-          </p>
+          {veOcupacion && (
+            <p className="tenue" style={{ margin: "-2px 0 6px", fontSize: 11 }}>
+              Ocupación de {nombreDePeriodo(mesLateral.slice(0, 7))}
+            </p>
+          )}
           <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 2 }}>
             {agenda.salas.map((s) => {
               const prendida = agenda.salasVisibles.includes(s.id);
@@ -372,17 +382,29 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
             className="tenue"
             style={{ margin: 0, padding: "8px 16px", borderBottom: "1px solid var(--borde)", fontSize: 13, display: "flex", gap: 14, flexWrap: "wrap" }}
           >
-            <span>
-              Ocupación <strong style={{ color: "var(--texto)" }}>{agenda.kpis.ocupacionPct}%</strong> ({horasYMinutos(agenda.kpis.ocupadasMin)} de{" "}
-              {horasYMinutos(agenda.kpis.disponiblesMin)})
-            </span>
+            {veOcupacion && (
+              <span>
+                Ocupación <strong style={{ color: "var(--texto)" }}>{agenda.kpis.ocupacionPct}%</strong> ({horasYMinutos(agenda.kpis.ocupadasMin)} de{" "}
+                {horasYMinutos(agenda.kpis.disponiblesMin)})
+              </span>
+            )}
             <span>
               {agenda.reservas.filter((r) => !r.esBloqueo).length} turno
               {agenda.reservas.filter((r) => !r.esBloqueo).length === 1 ? "" : "s"}
             </span>
-            {sp.creada && <span className="exito">{Number(sp.creada) === 1 ? "Turno creado." : `${sp.creada} turnos creados.`}</span>}
             {sp.error && !puedeCargar && <span className="error">{mensajeDeError(sp.error)}</span>}
           </p>
+
+          {/* El resultado del alta va ACÁ y no adentro del panel de crear: ese panel se cierra
+              solo al guardar, así que un aviso adentro no lo ve nadie — y con series es donde más
+              importa, porque es donde se saltean fechas. */}
+          {sp.creada && (
+            <AvisoAlta
+              creadas={Number(sp.creada)}
+              total={Number(sp.chocaron ?? 0)}
+              grupos={describirConflictos(parsearConflictos(sp.dias))}
+            />
+          )}
 
           {vista === "mes" ? (
             <VistaMes dia={agenda} hoy={hoy} href={href} />
@@ -424,7 +446,7 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           que hacer, y dejarlo abierto obliga a cerrarlo a mano para ver la agenda que se acaba de
           modificar. El aviso de "turno creado" aparece arriba, sobre la grilla. */}
       {(puedeCargar || puedeCargarPropia) && (
-        <details className="crear-flotante" open={Boolean(sp.error)}>
+        <details className="crear-flotante" data-burbuja open={Boolean(sp.error)}>
           <summary aria-label="Crear turno" title="Crear turno">
             <IconoMas />
           </summary>

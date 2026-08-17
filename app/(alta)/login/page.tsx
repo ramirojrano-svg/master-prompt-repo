@@ -11,6 +11,7 @@ import { redirect } from "next/navigation";
 import { signIn } from "../../../src/lib/auth.ts";
 import { prisma } from "../../../src/db/prisma.ts";
 import { Logo } from "../../Logo.tsx";
+import { CampoClave } from "./CampoClave.tsx";
 
 /**
  * A qué centro mandar a un usuario que entró sin decir a cuál. Devuelve el slug del primer centro
@@ -86,8 +87,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <label htmlFor="email">Email</label>
           <input id="email" name="email" type="email" required autoComplete="email" placeholder="vos@email.com" />
 
-          <label htmlFor="password">Contraseña</label>
-          <input id="password" name="password" type="password" required autoComplete="current-password" />
+          <CampoClave />
 
           <input type="hidden" name="centro" defaultValue={sp.centro ?? ""} />
 
