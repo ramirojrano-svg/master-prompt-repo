@@ -8,9 +8,12 @@
 // que REHACE el centro entero — y usar una motosierra para arreglar una cerradura es cómodo el
 // primer día y carísimo el día que ya hay turnos cargados.
 //
-// Esto repara solamente la puerta: crea los tres usuarios si faltan, les vuelve a poner la
+// Esto repara solamente la puerta: crea los usuarios si faltan, les vuelve a poner la
 // contraseña, y se asegura de que tengan su rol ACTIVO en el centro. No mira ni toca turnos,
 // profesionales, precios ni asientos.
+//
+// La contraseña sale de SEED_PASSWORD, así que también es la forma de CAMBIARLA en producción:
+//   SEED_PASSWORD='la nueva' npm run acceso
 //
 // Es idempotente: correrlo dos veces deja lo mismo. Y no inventa el centro — si no existe, avisa
 // que hace falta el seed, porque un usuario sin centro no puede entrar a ninguna parte.
@@ -28,12 +31,16 @@ const CLAVE = process.env.SEED_PASSWORD ?? "emoapp-2026";
 const ok = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const err = (m) => console.error(`  \x1b[31m✗\x1b[0m ${m}`);
 
-// Los tres accesos del piloto. El inquilino se cuelga del primer profesional que haya: sirve para
-// ver la pantalla con las reglas de privacidad puestas.
+// Los dos accesos del piloto, uno por rol. El inquilino se cuelga del primer profesional que
+// haya: sirve para ver la pantalla con las reglas de privacidad puestas.
+//
+// Había un tercero, `ana@email.com` con rol `recepcion`, que quedó acá cuando el centro pasó a
+// tener solo administrador y profesional. `recepcion` ya no existe en el enum `Rol` de la base,
+// así que el INSERT fallaba y el script se cortaba con un error de Postgres — justo la
+// herramienta que uno corre cuando NO puede entrar.
 const CUENTAS = [
   { email: "ramirojrano@gmail.com", nombre: "Ramiro Raño", rol: "owner", conInquilino: false },
   { email: "maria@email.com", nombre: "Profesional", rol: "inquilino_titular", conInquilino: true },
-  { email: "ana@email.com", nombre: "Recepción", rol: "recepcion", conInquilino: false },
 ];
 
 cargarEnv(RAIZ);
