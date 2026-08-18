@@ -3,10 +3,13 @@
 // Next lo toma por convención de nombre y lo sirve como <link rel="icon">. Se dibuja EN EL BUILD
 // —no se pide en cada visita— así que leer el PNG con `fs` sale gratis en runtime.
 //
-// Se pinta el logo ENTERO centrado sobre un lienzo cuadrado blanco. No se recorta la parte de
-// abajo: el intento anterior asumía que el PNG dividía mitad y mitad entre montaña y texto, y
-// como el archivo real no está en esa proporción salía cortado por la mitad. A 32 px el texto
-// no se lee, pero eso siempre es así en un favicon y no es peor que el ícono anterior.
+// Se pinta el logo ENTERO centrado sobre un lienzo cuadrado transparente. No se recorta la parte
+// de abajo: el intento anterior asumía que el PNG dividía mitad y mitad entre montaña y texto, y
+// como el archivo real no está en esa proporción salía cortado por la mitad. A 32 px el texto no
+// se lee, pero eso siempre es así en un favicon y no es peor que el ícono anterior.
+//
+// Fondo transparente y no blanco: el navegador dibuja la pestaña sobre su propio color, que en
+// modo oscuro NO es blanco — un cuadrado blanco ahí se ve como un parche.
 
 import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
@@ -32,7 +35,6 @@ export default async function Icon() {
         style={{
           width: "100%",
           height: "100%",
-          background: "#ffffff",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
