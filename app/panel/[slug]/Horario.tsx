@@ -16,8 +16,15 @@
 import { useState } from "react";
 import { DURACION_MAX_MIN, DURACION_MIN_MIN } from "../../../src/dominio/motor/limites.ts";
 
-/** El paso de la grilla de horarios. Media hora: es como se alquila un consultorio. */
-const PASO_MIN = 30;
+/** Cada cuánto se puede EMPEZAR. Media hora: un turno a las 15:30 es de lo más común. */
+const PASO_INICIO_MIN = 30;
+
+/**
+ * Cada cuánto crece la duración una vez pasada la primera hora. Se alquila POR HORA, así que la
+ * lista va 1 h, 2 h, 3 h. Con medias horas quedaba el doble de opciones —1.5 h, 2.5 h, 3.5 h— para
+ * ofrecer duraciones que casi nadie pide, y encontrar "3 h" costaba el doble de scroll.
+ */
+const PASO_DURACION_MIN = 60;
 
 const aMinutos = (hhmm: string): number => {
   const m = /^(\d{2}):(\d{2})$/.exec(hhmm);
@@ -41,11 +48,11 @@ export function Horario({ horaInicial = "09:00", duracionInicial = 60 }: { horaI
 
   // Las opciones de fin se recalculan desde la hora de inicio: mover el inicio no puede dejar un
   // fin anterior, que es lo que pasaba si el fin fuera un campo suelto.
-  // Duraciones REDONDAS: 15, 30, 45 y de ahí en media horas. Generarlas sumando 30 desde el mínimo
-  // de 15 daba 15, 45, 1.3 h, 1.8 h — horarios que nadie pide y que además se leen como un error
-  // de cálculo. Es la misma escala que ofrece Google Calendar, por el mismo motivo.
+  // Duraciones REDONDAS: los tres pedazos de hora que se usan (15, 30, 45) y de ahí en horas
+  // enteras. Generarlas sumando un paso fijo desde el mínimo de 15 daba 15, 45, 1.3 h, 1.8 h —
+  // horarios que nadie pide y que además se leen como un error de cálculo.
   const duraciones = [15, 30, 45];
-  for (let d = 60; d <= DURACION_MAX_MIN; d += PASO_MIN) duraciones.push(d);
+  for (let d = 60; d <= DURACION_MAX_MIN; d += PASO_DURACION_MIN) duraciones.push(d);
 
   const opciones: { min: number; etiqueta: string }[] = [];
   for (const d of duraciones) {
@@ -66,7 +73,7 @@ export function Horario({ horaInicial = "09:00", duracionInicial = 60 }: { horaI
           id="hora"
           name="hora"
           type="time"
-          step={PASO_MIN * 60}
+          step={PASO_INICIO_MIN * 60}
           required
           value={inicio}
           onChange={(e) => setInicio(e.target.value)}
