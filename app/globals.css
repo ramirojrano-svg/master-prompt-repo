@@ -615,19 +615,22 @@ tfoot td {
   font-weight: 600;
 }
 
-/* El pie de la columna: la tuerca. `margin-top: auto` la manda al fondo sin importar cuántas
-   secciones tenga el rol — el administrador ve cinco y el profesional dos. */
+/* La tuerca va JUSTO DEBAJO del último acceso, no al fondo de la columna. Al fondo la tapaba el
+   botón flotante de crear, que es `position: fixed` abajo a la izquierda y queda por encima de
+   todo lo que haya ahí. Pegada a la lista además se lee como parte del menú, y cada rol la
+   encuentra en su lugar: el administrador después de Métricas, el profesional después de Mis
+   reservas. */
 .menu-pie {
-  margin-top: auto;
-  padding-top: 10px;
+  margin-top: 6px;
+  padding-top: 8px;
   border-top: 1px solid var(--borde);
 }
-/* En la barra de arriba el globo caía hacia abajo desde la tuerca. Al pie de la columna no hay
-   nada abajo, así que se despliega hacia ARRIBA y hacia la derecha. */
+/* El globo se despliega hacia abajo desde la tuerca, como en la barra de arriba: ahora hay lugar
+   abajo, que es donde el ojo lo va a buscar. Hacia la derecha, para que no se corte contra el
+   borde izquierdo de la ventana. */
 .menu-pie .menu-config > .globo-config {
-  top: auto;
+  top: 42px;
   right: auto;
-  bottom: 42px;
   left: 0;
 }
 

@@ -26,8 +26,12 @@ export async function MenuConfig({ rol }: { rol: Rol }) {
 
   return (
     <details className="menu-config" data-burbuja>
-      <summary className="nav-circ" aria-label="Configuración" title="Configuración">
+      {/* Con la misma forma que los accesos de arriba: es una fila más de la columna, y un círculo
+          suelto entre filas a lo ancho se leía como si fuera de otra pantalla. Colapsado el texto
+          se apaga solo, igual que en los demás. */}
+      <summary className="item-lateral" aria-label="Configuración" title="Configuración">
         <IconoTuerca />
+        <span>Configuración</span>
       </summary>
       <div className="globo-config">
         {/* Quién está adentro, arriba de todo: en una recepción compartida es lo primero que hay
