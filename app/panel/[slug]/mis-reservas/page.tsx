@@ -227,14 +227,10 @@ export default async function MisReservasPage({
                   );
                 })}
               </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={3}>{vivos.length} {vivos.length === 1 ? "reserva" : "reservas"}</td>
-                  <td className="num">{horasYMinutos(d.totales.minutos)}</td>
-                  <td className="num">{plata(d.totales.importeCent)}</td>
-                  <td />
-                </tr>
-              </tfoot>
+              {/* Sin fila de totales: los mismos tres números —cuántas reservas, cuántas horas y
+                  cuánto suma— ya están arriba, en el panel de "A pagar", y ahí es donde se los
+                  busca. Repetidos al pie no agregaban nada y hacían dudar de si hablaban de lo
+                  mismo. El detalle de esta tabla es el que explica ese total, no otro. */}
             </table>
           </div>
         )}
