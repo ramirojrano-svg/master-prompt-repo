@@ -505,6 +505,17 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           </summary>
           <div className="globo">
             <NuevaReserva
+              // La `key` cambia con la celda que se tocó, y eso REMONTA el formulario.
+              //
+              // Hace falta porque los campos de hora y consultorio arrancan de un valor inicial
+              // —`useState` en el selector de horario, `defaultValue` en el select de sala— y esos
+              // dos solo se leen al MONTAR. Al tocar otra celda, Next navega pero React reusa el
+              // mismo formulario: llegaban props nuevas y los campos seguían mostrando lo de antes.
+              // Se tocaban las 14:00 y "Empieza" seguía diciendo 09:00.
+              //
+              // Con la key, cada celda es un formulario distinto para React. Es lo mismo que hace
+              // falta para que "atrás" devuelva el formulario al estado anterior.
+              key={`${sp.sala ?? ""}|${sp.hora ?? ""}|${agenda.fecha}`}
               salas={agenda.salas.filter((s) => s.activa).map((s) => ({ id: s.id, nombre: s.nombre }))}
               // Vacío para el profesional: no elige de quién es el turno, es suyo.
               inquilinos={puedeCargar ? inquilinos : []}
