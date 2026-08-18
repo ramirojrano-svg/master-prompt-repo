@@ -13,7 +13,7 @@ export default function Home() {
   return (
     <main style={{ maxWidth: 460, margin: "72px auto", padding: "0 16px", textAlign: "center" }}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-        <Logo alto={54} />
+        <Logo alto={96} />
       </div>
       <p className="tenue" style={{ marginTop: 0 }}>
         Agenda, profesionales y cuenta corriente de un centro de consultorios.

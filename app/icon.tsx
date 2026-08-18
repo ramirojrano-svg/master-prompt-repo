@@ -3,10 +3,10 @@
 // Next lo toma por convención de nombre y lo sirve como <link rel="icon">. Se dibuja EN EL BUILD
 // —no se pide en cada visita— así que leer el PNG con `fs` sale gratis en runtime.
 //
-// Cómo se hace el ícono. El logo del centro es cuadrado (montaña arriba, texto abajo). A 32 px la
-// mitad de abajo se convierte en una mancha. Se recorta al pedazo superior con `object-position`
-// sobre un lienzo cuadrado del alto del pedazo, para que quede solo la montaña — es la misma
-// decisión que toma `Logo` cuando la variante no es "completo".
+// Se pinta el logo ENTERO centrado sobre un lienzo cuadrado blanco. No se recorta la parte de
+// abajo: el intento anterior asumía que el PNG dividía mitad y mitad entre montaña y texto, y
+// como el archivo real no está en esa proporción salía cortado por la mitad. A 32 px el texto
+// no se lee, pero eso siempre es así en un favicon y no es peor que el ícono anterior.
 
 import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
@@ -17,14 +17,12 @@ import { join } from "node:path";
 // cuando el ícono se pide, ahí sí lee el archivo de /public.
 export const dynamic = "force-dynamic";
 
-// Un ícono chico: Chrome pide 32×32, iOS y Android piden más grandes pero escalan sin problemas.
-// 64 da nitidez sin generar un archivo pesado en el build.
 export const size = { width: 64, height: 64 };
 export const contentType = "image/png";
 
 export default async function Icon() {
   // Se lee EL PNG que ya vive en /public y se embebe como data URL: ImageResponse no puede
-  // pedirle a un fetch relativo, y hardcodear un dominio absoluto ataría el ícono al deploy.
+  // hacer un fetch relativo, y hardcodear un dominio absoluto ataría el ícono al deploy.
   const bytes = await readFile(join(process.cwd(), "public", "logo.png"));
   const dataUrl = `data:image/png;base64,${bytes.toString("base64")}`;
 
@@ -36,15 +34,12 @@ export default async function Icon() {
           height: "100%",
           background: "#ffffff",
           display: "flex",
-          alignItems: "flex-start",
+          alignItems: "center",
           justifyContent: "center",
-          overflow: "hidden",
         }}
       >
-        {/* La imagen renderizada al DOBLE del alto del lienzo: la mitad de arriba (la montaña)
-            entra completa y la de abajo (el texto) queda recortada por el `overflow: hidden`. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={dataUrl} alt="" width={size.width} height={size.height * 2} style={{ objectFit: "contain" }} />
+        <img src={dataUrl} alt="" width={size.width} height={size.height} style={{ objectFit: "contain" }} />
       </div>
     ),
     size,

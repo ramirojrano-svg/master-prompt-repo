@@ -86,7 +86,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     >
       <div style={{ width: "100%", maxWidth: 400 }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 22 }}>
-          <Logo alto={54} />
+          <Logo alto={96} />
         </div>
 
         <form className="panel" action={entrar} style={{ padding: 26 }}>
