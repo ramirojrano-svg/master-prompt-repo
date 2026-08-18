@@ -4,6 +4,7 @@
 
 import type { GrupoConflicto } from "../../../src/dominio/conflictos.ts";
 import { etiquetaDeRepeticion, REPETICIONES } from "../../../src/dominio/repeticion.ts";
+import { BotonEnviar } from "./BotonEnviar.tsx";
 import { Horario } from "./Horario.tsx";
 
 export type OpcionSala = { id: string; nombre: string };
@@ -137,10 +138,11 @@ export function NuevaReserva({
         </div>
       )}
 
+      {/* Crear una serie escribe medio centenar de filas y tarda unos segundos. El botón avisa
+          que está trabajando y se deshabilita: sin eso la pantalla queda igual después de apretar,
+          y el segundo click por las dudas crea la serie dos veces. */}
       <p style={{ marginTop: 14, marginBottom: 0 }}>
-        <button type="submit" style={{ width: "100%" }}>
-          Crear turno
-        </button>
+        <BotonEnviar enviando="Creando turno…">Crear turno</BotonEnviar>
       </p>
     </form>
   );

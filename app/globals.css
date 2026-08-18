@@ -491,6 +491,34 @@ tfoot td {
   }
 }
 
+/* ── Indicador de "estoy trabajando" ──────────────────────────────────────── */
+/* Un anillo que gira. Es un solo <span>: el borde de arriba en el color del texto y los otros
+   tres translúcidos, girando — no hace falta ni un SVG ni una imagen. */
+.girito {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: girito 0.7s linear infinite;
+}
+@keyframes girito {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* Quien pidió menos movimiento en el sistema operativo no ve girar nada: se queda quieto y
+   marcado, que sigue diciendo "esto está en curso" sin animación. */
+@media (prefers-reduced-motion: reduce) {
+  .girito {
+    animation: none;
+    border-top-color: currentColor;
+    opacity: 0.5;
+  }
+}
+
 /* ── Avisos de resultado ──────────────────────────────────────────────────── */
 /* "Se guardó" era un panel blanco igual que los demás: había que LEERLO para saber si había ido
    bien. En verde y con el tilde adelante se entiende antes de leer, que es lo que uno quiere de
