@@ -97,7 +97,7 @@ export default async function MisReservasPage({
   return (
     <>
       <CerrarBurbujas />
-      <Cabecera slug={slug} rol={actor.rol} titulo="Mis reservas" />
+      <Cabecera slug={slug} titulo="Mis reservas" />
 
       <main style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>

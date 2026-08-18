@@ -79,7 +79,7 @@ export default async function InquilinosPage({
 
   return (
     <>
-      <Cabecera slug={slug} rol={actor.rol} titulo="Profesionales" />
+      <Cabecera slug={slug} titulo="Profesionales" />
       <main style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>
       <Buscador inicial={busca} verTodos={verTodos} />
 
@@ -122,10 +122,18 @@ export default async function InquilinosPage({
                 <Link href={`/panel/${slug}/inquilinos/${i.id}#cobros`} className="pastilla" style={{ padding: "5px 12px", fontSize: 12 }}>
                   Gestionar pagos
                 </Link>{" "}
+                {/* Misma forma que "Gestionar pagos" —son dos acciones de la misma fila y como
+                    texto suelto una parecía un comentario al lado de la otra—, pero en rojo: dar
+                    de baja saca a alguien de la operación y no debería confundirse de un vistazo
+                    con abrir sus pagos. Reactivar usa el color normal: no saca nada. */}
                 <form action={cambiarEstado} style={{ display: "inline" }}>
                   <input type="hidden" name="inquilinoId" value={i.id} />
                   <input type="hidden" name="estado" value={i.estado === "activo" ? "baja" : "activo"} />
-                  <button type="submit" style={{ background: "none", border: "none", color: "var(--acento)", cursor: "pointer", padding: 0, font: "inherit" }}>
+                  <button
+                    type="submit"
+                    className={i.estado === "activo" ? "pastilla pastilla-riesgo" : "pastilla"}
+                    style={{ padding: "5px 12px", fontSize: 12 }}
+                  >
                     {i.estado === "activo" ? "Dar de baja" : "Reactivar"}
                   </button>
                 </form>

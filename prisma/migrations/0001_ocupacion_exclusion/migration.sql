@@ -124,6 +124,11 @@ CREATE TABLE "Inquilino" (
     "nombre" TEXT NOT NULL,
     "estado" "EstadoInquilino" NOT NULL DEFAULT 'activo',
     "pagador" TEXT,
+    -- Perfil que edita el propio profesional. El titulo es el prefijo con el que quiere que lo
+    -- nombren ("Dra."), y la foto va como data URL: no hay almacenamiento de archivos y una
+    -- miniatura recortada a 200px pesa menos que muchas filas de esta misma base.
+    "titulo" TEXT,
+    "foto" TEXT,
 
     CONSTRAINT "Inquilino_pkey" PRIMARY KEY ("id")
 );

@@ -338,6 +338,18 @@ tfoot td {
 .pastilla svg {
   flex-shrink: 0;
 }
+/* La misma pastilla, para lo que SACA algo (dar de baja, archivar). El rojo va en el borde y en
+   la letra, no en el fondo: llena competiría con la pastilla de la pantalla actual, que es la
+   única que en esta app está pintada entera. */
+.pastilla-riesgo {
+  color: var(--error);
+  border-color: var(--error);
+}
+.pastilla-riesgo:hover {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
+}
 
 /* Botón redondo de crear, abajo a la izquierda, flotando sobre la grilla. */
 .crear-flotante {
@@ -507,8 +519,11 @@ tfoot td {
   padding: 10px 8px;
   background: var(--panel);
   border-right: 1px solid var(--borde);
-  overflow: hidden; /* al angostarse, el texto se recorta en vez de desbordar sobre la pantalla */
   transition: width 0.16s ease;
+  /* Sin recorte: el globo de la tuerca mide 250px y colapsada la columna mide 52, así que
+     `overflow: hidden` se lo comería. El texto de los accesos no desborda igual porque al
+     colapsar se apaga con `visibility`, que es inmediato. */
+  overflow: visible;
 }
 /* Oculto NO es ancho cero: si se fuera entero no quedaría de dónde agarrarlo para traerlo de
    vuelta. Queda la franja con el botón, y nada más. */
@@ -569,6 +584,51 @@ tfoot td {
    `display` para que el ancho no salte de golpe mientras corre la transición. */
 .menu-lateral[data-oculto] .item-lateral > span {
   visibility: hidden;
+}
+
+/* Mi perfil: la cara arriba de todo, separada de la lista de secciones por una línea. No es una
+   sección más — es quién está adentro. */
+.item-perfil {
+  margin-bottom: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--borde);
+  border-radius: 0;
+  color: var(--texto);
+}
+.item-perfil:hover {
+  background: transparent;
+  color: var(--marca-900);
+  text-decoration: underline;
+}
+/* La inicial cuando todavía no cargó una foto: mismo tamaño y forma que la foto, así el menú no
+   se mueve cuando alguien la sube. */
+.perfil-inicial {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--agua-clara);
+  color: var(--marca-900);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* El pie de la columna: la tuerca. `margin-top: auto` la manda al fondo sin importar cuántas
+   secciones tenga el rol — el administrador ve cinco y el profesional dos. */
+.menu-pie {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--borde);
+}
+/* En la barra de arriba el globo caía hacia abajo desde la tuerca. Al pie de la columna no hay
+   nada abajo, así que se despliega hacia ARRIBA y hacia la derecha. */
+.menu-pie .menu-config > .globo-config {
+  top: auto;
+  right: auto;
+  bottom: 42px;
+  left: 0;
 }
 
 /* ── Menú de configuración (la tuerca de la barra) ────────────────────────── */

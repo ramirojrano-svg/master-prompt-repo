@@ -37,7 +37,6 @@ import { AvisoAlta } from "./AvisoAlta.tsx";
 import { CerrarBurbujas } from "./CerrarBurbujas.tsx";
 import { ocupacionMensualPorSala } from "../../../src/servicios/reportes/mensual.ts";
 import { describirConflictos, parsearConflictos, resumirConflictos, serializarConflictos } from "../../../src/dominio/conflictos.ts";
-import { MenuConfig } from "./MenuConfig.tsx";
 import { Grilla } from "./Grilla.tsx";
 import { VistaMes } from "./VistaMes.tsx";
 import { MiniCalendario } from "./MiniCalendario.tsx";
@@ -338,7 +337,6 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           </Link>
         </nav>
 
-        <MenuConfig rol={actor.rol} />
       </header>
 
       <div className="marco">

@@ -41,7 +41,23 @@ function IconoMenu({ tam = 18 }: { tam?: number }) {
   );
 }
 
-export function MenuLateral({ slug, rol }: { slug: string; rol: Rol }) {
+/**
+ * `configuracion` es la tuerca, y llega como nodo ya renderizado en vez de importarse acá: es un
+ * componente de servidor (lee la sesión para saber quién está adentro) y este archivo es de
+ * cliente. Pasarlo desde el layout es lo que deja convivir a los dos.
+ */
+export function MenuLateral({
+  slug,
+  rol,
+  configuracion,
+  perfil,
+}: {
+  slug: string;
+  rol: Rol;
+  configuracion?: ReactNode;
+  /** El perfil del profesional. Ausente para quien no tiene ficha propia (el administrador). */
+  perfil?: { nombre: string; foto: string | null } | null;
+}) {
   const [oculto, setOculto] = useState(false);
   const pathname = usePathname();
 
@@ -100,6 +116,29 @@ export function MenuLateral({ slug, rol }: { slug: string; rol: Rol }) {
         <IconoMenu />
       </button>
 
+      {/* Mi perfil, arriba de todo: es "quién soy", no una sección más, y por eso va separado de
+          la lista y con la cara en vez de un ícono. Solo existe para quien tiene ficha propia. */}
+      {perfil && (
+        <Link
+          href={`${raiz}/perfil`}
+          className="item-lateral item-perfil"
+          aria-current={seccion === "perfil" ? "page" : undefined}
+          title={oculto ? "Mi perfil" : undefined}
+        >
+          {perfil.foto ? (
+            // eslint-disable-next-line @next/next/no-img-element -- data URL guardada en la fila, no un archivo que Next pueda optimizar
+            <img src={perfil.foto} alt="" width={26} height={26} style={{ borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+          ) : (
+            // Sin foto, la inicial: un hueco gris no dice de quién es la sesión, y en una máquina
+            // compartida eso es justo lo que hay que poder ver de un vistazo.
+            <span aria-hidden="true" className="perfil-inicial">
+              {perfil.nombre.trim().charAt(0).toUpperCase()}
+            </span>
+          )}
+          <span>Mi perfil</span>
+        </Link>
+      )}
+
       {accesos
         .filter((a) => a.mostrar)
         .map((a) => (
@@ -116,6 +155,11 @@ export function MenuLateral({ slug, rol }: { slug: string; rol: Rol }) {
             <span>{a.texto}</span>
           </Link>
         ))}
+
+      {/* La tuerca, al pie. Estaba arriba a la derecha, lejos del resto de la navegación y
+          repetida en cuatro encabezados. Abajo del menú es donde la pone todo el mundo, y acá se
+          escribe una vez. El `margin-top: auto` del CSS la empuja al fondo de la columna. */}
+      {configuracion && <div className="menu-pie">{configuracion}</div>}
     </nav>
   );
 }

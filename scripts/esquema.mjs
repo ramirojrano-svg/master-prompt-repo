@@ -43,6 +43,22 @@ if (!URL_BASE) {
 const reset = process.argv.includes("--reset");
 const sql = readFileSync(MIGRACION, "utf8");
 
+// Columnas agregadas DESPUÉS de que la base ya existía.
+//
+// El camino de arriba crea tablas: si están todas, no hace nada. Eso alcanzaba mientras el esquema
+// solo crecía en tablas, pero una columna nueva en una tabla que ya existe no la aplicaba nadie —
+// y la única salida era `db:reset`, que borra los datos. Para una base con turnos cargados eso no
+// es una opción, así que la columna nunca llegaba a producción.
+//
+// Estos parches corren SIEMPRE y son idempotentes (`IF NOT EXISTS`): aplicarlos dos veces deja lo
+// mismo. Solo van acá los cambios que no pueden romper nada — agregar una columna que admite NULL.
+// Renombrar, borrar o cambiar un tipo necesita pensar qué pasa con lo que ya está guardado, y eso
+// no se resuelve con una lista.
+const PARCHES = [
+  'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "titulo" TEXT',
+  'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "foto" TEXT',
+];
+
 // Las tablas que el esquema DEBE crear se leen de la propia migración: si mañana se agrega una
 // tabla, este chequeo se entera solo. Una lista escrita a mano se desactualiza y el día que pasa
 // dice "todo en orden" sobre una base a la que le falta algo.
@@ -87,6 +103,11 @@ try {
     err("    npm run db:reset && npm run seed");
     process.exit(1);
   }
+
+  // Después de crear (o de encontrar) las tablas, las columnas agregadas más tarde. Va afuera del
+  // if/else a propósito: hace falta tanto en la base recién creada como en la que ya existía.
+  for (const parche of PARCHES) await cliente.query(parche);
+  ok(`Columnas al día (${PARCHES.length} parches idempotentes)`);
 } catch (e) {
   err(`Falló al aplicar el esquema: ${e.message}`);
   process.exit(1);

@@ -27,6 +27,7 @@ export type Permiso =
   | "agenda.ver.identidad" // ver de QUIÉN es cada reserva
   | "agenda.ver.disponibilidad" // solo libre/ocupado
   | "reserva.crear.propia"
+  | "perfil.propio.editar" // su nombre, su titulo y su foto
   | "reserva.crear.ajena"
   | "reserva.editar.propia"
   | "reserva.editar.ajena"
@@ -51,6 +52,7 @@ const TODOS: Permiso[] = [
   "agenda.ver.identidad",
   "agenda.ver.disponibilidad",
   "reserva.crear.propia",
+  "perfil.propio.editar",
   "reserva.crear.ajena",
   "reserva.editar.propia",
   "reserva.editar.ajena",
@@ -81,6 +83,7 @@ const MATRIZ: Readonly<Record<Rol, ReadonlySet<Permiso>>> = {
   inquilino_titular: new Set<Permiso>([
     "agenda.ver.disponibilidad",
     "reserva.crear.propia",
+    "perfil.propio.editar",
     "reserva.editar.propia",
     "cuenta.ver.propia",
     "acceso.codigo.ver",

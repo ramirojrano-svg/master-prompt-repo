@@ -166,6 +166,14 @@ model Inquilino {
   // no un cambio de titular de la cuenta: mover el saldo a otro rompería el suyo.
   pagador    String?
 
+  // El perfil que edita el propio profesional, y que el resto de la app usa para nombrarlo.
+  // `titulo` es el prefijo elegido ("Dra.", "Lic."), nulo si no quiere ninguno.
+  // `foto` es una data URL con una miniatura cuadrada: no hay almacenamiento de archivos montado,
+  // y guardar 200×200 en la fila evita depender de un servicio más para una función chica. El
+  // tamaño se acota en el borde de entrada, no acá.
+  titulo     String?
+  foto       String?
+
   operador    Operador    @relation(fields: [operadorId], references: [id], onDelete: Cascade)
   ocupaciones Ocupacion[]
   usuario     UsuarioOperador?

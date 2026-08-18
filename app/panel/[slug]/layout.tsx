@@ -10,6 +10,8 @@
 // pantalla se olvidó de hacerlo, y ese olvido es el que hay que poder ver.
 
 import { actorDeSesion } from "../../../src/lib/sesion.ts";
+import { miPerfil } from "../../../src/servicios/config/perfil.ts";
+import { MenuConfig } from "./MenuConfig.tsx";
 import { MenuLateral } from "./MenuLateral.tsx";
 
 export default async function PanelLayout({
@@ -21,10 +23,20 @@ export default async function PanelLayout({
 }) {
   const { slug } = await params;
   const actor = await actorDeSesion(slug);
+  // `miPerfil` devuelve null si el actor no tiene ficha, que es el caso del administrador: ahí el
+  // acceso a "Mi perfil" no se dibuja en vez de llevar a una pantalla que redirige de vuelta.
+  const perfil = actor ? await miPerfil(actor) : null;
 
   return (
     <div className="panel-marco">
-      {actor && <MenuLateral slug={slug} rol={actor.rol} />}
+      {actor && (
+        <MenuLateral
+          slug={slug}
+          rol={actor.rol}
+          perfil={perfil}
+          configuracion={<MenuConfig rol={actor.rol} />}
+        />
+      )}
       <div className="panel-contenido">{children}</div>
     </div>
   );

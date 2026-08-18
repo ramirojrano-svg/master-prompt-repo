@@ -48,10 +48,11 @@ export function Horario({ horaInicial = "09:00", duracionInicial = 60 }: { horaI
 
   // Las opciones de fin se recalculan desde la hora de inicio: mover el inicio no puede dejar un
   // fin anterior, que es lo que pasaba si el fin fuera un campo suelto.
-  // Duraciones REDONDAS: los tres pedazos de hora que se usan (15, 30, 45) y de ahí en horas
-  // enteras. Generarlas sumando un paso fijo desde el mínimo de 15 daba 15, 45, 1.3 h, 1.8 h —
-  // horarios que nadie pide y que además se leen como un error de cálculo.
-  const duraciones = [15, 30, 45];
+  // Solo horas enteras: 1 h, 2 h, 3 h. El consultorio se alquila por hora y esa es la unidad con
+  // la que se piensa y se cobra; los pedazos (15, 30, 45 min) ensuciaban la lista con duraciones
+  // que acá no se usan. El motor sigue aceptando 15 minutos —el mínimo es del dominio, no de este
+  // selector—, así que si algún día hacen falta, vuelven agregándolas a esta lista.
+  const duraciones: number[] = [];
   for (let d = 60; d <= DURACION_MAX_MIN; d += PASO_DURACION_MIN) duraciones.push(d);
 
   const opciones: { min: number; etiqueta: string }[] = [];

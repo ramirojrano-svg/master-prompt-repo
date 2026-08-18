@@ -8,11 +8,9 @@
 // panel una sola vez para todas las pantallas.
 
 import Link from "next/link";
-import type { Rol } from "../../../src/lib/permisos.ts";
 import { Logo } from "../../Logo.tsx";
-import { MenuConfig } from "./MenuConfig.tsx";
 
-export function Cabecera({ slug, rol, titulo }: { slug: string; rol: Rol; titulo: string }) {
+export function Cabecera({ slug, titulo }: { slug: string; titulo: string }) {
   return (
     <header className="barra">
       <Link href={`/panel/${slug}`} style={{ display: "flex", alignItems: "center" }} aria-label="Volver a la agenda">
@@ -21,8 +19,6 @@ export function Cabecera({ slug, rol, titulo }: { slug: string; rol: Rol; titulo
       <h1 style={{ margin: 0, fontSize: 19, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
         {titulo}
       </h1>
-      <span style={{ marginLeft: "auto" }} />
-      <MenuConfig rol={rol} />
     </header>
   );
 }
