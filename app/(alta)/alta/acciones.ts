@@ -8,10 +8,15 @@
 // formulario. Los mensajes son honestos (§6.9): nunca "no se pudo" cuando la causa es conocida.
 
 import { AltaInput } from "../../../src/dominio/alta-entrada.ts";
+import { altaAbierta } from "../../../src/lib/alta-abierta.ts";
 import { altaOperador } from "../../../src/servicios/operador/alta.ts";
 import type { SalidaAlta } from "./tipos.ts";
 
 export async function crearCentro(raw: unknown): Promise<SalidaAlta> {
+  // El corte va ACÁ y no solo en la página: esconder /alta no cierra nada, porque esta función es
+  // un endpoint HTTP al que se le puede hacer POST sin pasar por ninguna pantalla.
+  if (!altaAbierta()) return { ok: false, mensaje: "El alta de centros no está habilitada." };
+
   const p = AltaInput.safeParse(raw);
   if (!p.success) {
     const primero = p.error.issues[0];

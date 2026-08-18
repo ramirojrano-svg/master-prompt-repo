@@ -6,6 +6,7 @@
 // la cuenta intacta y sin ninguna puerta a la vista— y la única salida era escribir la URL del
 // panel de memoria. Crear un centro es lo que se hace UNA vez; entrar, todos los días.
 import Link from "next/link";
+import { altaAbierta } from "../src/lib/alta-abierta.ts";
 import { Logo } from "./Logo.tsx";
 
 export default function Home() {
@@ -24,9 +25,12 @@ export default function Home() {
         </Link>
       </p>
 
-      <p className="tenue" style={{ marginTop: 22, fontSize: 13 }}>
-        ¿Todavía no tenés centro? <Link href="/alta">Creá el tuyo</Link>
-      </p>
+      {/* Con el alta cerrada el enlace no se muestra: llevaría a un 404. */}
+      {altaAbierta() && (
+        <p className="tenue" style={{ marginTop: 22, fontSize: 13 }}>
+          ¿Todavía no tenés centro? <Link href="/alta">Creá el tuyo</Link>
+        </p>
+      )}
     </main>
   );
 }

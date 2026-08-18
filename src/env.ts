@@ -19,6 +19,9 @@ const esquema = z.object({
   MP_WEBHOOK_SECRET: z.string().optional(), // si falta, TODA notificación es inválida (403)
   SENTRY_DSN: z.string().optional(),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
+  // "true" abre el alta pública de centros (/alta). Ausente o cualquier otro valor la deja cerrada:
+  // sin esto, cualquiera desde internet se da de alta como owner de un centro propio.
+  ALTA_ABIERTA: z.string().optional(),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 

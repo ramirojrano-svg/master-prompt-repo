@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
 import { accesoDeInquilino, accesosCon } from "../../src/servicios/config/accesos.ts";
 import { autorizar } from "../../src/lib/auth-core.ts";
+import { hashPassword } from "../../src/lib/password.ts";
 import { prisma } from "../../src/db/prisma.ts";
 import { nuevoPool, reiniciarEsquema, seedBase, URL_DB } from "./db.ts";
 
@@ -97,6 +98,33 @@ test("EL PUNTO: restablecer INVALIDA las sesiones abiertas", async () => {
 test("restablecer a alguien sin acceso lo dice, no falla raro", async () => {
   const r = await restablecer(OWNER, { inquilinoId: "in2", password: "otra-clave-larga" });
   assert.ok(r.ok && !r.data.ok && r.data.error === "SIN_ACCESO");
+});
+
+test("restablecer NO toca una identidad que también vive en otro centro", async () => {
+  // El agujero que cierra este test: `Usuario` es una identidad GLOBAL, y restablecer escribía
+  // sobre ella sin mirar dónde más vivía. Con el alta de centros abierta, cualquiera podía darse
+  // de alta un centro propio, enganchar el email de una persona de otro centro como profesional
+  // suyo —el chequeo de EMAIL_DE_OTRO solo mira adentro del centro propio— y después
+  // "restablecerle" la clave, quedándose con su cuenta ALLÁ.
+  await pgPool.query(`INSERT INTO "Operador"("id","nombre","slug") VALUES('op2','Otro','otro') ON CONFLICT DO NOTHING`);
+  const suya = "la-clave-de-la-victima";
+  await pgPool.query(`INSERT INTO "Usuario"("id","email","nombre","passwordHash") VALUES('uv','victima@e.com','Victima',$1)`, [
+    await hashPassword(suya),
+  ]);
+  await pgPool.query(`INSERT INTO "UsuarioOperador"("usuarioId","operadorId","rol","activo") VALUES('uv','op2','owner',true)`);
+
+  // Engancharla como profesional del centro propio SIGUE siendo válido: una persona puede alquilar
+  // en dos centros con una sola identidad. Lo que no pasa es que le pisen la contraseña.
+  const c = await crear(OWNER, { inquilinoId: "in1", email: "victima@e.com", password: "otra-clave-larga" });
+  assert.ok(c.ok && c.data.ok, "enganchar una identidad existente sigue permitido");
+  assert.ok(await autorizar(db, { email: "victima@e.com", password: suya }), "crear no le toca la clave");
+
+  const r = await restablecer(OWNER, { inquilinoId: "in1", password: "la-del-atacante" });
+  assert.ok(r.ok && !r.data.ok && r.data.error === "CUENTA_COMPARTIDA", "restablecer tiene que negarse");
+
+  // Lo que de verdad importa: la víctima sigue entrando con LO SUYO, y el atacante no entra.
+  assert.ok(await autorizar(db, { email: "victima@e.com", password: suya }), "la clave de la víctima sigue abriendo");
+  assert.ok(!(await autorizar(db, { email: "victima@e.com", password: "la-del-atacante" })), "la del atacante no abre");
 });
 
 test("un profesional de otro centro no existe acá", async () => {

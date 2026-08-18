@@ -40,7 +40,7 @@ export const RestablecerInput = z.object({
 
 export type ResultadoAcceso =
   | { ok: true; email: string }
-  | { ok: false; error: "INQUILINO_INEXISTENTE" | "YA_TIENE_ACCESO" | "EMAIL_DE_OTRO" | "SIN_ACCESO" };
+  | { ok: false; error: "INQUILINO_INEXISTENTE" | "YA_TIENE_ACCESO" | "EMAIL_DE_OTRO" | "SIN_ACCESO" | "CUENTA_COMPARTIDA" };
 
 /** El acceso actual de un profesional, para la pantalla. null = todavía no tiene. */
 export async function accesoDeInquilino(
@@ -113,6 +113,29 @@ async function restablecer(
     select: { usuarioId: true, usuario: { select: { email: true } } },
   });
   if (!uo) return { ok: false, error: "SIN_ACCESO" };
+
+  // La membresía es de ESTE centro, pero `Usuario` es una identidad GLOBAL: el update de abajo
+  // cambia la contraseña con la que esa persona entra a todos lados. `crear()` ya se cuida de eso
+  // —cuando el email existe reusa el usuario y NO le pisa la clave— y sin este chequeo restablecer
+  // deshacía esa protección: alcanzaba con dar de alta un centro propio, agregar el email de
+  // cualquiera como profesional (el chequeo de `ocupado` solo mira adentro del centro propio) y
+  // resetear, para quedarse con su cuenta en el centro ajeno.
+  //
+  // Fail-closed: si la identidad vive también afuera, acá no se toca. Que la restablezca el centro
+  // donde esa persona es de verdad, o que use un email distinto para este.
+  //
+  // Se pregunta por `usuario` y no con `usuarioOperador.count({ where: { operadorId: { not } } })`
+  // a propósito: `UsuarioOperador` está en los modelos que el guard de prisma.ts scopea, y el guard
+  // PISA el operadorId del where con el del contexto. Hoy no corre (nadie llama a `conTenant`),
+  // pero el día que se active, ese count daría 0 siempre y el chequeo pasaría a fallar abierto —
+  // justo el que sostiene esto. `Usuario` no es un modelo de tenant y `findUnique` no está entre
+  // las ops scopeadas, así que este camino no depende de que el guard esté puesto o no.
+  const identidad = await db.usuario.findUnique({
+    where: { id: uo.usuarioId },
+    select: { operadores: { select: { operadorId: true } } },
+  });
+  const afuera = (identidad?.operadores ?? []).some((m) => m.operadorId !== actor.operadorId);
+  if (afuera) return { ok: false, error: "CUENTA_COMPARTIDA" };
 
   const hash = await hashPassword(input.password);
   await db.usuario.update({

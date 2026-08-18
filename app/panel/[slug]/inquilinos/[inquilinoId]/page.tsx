@@ -146,6 +146,9 @@ export default async function DetalleProfesionalPage({
     YA_TIENE_ACCESO: "Este profesional ya tiene acceso.",
     EMAIL_DE_OTRO: "Ese email ya lo usa otro profesional de este centro.",
     SIN_ACCESO: "Todavía no tiene acceso: creáselo primero.",
+    CUENTA_COMPARTIDA:
+      "Esa persona usa el mismo email en otro centro, así que la contraseña es una sola para los dos. " +
+      "Tiene que restablecerla desde allá, o darle acá un email distinto.",
     ENTRADA_INVALIDA: `Revisá el email y que la contraseña tenga al menos ${LARGO_MIN_CLAVE} caracteres.`,
     MES_CERRADO: "Ese mes ya está cerrado: el cobro no se puede anular sin reabrir la liquidación.",
     YA_ANULADO: "Ese cobro ya estaba anulado.",
