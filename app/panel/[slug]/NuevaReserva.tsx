@@ -17,11 +17,16 @@ export function NuevaReserva({
   error,
   creada,
   precios,
+  salaInicial,
+  horaInicial,
 }: {
   salas: OpcionSala[];
   inquilinos: OpcionInquilino[];
   fecha: string;
   accion: (formData: FormData) => Promise<void>;
+  /** Cuando se llegó tocando una celda de la grilla: el consultorio y la hora de esa celda. */
+  salaInicial?: string;
+  horaInicial?: string;
   error?: string;
   /** Resultado del alta: cuántos se crearon, y qué fechas quedaron afuera agrupadas por motivo. */
   creada?: { creadas: number; total: number; grupos: GrupoConflicto[] };
@@ -53,7 +58,8 @@ export function NuevaReserva({
       <label htmlFor="salaId" style={inquilinos.length === 0 ? { marginTop: 0 } : undefined}>
         Consultorio
       </label>
-      <select id="salaId" name="salaId" required defaultValue={salas[0]?.id ?? ""}>
+      {/* El consultorio de la celda que se tocó; si se llegó por el botón "+", el primero. */}
+      <select id="salaId" name="salaId" required defaultValue={salaInicial ?? salas[0]?.id ?? ""}>
         {salas.map((s) => (
           <option key={s.id} value={s.id}>
             {s.nombre}
@@ -61,7 +67,7 @@ export function NuevaReserva({
         ))}
       </select>
 
-      <Horario />
+      <Horario horaInicial={horaInicial} />
 
       {/* Repetición, con las etiquetas armadas desde la fecha elegida ("el segundo viernes", no
           "mensual"): la etiqueta ES la explicación. El campo "veces" solo aparece cuando hay algo

@@ -102,22 +102,20 @@ export default async function MisReservasPage({
       <main style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
           <nav style={{ display: "flex", gap: 2 }}>
+            {/* Se puede ir hacia ADELANTE, no solo hacia atrás. Antes la flecha de mes siguiente
+                aparecía solo estando en un mes pasado, con la idea de que esto es la pantalla de
+                "cuánto tengo que pagar" y el futuro todavía no se paga. Pero también es la lista
+                de lo que uno tiene reservado: quien agenda todos los martes del año veía el turno
+                de este mes y ninguno de los siguientes, sin ninguna forma de llegar a ellos —
+                parecía que la repetición no se había creado. */}
             <Link className="nav-circ" href={`?periodo=${periodoAnterior(periodo)}`} aria-label="Mes anterior">‹</Link>
-            {periodo < hoyPeriodo && (
-              <Link className="nav-circ" href={`?periodo=${periodoSiguiente(periodo)}`} aria-label="Mes siguiente">›</Link>
-            )}
+            <Link className="nav-circ" href={`?periodo=${periodoSiguiente(periodo)}`} aria-label="Mes siguiente">›</Link>
           </nav>
           <h2 style={{ margin: 0 }}>{nombreDePeriodo(periodo)}</h2>
         </div>
 
-        {okParam && AVISO[okParam] && (
-          <p className="panel" style={{ padding: "10px 14px", margin: "0 0 12px", fontSize: 14 }}>{AVISO[okParam]}</p>
-        )}
-        {errorParam && (
-          <p className="panel" style={{ padding: "10px 14px", margin: "0 0 12px", fontSize: 14, color: "var(--error)" }}>
-            {mensajeDeTurno(errorParam)}
-          </p>
-        )}
+        {okParam && AVISO[okParam] && <p className="aviso-ok">{AVISO[okParam]}</p>}
+        {errorParam && <p className="aviso-error">{mensajeDeTurno(errorParam)}</p>}
 
         {/* ── Lo que hay que pagar ──────────────────────────────────────────── */}
         <section className="panel" style={{ padding: 22 }}>

@@ -491,6 +491,54 @@ tfoot td {
   }
 }
 
+/* ── Avisos de resultado ──────────────────────────────────────────────────── */
+/* "Se guardó" era un panel blanco igual que los demás: había que LEERLO para saber si había ido
+   bien. En verde y con el tilde adelante se entiende antes de leer, que es lo que uno quiere de
+   una confirmación — mirarla de reojo y seguir. */
+.aviso-ok {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 0 0 14px;
+  border: 1px solid var(--ok);
+  border-left: 4px solid var(--ok);
+  border-radius: var(--radio);
+  background: #e8f7f2;
+  color: #0b5c48;
+  font-size: 14px;
+  font-weight: 500;
+}
+.aviso-ok::before {
+  content: "✓";
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ok);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* El mismo cuerpo, para cuando algo no se pudo. */
+.aviso-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 0 0 14px;
+  border: 1px solid var(--error);
+  border-left: 4px solid var(--error);
+  border-radius: var(--radio);
+  background: #fdeceb;
+  color: #8c241d;
+  font-size: 14px;
+  font-weight: 500;
+}
+
 /* ── Menú lateral del panel (Consultorios, Profesionales, Precios…) ───────── */
 /* Estaba arriba, en la barra, como pastillas en fila. La barra ya lleva logo, título, la
    navegación del mes y la tuerca: cada sección nueva empujaba a la siguiente, y en un portátil las

@@ -44,7 +44,24 @@ import { NuevaReserva } from "./NuevaReserva.tsx";
 import { DetalleTurno } from "./DetalleTurno.tsx";
 
 type Params = { slug: string };
-type Query = { fecha?: string; vista?: string; mes?: string; salas?: string; error?: string; creada?: string; chocaron?: string; dias?: string; turno?: string; errorTurno?: string };
+type Query = {
+  fecha?: string;
+  vista?: string;
+  mes?: string;
+  salas?: string;
+  error?: string;
+  creada?: string;
+  chocaron?: string;
+  dias?: string;
+  turno?: string;
+  errorTurno?: string;
+  // Tocar una celda de la grilla: abre el alta con ese consultorio y esa hora ya puestos. Va por
+  // la URL y no por estado del cliente porque en esta pantalla la URL ES el estado — el formulario
+  // abierto se puede compartir, sobrevive al refresh y "atrás" lo cierra.
+  nuevo?: string;
+  hora?: string;
+  sala?: string;
+};
 
 /**
  * El cuerpo compartido de las acciones sobre un turno. Vive FUERA del componente a propósito:
@@ -451,6 +468,9 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
               // ve la suya: sin esto podía crear un turno y después no tenía forma de abrirlo para
               // cancelarlo. Los ajenos igual se proyectan como "ocupado" y su detalle no existe.
               baseTurno={puede(actor.rol, "agenda.ver.identidad") || puedeEditarPropio ? href(agenda.fecha) : undefined}
+              // Tocar una celda vacía abre el alta con ese consultorio y esa hora ya puestos. Solo
+              // para quien puede crear: ofrecer el gesto y después negarlo es peor que no ofrecerlo.
+              baseNuevo={puedeCargar || puedeCargarPropia ? href(agenda.fecha) : undefined}
             />
           )}
         </section>
@@ -473,11 +493,13 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           Fuera del <aside>: el lateral se esconde abajo de 880px y el botón de crear no puede
           desaparecer en un teléfono. Sigue siendo <details>/<summary>, o sea que abre y cierra
           sin una línea de JavaScript.
-          Queda abierto SOLO si hubo error: con el turno ya creado el formulario no tiene nada más
-          que hacer, y dejarlo abierto obliga a cerrarlo a mano para ver la agenda que se acaba de
-          modificar. El aviso de "turno creado" aparece arriba, sobre la grilla. */}
+          Queda abierto si hubo error (para que el mensaje se lea) y cuando se llegó tocando una
+          celda de la grilla: ese click tiene que dejar el formulario a la vista, no esconderlo
+          detrás del "+" con los datos ya cargados. Después de crear se cierra: el formulario no
+          tiene nada más que hacer y abierto tapa la agenda que se acaba de modificar. El aviso de
+          "turno creado" aparece arriba, sobre la grilla. */}
       {(puedeCargar || puedeCargarPropia) && (
-        <details className="crear-flotante" data-burbuja open={Boolean(sp.error)}>
+        <details className="crear-flotante" data-burbuja open={Boolean(sp.error) || sp.nuevo === "1"}>
           <summary aria-label="Crear turno" title="Crear turno">
             <IconoMas />
           </summary>
@@ -487,6 +509,11 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
               // Vacío para el profesional: no elige de quién es el turno, es suyo.
               inquilinos={puedeCargar ? inquilinos : []}
               fecha={agenda.fecha}
+              // Lo que dijo la celda que se tocó. Se valida contra las salas visibles: un `sala=`
+              // escrito a mano en la URL no tiene por qué existir, y un select con un valor que no
+              // está entre sus opciones queda mostrando el primero sin avisar.
+              salaInicial={sp.sala && agenda.salas.some((s) => s.id === sp.sala && s.activa) ? sp.sala : undefined}
+              horaInicial={sp.hora && /^\d{2}:\d{2}$/.test(sp.hora) ? sp.hora : undefined}
               accion={crear}
               error={sp.error ? mensajeDeError(sp.error) : undefined}
               creada={

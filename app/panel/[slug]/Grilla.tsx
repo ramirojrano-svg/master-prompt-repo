@@ -31,9 +31,25 @@ type Mover = (input: { ocupacionId: string; salaDestinoId: string; fecha: string
 
 type Arrastre = { id: string; salaId: string | null; filasDeAgarre: number };
 
-// `baseTurno` es un STRING y no una función que arme el link: una función no se puede pasar de
-// un componente de servidor a uno de cliente (solo las server actions cruzan esa frontera).
-export function Grilla({ dia, hoy, mover, baseTurno }: { dia: AgendaVista; hoy: string; mover?: Mover; baseTurno?: string }) {
+// `baseTurno` y `baseNuevo` son STRINGS y no funciones que armen el link: una función no se puede
+// pasar de un componente de servidor a uno de cliente (solo las server actions cruzan esa frontera).
+export function Grilla({
+  dia,
+  hoy,
+  mover,
+  baseTurno,
+  baseNuevo,
+}: {
+  dia: AgendaVista;
+  hoy: string;
+  mover?: Mover;
+  baseTurno?: string;
+  /**
+   * URL de la agenda sobre la que se arma el "crear acá". Ausente = quien mira no puede crear, y
+   * entonces la grilla no ofrece el gesto en vez de ofrecerlo y que el servidor lo rechace.
+   */
+  baseNuevo?: string;
+}) {
   const router = useRouter();
   // El arrastre vive en una REF y no solo en estado. El drop tiene que poder leer qué se está
   // moviendo aunque React todavía no haya re-renderizado desde el dragstart: si dependiera del
@@ -43,6 +59,10 @@ export function Grilla({ dia, hoy, mover, baseTurno }: { dia: AgendaVista; hoy: 
   const arrastroRecien = useRef(false);
   const [arrastre, setArrastre] = useState<Arrastre | null>(null);
   const [destino, setDestino] = useState<{ columnaId: string; fila: number } | null>(null);
+  // La franja bajo el cursor, para pintarla antes de que la toquen. Sin esto no hay forma de saber
+  // que la grilla es clickeable ni en qué horario se va a crear el turno: media hora son 30px y a
+  // ojo no se distingue si el cursor está en las 15:00 o en las 15:30.
+  const [posado, setPosado] = useState<{ columnaId: string; fila: number } | null>(null);
   const [aviso, setAviso] = useState("");
   const [pendiente, empezar] = useTransition();
 
@@ -70,10 +90,38 @@ export function Grilla({ dia, hoy, mover, baseTurno }: { dia: AgendaVista; hoy: 
   const anchoEje = 56;
 
   /** La fila (franja de 30') sobre la que está el cursor dentro de una columna. */
-  function filaDelCursor(e: React.DragEvent, filasDeAgarre: number): number {
+  function filaDelCursor(e: React.DragEvent | React.MouseEvent, filasDeAgarre: number): number {
     const caja = e.currentTarget.getBoundingClientRect();
     const cruda = Math.floor((e.clientY - caja.top) / ALTO_CELDA) - filasDeAgarre;
     return Math.max(0, Math.min(dia.filas - 1, cruda));
+  }
+
+  /**
+   * Crear un turno tocando la celda. Antes había que abrir el "+" y volver a escribir el
+   * consultorio, el día y la hora que uno ya estaba señalando con el dedo en la pantalla.
+   *
+   * Navega en vez de abrir un panel con estado propio: en esta app la pantalla ES la URL, así que
+   * el formulario abierto en tal sala y tal hora se puede compartir, sobrevive a un refresh y el
+   * botón "atrás" lo cierra.
+   */
+  function crearAca(e: React.MouseEvent, columnaId: string) {
+    if (!baseNuevo) return;
+    // Un click sobre un turno es "abrir ese turno", no "crear al lado": el link del bloque ya se
+    // encarga. Y después de arrastrar, el navegador manda un click que no pidió nadie.
+    if ((e.target as HTMLElement).closest(".evento")) return;
+    if (arrastreRef.current || arrastroRecien.current) return;
+
+    const fila = filaDelCursor(e, 0);
+    const url = new URL(baseNuevo, window.location.origin);
+    url.searchParams.set("nuevo", "1");
+    url.searchParams.set("hora", minutosAHora(dia.aperturaMin + fila * dia.pasoMin));
+    // En vista día la columna ES la sala y el día es el que se está mirando. En vista semana es al
+    // revés: la columna es el día y la sala la elige el formulario, porque la grilla semanal no
+    // muestra consultorios y adivinar cuál sería inventar.
+    if (dia.vista === "semana") url.searchParams.set("fecha", columnaId);
+    else url.searchParams.set("sala", columnaId);
+
+    router.push(`${url.pathname}${url.search}`);
   }
 
   function soltar(e: React.DragEvent, columnaId: string) {
@@ -115,7 +163,18 @@ export function Grilla({ dia, hoy, mover, baseTurno }: { dia: AgendaVista; hoy: 
           }}
         >
           {/* ── Cabecera (sticky) ──────────────────────────────────────────── */}
-          <div style={{ position: "sticky", top: 0, zIndex: 3, background: "var(--panel)", borderBottom: "1px solid var(--borde)" }} />
+          {/* La esquina vacía, arriba del eje horario. Lleva el mismo borde grueso que el resto
+              de la cabecera para que la línea sea una sola y no se corte al llegar a la izquierda. */}
+          <div
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 3,
+              background: "var(--panel)",
+              borderTop: "2px solid var(--borde-fuerte)",
+              borderBottom: "2px solid var(--borde-fuerte)",
+            }}
+          />
           {columnas.map((c) => (
             <div
               key={c.id}
@@ -124,7 +183,11 @@ export function Grilla({ dia, hoy, mover, baseTurno }: { dia: AgendaVista; hoy: 
                 top: 0,
                 zIndex: 3,
                 background: "var(--panel)",
-                borderBottom: "1px solid var(--borde)",
+                // Arriba y abajo con el MISMO gris y el mismo grosor que la línea que separa un
+                // consultorio del otro: con el borde fino la cabecera se leía como una tira aparte
+                // pegada encima de la grilla, en vez de como la primera fila de la misma tabla.
+                borderTop: "2px solid var(--borde-fuerte)",
+                borderBottom: "2px solid var(--borde-fuerte)",
                 // 2px y con el borde fuerte: en la vista de día cada columna es UN consultorio, y
                 // con la línea fina la grilla se leía como una tabla sola en vez de tres espacios.
                 borderLeft: "2px solid var(--borde-fuerte)",
@@ -222,7 +285,20 @@ export function Grilla({ dia, hoy, mover, baseTurno }: { dia: AgendaVista; hoy: 
                     : undefined
                 }
                 onDrop={mover ? (e) => soltar(e, col.id) : undefined}
+                onClick={baseNuevo ? (e) => crearAca(e, col.id) : undefined}
+                onMouseMove={
+                  baseNuevo
+                    ? (e) => {
+                        const fila = filaDelCursor(e, 0);
+                        // Solo cuando CAMBIA de franja: si no, cada píxel de movimiento del mouse
+                        // sería un re-render de la grilla entera.
+                        setPosado((p) => (p?.columnaId === col.id && p.fila === fila ? p : { columnaId: col.id, fila }));
+                      }
+                    : undefined
+                }
+                onMouseLeave={baseNuevo ? () => setPosado(null) : undefined}
                 style={{
+                  cursor: baseNuevo ? "pointer" : undefined,
                   display: "grid",
                   gridTemplateRows: `repeat(${dia.filas}, ${ALTO_CELDA}px)`,
                   gridTemplateColumns: `repeat(${carriles}, 1fr)`,
@@ -232,6 +308,32 @@ export function Grilla({ dia, hoy, mover, baseTurno }: { dia: AgendaVista; hoy: 
                   background: `repeating-linear-gradient(to bottom, transparent 0 ${ALTO_CELDA - 1}px, var(--borde) ${ALTO_CELDA - 1}px ${ALTO_CELDA}px)`,
                 }}
               >
+                {/* La franja bajo el cursor, con la hora escrita. Se apaga mientras se arrastra:
+                    ahí manda la guía del arrastre y dos marcas a la vez confunden. */}
+                {baseNuevo && !arrastre && posado?.columnaId === col.id && (
+                  <div
+                    aria-hidden
+                    style={{
+                      gridRow: `${posado.fila + 1} / span 1`,
+                      gridColumn: `1 / span ${carriles}`,
+                      margin: "1px 2px",
+                      borderRadius: 6,
+                      background: "var(--agua-clara)",
+                      border: "1px solid var(--agua)",
+                      pointerEvents: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      paddingLeft: 6,
+                      fontSize: 11,
+                      color: "var(--marca-900)",
+                      overflow: "hidden",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    + {minutosAHora(dia.aperturaMin + posado.fila * dia.pasoMin)}
+                  </div>
+                )}
+
                 {/* Guía de dónde va a caer el turno. Se dibuja del alto REAL que ocupa, así se
                     ve si entra antes del cierre o si pisa el turno de al lado. */}
                 {destino?.columnaId === col.id && arrastre && (

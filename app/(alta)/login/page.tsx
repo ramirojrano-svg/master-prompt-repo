@@ -78,7 +78,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         display: "grid",
         placeItems: "center",
         padding: "24px 16px",
-        background: "linear-gradient(160deg, var(--agua-clara) 0%, var(--fondo) 46%, #fff 100%)",
+        // Más oscuro que antes, que terminaba en blanco puro y dejaba la tarjeta —también blanca—
+        // flotando sin borde visible contra el fondo. Ahora el degradé va de agua a un gris azulado
+        // y la tarjeta se recorta sola.
+        background: "linear-gradient(160deg, var(--agua) 0%, var(--agua-clara) 38%, #d7e6ee 100%)",
       }}
     >
       <div style={{ width: "100%", maxWidth: 400 }}>

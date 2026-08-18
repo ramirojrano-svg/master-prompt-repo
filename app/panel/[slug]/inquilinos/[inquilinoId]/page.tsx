@@ -356,16 +356,9 @@ export default async function DetalleProfesionalPage({
                     </tr>
                   ))}
                 </tbody>
-                <tfoot>
-                  <tr>
-                    <td colSpan={3}>
-                      {d.totales.reservas} turnos en {d.totales.diasDistintos} días
-                    </td>
-                    <td className="num">{horasYMinutos(d.totales.minutos)}</td>
-                    <td className="num">{plata(d.totales.importeCent)}</td>
-                    <td />
-                  </tr>
-                </tfoot>
+                {/* Sin fila de totales: cuántos turnos, cuántas horas y cuánto suman ya están
+                    arriba, en las tarjetas de la ficha. Repetidos al pie no agregaban nada y
+                    hacían dudar de si hablaban del mismo recorte. */}
               </table>
             </div>
 

@@ -7,8 +7,11 @@
 
 import { z } from "zod";
 
-/** Los prefijos que se ofrecen. Cerrado a propósito: es una lista para elegir, no un campo libre. */
-export const TITULOS = ["Dr.", "Dra.", "Lic.", "Lica.", "Prof."] as const;
+// Los prefijos que se ofrecen. Cerrado a propósito: es una lista para elegir, no un campo libre.
+//
+// "Lica." salió: no es una abreviatura que se use — a una licenciada se la escribe "Lic." igual
+// que a un licenciado. "Sr." y "Sra." entraron para quien no ejerce con título profesional.
+export const TITULOS = ["Dr.", "Dra.", "Lic.", "Prof.", "Sr.", "Sra."] as const;
 export type Titulo = (typeof TITULOS)[number];
 
 /**

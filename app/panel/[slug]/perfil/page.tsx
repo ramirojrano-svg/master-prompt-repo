@@ -63,16 +63,8 @@ export default async function PerfilPage({
       <Cabecera slug={slug} titulo="Mi perfil" />
 
       <main style={{ padding: 20, maxWidth: 560, margin: "0 auto" }}>
-        {okParam && (
-          <p className="panel" style={{ padding: "10px 14px", margin: "0 0 12px", fontSize: 14 }}>
-            Perfil guardado. Así te va a ver el resto del centro.
-          </p>
-        )}
-        {errorParam && (
-          <p className="panel" style={{ padding: "10px 14px", margin: "0 0 12px", fontSize: 14, color: "var(--error)" }}>
-            {FALLA[errorParam] ?? "No se pudo guardar."}
-          </p>
-        )}
+        {okParam && <p className="aviso-ok">Perfil guardado. Así te va a ver el resto del centro.</p>}
+        {errorParam && <p className="aviso-error">{FALLA[errorParam] ?? "No se pudo guardar."}</p>}
 
         <form action={guardar} className="panel" style={{ padding: 22, display: "grid", gap: 18 }}>
           <div>
