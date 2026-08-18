@@ -525,6 +525,10 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
               // está entre sus opciones queda mostrando el primero sin avisar.
               salaInicial={sp.sala && agenda.salas.some((s) => s.id === sp.sala && s.activa) ? sp.sala : undefined}
               horaInicial={sp.hora && /^\d{2}:\d{2}$/.test(sp.hora) ? sp.hora : undefined}
+              // El mismo horario con el que se dibuja la grilla: las horas que se ofrecen para
+              // empezar son exactamente las filas que se ven.
+              aperturaMin={agenda.aperturaMin}
+              cierreMin={agenda.cierreMin}
               accion={crear}
               error={sp.error ? mensajeDeError(sp.error) : undefined}
               creada={

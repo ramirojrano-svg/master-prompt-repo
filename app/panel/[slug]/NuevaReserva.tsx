@@ -19,6 +19,8 @@ export function NuevaReserva({
   precios,
   salaInicial,
   horaInicial,
+  aperturaMin,
+  cierreMin,
 }: {
   salas: OpcionSala[];
   inquilinos: OpcionInquilino[];
@@ -27,6 +29,9 @@ export function NuevaReserva({
   /** Cuando se llegó tocando una celda de la grilla: el consultorio y la hora de esa celda. */
   salaInicial?: string;
   horaInicial?: string;
+  /** Horario del centro, para que "Empieza" ofrezca solo horas en las que se puede reservar. */
+  aperturaMin?: number;
+  cierreMin?: number;
   error?: string;
   /** Resultado del alta: cuántos se crearon, y qué fechas quedaron afuera agrupadas por motivo. */
   creada?: { creadas: number; total: number; grupos: GrupoConflicto[] };
@@ -67,7 +72,7 @@ export function NuevaReserva({
         ))}
       </select>
 
-      <Horario horaInicial={horaInicial} />
+      <Horario horaInicial={horaInicial} aperturaMin={aperturaMin} cierreMin={cierreMin} />
 
       {/* Repetición, con las etiquetas armadas desde la fecha elegida ("el segundo viernes", no
           "mensual"): la etiqueta ES la explicación. El campo "veces" solo aparece cuando hay algo

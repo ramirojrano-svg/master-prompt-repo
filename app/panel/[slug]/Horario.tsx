@@ -40,11 +40,38 @@ function duracionCorta(min: number): string {
   return `${Number.isInteger(h) ? h : h.toFixed(1).replace(".0", "")} h`;
 }
 
-export function Horario({ horaInicial = "09:00", duracionInicial = 60 }: { horaInicial?: string; duracionInicial?: number }) {
+export function Horario({
+  horaInicial = "09:00",
+  duracionInicial = 60,
+  aperturaMin = 0,
+  cierreMin = 24 * 60,
+}: {
+  horaInicial?: string;
+  duracionInicial?: number;
+  /** Horario del centro. Acota la lista de horas de inicio a las que se puede reservar de verdad. */
+  aperturaMin?: number;
+  cierreMin?: number;
+}) {
   const [inicio, setInicio] = useState(horaInicial);
   const [duracion, setDuracion] = useState(duracionInicial);
 
   const desdeMin = aMinutos(inicio);
+
+  // Las horas de inicio, de media en media. Antes era un <input type="time">: el `step` de 30
+  // minutos solo movia las flechitas, tipeando entraba cualquier cosa (10:07) y en el telefono
+  // aparecia el reloj del sistema, que es un rueda de minutos. Una lista cerrada dice de entrada
+  // cuales son las horas posibles, que ademas son las que muestra la grilla.
+  //
+  // Se acota al horario del centro: ofrecer las 3 de la manana en un lugar que abre a las 7 es
+  // ofrecer un turno que el servidor va a rechazar. Se corta en `cierreMin - 60` porque la
+  // duracion minima que ofrece "Termina" es una hora: un inicio donde no entra ningun turno no es
+  // una opcion.
+  const inicios: number[] = [];
+  for (let m = aperturaMin; m + 60 <= cierreMin; m += PASO_INICIO_MIN) inicios.push(m);
+  // La hora que venia de afuera (de la celda que se toco, o de un `?hora=` escrito a mano) puede
+  // caer fuera del rango o entre dos pasos. Se agrega para que el select no la pierda en silencio.
+  if (!inicios.includes(desdeMin)) inicios.push(desdeMin);
+  inicios.sort((a, b) => a - b);
 
   // Las opciones de fin se recalculan desde la hora de inicio: mover el inicio no puede dejar un
   // fin anterior, que es lo que pasaba si el fin fuera un campo suelto.
@@ -70,15 +97,13 @@ export function Horario({ horaInicial = "09:00", duracionInicial = 60 }: { horaI
     <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1.35fr" }}>
       <div>
         <label htmlFor="hora">Empieza</label>
-        <input
-          id="hora"
-          name="hora"
-          type="time"
-          step={PASO_INICIO_MIN * 60}
-          required
-          value={inicio}
-          onChange={(e) => setInicio(e.target.value)}
-        />
+        <select id="hora" name="hora" required value={inicio} onChange={(e) => setInicio(e.target.value)}>
+          {inicios.map((m) => (
+            <option key={m} value={aHora(m)}>
+              {aHora(m)}
+            </option>
+          ))}
+        </select>
       </div>
       <div>
         <label htmlFor="duracionMin">Termina</label>
