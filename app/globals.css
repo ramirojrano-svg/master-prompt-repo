@@ -36,7 +36,8 @@
   --sombra-alta: 0 8px 28px rgba(16, 54, 92, 0.14);
 
   --barra: 60px; /* alto de la barra superior */
-  --sidebar: 244px;
+  --sidebar: 244px; /* columna del mini-calendario, solo en la agenda */
+  --menu-lateral: 196px; /* columna del menú del panel, en todas las pantallas */
 }
 
 * {
@@ -461,6 +462,12 @@ tfoot td {
   .lateral {
     display: none;
   }
+  /* En un teléfono el menú abierto se come más de la mitad del ancho, así que abierto se angosta
+     lo que se puede sin que el texto se corte. Colapsarlo sigue siendo cosa del botón: esconderlo
+     acá por CSS dejaría el botón apretándose sin que pase nada. */
+  :root {
+    --menu-lateral: 168px;
+  }
   /* En un teléfono la barra no entra entera. Se esconde lo secundario (reloj, accesos) antes de
      dejar que el <body> scrollee en horizontal: eso rompe TODA la pantalla, no solo la barra. */
   .barra {
@@ -470,6 +477,98 @@ tfoot td {
   .oculta-mobile {
     display: none !important;
   }
+}
+
+/* ── Menú lateral del panel (Consultorios, Profesionales, Precios…) ───────── */
+/* Estaba arriba, en la barra, como pastillas en fila. La barra ya lleva logo, título, la
+   navegación del mes y la tuerca: cada sección nueva empujaba a la siguiente, y en un portátil las
+   últimas se salían de la pantalla. Hacia abajo el espacio sobra, así que el menú entra completo
+   y sin competir con nada. */
+.panel-marco {
+  display: flex;
+  align-items: flex-start;
+  min-height: 100vh;
+}
+.panel-contenido {
+  flex: 1;
+  min-width: 0; /* sin esto una tabla ancha estira la columna y el <body> scrollea en horizontal */
+}
+
+.menu-lateral {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  flex: 0 0 auto;
+  width: var(--menu-lateral);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  background: var(--panel);
+  border-right: 1px solid var(--borde);
+  overflow: hidden; /* al angostarse, el texto se recorta en vez de desbordar sobre la pantalla */
+  transition: width 0.16s ease;
+}
+/* Oculto NO es ancho cero: si se fuera entero no quedaría de dónde agarrarlo para traerlo de
+   vuelta. Queda la franja con el botón, y nada más. */
+.menu-lateral[data-oculto] {
+  width: 52px;
+}
+
+.menu-alternar {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radio-chico);
+  background: transparent;
+  color: var(--tenue);
+  cursor: pointer;
+}
+.menu-alternar:hover {
+  background: var(--agua-clara);
+  color: var(--marca-900);
+}
+
+/* Una fila por sección: a lo ancho de la columna, no una pastilla suelta. El área para hacer
+   click es toda la fila y no solo las letras. */
+.item-lateral {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 10px;
+  border-radius: var(--radio-chico);
+  color: var(--tenue);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.item-lateral:hover {
+  background: var(--agua-clara);
+  color: var(--marca-900);
+  text-decoration: none;
+}
+/* La pantalla en la que ya estás, llena: es la misma señal que usaba la pastilla de la barra. */
+.item-lateral[aria-current="page"] {
+  background: var(--marca-500);
+  color: #fff;
+}
+.item-lateral svg {
+  flex-shrink: 0;
+}
+/* Colapsado quedan los íconos alineados con el botón, y el texto se va. `visibility` y no
+   `display` para que el ancho no salte de golpe mientras corre la transición. */
+.menu-lateral[data-oculto] .item-lateral > span {
+  visibility: hidden;
 }
 
 /* ── Menú de configuración (la tuerca de la barra) ────────────────────────── */

@@ -35,7 +35,6 @@ import { Logo } from "../../Logo.tsx";
 import { IconoMas } from "../../Iconos.tsx";
 import { AvisoAlta } from "./AvisoAlta.tsx";
 import { CerrarBurbujas } from "./CerrarBurbujas.tsx";
-import { BarraNav } from "./BarraNav.tsx";
 import { ocupacionMensualPorSala } from "../../../src/servicios/reportes/mensual.ts";
 import { describirConflictos, parsearConflictos, resumirConflictos, serializarConflictos } from "../../../src/dominio/conflictos.ts";
 import { MenuConfig } from "./MenuConfig.tsx";
@@ -324,9 +323,9 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           {formatHora(ahora, agenda.tz)} · {agenda.tz.split("/").at(-1)!.replace(/_/g, " ")}
         </span>
 
-        {/* "Calendario" para volver a la agenda desde Mis reservas ahora vive en BarraNav, junto
-            a "Mis reservas": las dos son la navegación del profesional y van juntas, no sueltas
-            acá. Acá quedó solo la elección de vista. */}
+        {/* Los accesos a las secciones —"Calendario" y "Mis reservas" incluidos— viven en el menú
+            lateral, que pone el layout del panel. En la barra quedó solo la elección de vista, que
+            es de esta pantalla y de ninguna otra. */}
         <nav className="segmentado" style={{ marginLeft: "auto" }}>
           <Link href={href(agenda.fecha, { vista: "dia" })} aria-current={vista === "dia" ? "page" : undefined}>
             Día
@@ -339,7 +338,6 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           </Link>
         </nav>
 
-        <BarraNav slug={slug} rol={actor.rol} actual="agenda" />
         <MenuConfig rol={actor.rol} />
       </header>
 

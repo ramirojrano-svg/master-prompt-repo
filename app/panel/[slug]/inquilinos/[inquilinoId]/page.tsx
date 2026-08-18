@@ -11,7 +11,6 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
-import { BarraNav } from "../../BarraNav.tsx";
 import { MenuConfig } from "../../MenuConfig.tsx";
 import { actorDeSesion } from "../../../../../src/lib/sesion.ts";
 import { puede } from "../../../../../src/lib/permisos.ts";
@@ -183,7 +182,6 @@ export default async function DetalleProfesionalPage({
         <Link href={`/panel/${slug}/inquilinos`} style={{ marginLeft: "auto", color: "var(--tenue)", fontWeight: 500, fontSize: 14 }}>
           ‹ Profesionales
         </Link>
-        <BarraNav slug={slug} rol={actor.rol} actual="inquilinos" />
         <MenuConfig rol={actor.rol} />
       </header>
 

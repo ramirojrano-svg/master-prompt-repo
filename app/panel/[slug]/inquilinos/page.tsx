@@ -79,7 +79,7 @@ export default async function InquilinosPage({
 
   return (
     <>
-      <Cabecera slug={slug} rol={actor.rol} actual="inquilinos" titulo="Profesionales" />
+      <Cabecera slug={slug} rol={actor.rol} titulo="Profesionales" />
       <main style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>
       <Buscador inicial={busca} verTodos={verTodos} />
 

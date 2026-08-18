@@ -83,7 +83,7 @@ export default async function SalasPage({
 
   return (
     <>
-      <Cabecera slug={slug} rol={actor.rol} actual="salas" titulo="Consultorios" />
+      <Cabecera slug={slug} rol={actor.rol} titulo="Consultorios" />
       <main style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>
 
       <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>

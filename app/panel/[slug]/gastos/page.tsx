@@ -95,7 +95,7 @@ export default async function GastosPage({
 
   return (
     <>
-      <Cabecera slug={slug} rol={actor.rol} actual="gastos" titulo="Gastos del espacio" />
+      <Cabecera slug={slug} rol={actor.rol} titulo="Gastos del espacio" />
       <main style={{ padding: 20, maxWidth: 1000, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
           <nav style={{ display: "flex", gap: 2 }}>
