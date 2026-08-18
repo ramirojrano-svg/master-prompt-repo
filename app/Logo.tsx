@@ -1,63 +1,34 @@
-// app/Logo.tsx — el logo de MOCA, dibujado en SVG.
+// app/Logo.tsx — el logo de MOCA. Sale del PNG que vive en /public/logo.png.
 //
-// Va en SVG y no en PNG a propósito: entra en el HTML sin un pedido extra, se ve nítido en
-// cualquier pantalla y toma el color del tema. Si querés usar el archivo original, dejá el PNG en
-// `public/logo-moca.png` y reemplazá este componente por un <img>: no lo usa nadie más que estas
-// dos pantallas (login y barra superior).
+// Antes iba dibujado a mano en SVG, con las tres barras y la cruz. Ese trabajo se descartó cuando
+// llegó el logo definitivo del centro (montaña y "ESPACIO MONTES DE OCA"), que no se parece a lo
+// que estaba en el código: mantener las dos formas era garantía de que un día divergieran.
+//
+// Se usa <img> nativo y no <Image> de Next: el archivo vive en `public`, es chico y ya está donde
+// se lo va a pedir, así que la optimización de Next no gana nada. Los `width`/`height` van sí o sí
+// para que el navegador no pinte primero el hueco a 0px y después salte cuando termine de cargar.
+//
+// El "compacto" y el "marca" (por ahora) usan el MISMO archivo que la variante completa. Cuando
+// haya una versión chica de verdad —solo la montaña sin la bajada— alcanza con dejarla en
+// `public/logo-marca.png` y usar el nombre distinto acá.
 
-/**
- * `completo` (login) trae el nombre entero; `compacto` (barra superior) solo la marca: a 30px de
- * alto la bajada "ESPACIO MONTES DE OCA" queda ilegible y ensucia, así que no se dibuja.
- */
+// Tamaño de referencia del PNG. Se usa solo para respetar la proporción cuando la variante fija
+// una altura: sin esto, cambiar el archivo por uno más ancho o más alto lo deformaría o
+// desplazaría el nombre a su lado.
+const PROPORCION = 2.2;
+
 export function Logo({ alto = 28, variante = "completo" }: { alto?: number; variante?: "completo" | "compacto" | "marca" }) {
-  const conTexto = variante !== "marca";
-  const conBajada = variante === "completo";
-  const viewBox = variante === "marca" ? "0 0 135 100" : conBajada ? "0 0 510 100" : "0 0 400 100";
-  const ancho = (alto * Number(viewBox.split(" ")[2])) / 100;
+  // Los tres nombres siguen existiendo por compatibilidad con lo que ya usa la app —el login, la
+  // barra superior, la pantalla de base caída— pero por ahora los tres apuntan al mismo archivo.
+  const src = variante === "completo" ? "/logo.png" : "/logo-marca.png";
+  const ancho = Math.round(alto * PROPORCION);
   return (
-    <svg
+    <img
+      src={src}
+      alt="Espacio Montes de Oca"
       width={ancho}
       height={alto}
-      viewBox={viewBox}
-      role="img"
-      aria-label="MOCA — Espacio Montes de Oca"
-      style={{ display: "block" }}
-    >
-      {/* Las tres barras ascendentes: celeste, azul, gris — la más alta lleva la cruz. */}
-      <rect x="6" y="52" width="30" height="48" rx="6" fill="#a9d9ef" />
-      <rect x="44" y="30" width="30" height="70" rx="6" fill="#1a8fc1" />
-      <rect x="82" y="4" width="34" height="96" rx="17" fill="#63788a" />
-      {/* La cruz médica, calada en blanco sobre la barra alta. */}
-      <path d="M96.2 16h5.6v7.4h7.4v5.6h-7.4V36.4h-5.6V29h-7.4v-5.6h7.4z" fill="#fff" />
-
-      {conTexto && (
-        <>
-          <text
-            x="140"
-            y={conBajada ? 60 : 74}
-            fill="#10365c"
-            fontSize={conBajada ? 60 : 74}
-            fontWeight="700"
-            letterSpacing="-1"
-            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-          >
-            MOCA
-          </text>
-          {conBajada && (
-          <text
-            x="142"
-            y="88"
-            fill="#5c7382"
-            fontSize="20.5"
-            fontWeight="500"
-            letterSpacing="1.2"
-            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-          >
-            ESPACIO MONTES DE OCA
-          </text>
-          )}
-        </>
-      )}
-    </svg>
+      style={{ display: "block", height: alto, width: "auto", maxWidth: "100%" }}
+    />
   );
 }
