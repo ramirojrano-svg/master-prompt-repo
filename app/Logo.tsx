@@ -8,26 +8,50 @@
 // se lo va a pedir, así que la optimización de Next no gana nada. Los `width`/`height` van sí o sí
 // para que el navegador no pinte primero el hueco a 0px y después salte cuando termine de cargar.
 //
-// El "compacto" y el "marca" (por ahora) usan el MISMO archivo que la variante completa. Cuando
-// haya una versión chica de verdad —solo la montaña sin la bajada— alcanza con dejarla en
-// `public/logo-marca.png` y usar el nombre distinto acá.
-
-// Tamaño de referencia del PNG. Se usa solo para respetar la proporción cuando la variante fija
-// una altura: sin esto, cambiar el archivo por uno más ancho o más alto lo deformaría o
-// desplazaría el nombre a su lado.
-const PROPORCION = 2.2;
+// La versión "completa" (login/inicio) es el PNG entero: montaña arriba, "ESPACIO MONTES DE OCA"
+// abajo. Las versiones "compacto" y "marca" (barra superior) esconden ese texto: a 26 px de alto
+// el nombre se hace ilegible y se convierte en una tira gris.
+//
+// No hay dos archivos: uno solo con recorte por CSS. Antes había un `/logo-marca.png` distinto,
+// pero mantenerlos separados obliga a acordarse de reemplazar los dos cada vez que la marca
+// cambia, y ese olvido termina con dos versiones distintas conviviendo en la app.
+//
+// La técnica es un contenedor con `aspect-ratio` cuadrado (el pedazo que se quiere mostrar) sobre
+// una imagen que llena todo el ancho del logo real. Como el ancho lo fija el alto pedido por el
+// contenedor cuadrado, la montaña sale a tamaño natural y el texto queda fuera de ese marco.
+// Asume que la mitad superior del logo es la montaña, que es como está diseñado el archivo.
 
 export function Logo({ alto = 28, variante = "completo" }: { alto?: number; variante?: "completo" | "compacto" | "marca" }) {
-  // Los tres nombres siguen existiendo por compatibilidad con lo que ya usa la app —el login, la
-  // barra superior, la pantalla de base caída— pero por ahora los tres apuntan al mismo archivo.
-  const src = variante === "completo" ? "/logo.png" : "/logo-marca.png";
-  const ancho = Math.round(alto * PROPORCION);
+  const soloMarca = variante !== "completo";
+
+  if (soloMarca) {
+    // Marco cuadrado del alto pedido, con el PNG entero dentro escalado al DOBLE del alto: así la
+    // mitad superior (la montaña) queda encuadrada y la inferior (el texto) cae afuera.
+    return (
+      <span
+        aria-label="Espacio Montes de Oca"
+        role="img"
+        style={{
+          display: "inline-block",
+          width: alto,
+          height: alto,
+          overflow: "hidden",
+          backgroundImage: "url(/logo.png)",
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "center top",
+          // 200% de alto = la mitad del PNG entra. `auto` en el ancho conserva la proporción.
+          backgroundSize: "auto 200%",
+        }}
+      />
+    );
+  }
+
+  // Login e inicio: el PNG entero. `width:auto` respeta la proporción real del archivo, aunque
+  // cambie en un futuro reemplazo.
   return (
     <img
-      src={src}
+      src="/logo.png"
       alt="Espacio Montes de Oca"
-      width={ancho}
-      height={alto}
       style={{ display: "block", height: alto, width: "auto", maxWidth: "100%" }}
     />
   );
