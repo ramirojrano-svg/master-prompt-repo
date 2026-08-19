@@ -14,10 +14,14 @@ export function VistaMes({
   dia,
   hoy,
   href,
+  puedeCrear = false,
 }: {
   dia: AgendaVista;
   hoy: string;
   href: (fecha: string, extra?: Record<string, string>) => string;
+  /** ¿Ofrecer "agendar acá" al tocar un día? Solo para quien puede crear: mostrar el gesto y
+   *  después negarlo es peor que no mostrarlo. */
+  puedeCrear?: boolean;
 }) {
   // Un solo agrupamiento por día; el orden viene del servidor (por hora de inicio).
   const porDia = new Map<string, AgendaVista["reservas"]>();
@@ -55,6 +59,7 @@ export function VistaMes({
                 key={f}
                 className="mes-celda"
                 style={{
+                  position: "relative", // el ancla del "agendar acá" que cubre la celda
                   borderRight: "1px solid var(--borde)",
                   borderBottom: "1px solid var(--borde)",
                   padding: "4px 5px",
@@ -63,9 +68,23 @@ export function VistaMes({
                   background: delMes ? "var(--panel)" : "var(--panel-2)",
                 }}
               >
-                <div style={{ textAlign: "center", marginBottom: 3 }}>
+                {/* Tocar el día ABRE EL ALTA con esa fecha puesta. Es un enlace que cubre la celda
+                    entera y va POR DEBAJO del número y de los turnos: así el número sigue llevando
+                    al día y un turno no dispara un alta encima de él.
+                    Sin esto, en el teléfono —donde el mes es la única vista— no había forma de
+                    agendar tocando una fecha: había que entrar al día y recién ahí tocar la grilla. */}
+                {puedeCrear && (
+                  <Link
+                    href={href(f, { vista: "dia", nuevo: "1" })}
+                    aria-label={`Agendar un turno el ${Number(f.slice(8, 10))}`}
+                    className="mes-agendar"
+                    style={{ position: "absolute", inset: 0, zIndex: 0 }}
+                  />
+                )}
+                <div style={{ textAlign: "center", marginBottom: 3, position: "relative", zIndex: 1 }}>
                   <Link
                     href={href(f, { vista: "dia" })}
+                    className="mes-dia"
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
@@ -90,6 +109,8 @@ export function VistaMes({
                     className="evento mes-chip"
                     title={`${r.titulo} · ${r.horaTexto} · ${r.salaNombre}`}
                     style={{
+                      position: "relative",
+                      zIndex: 1,
                       background: r.esBloqueo ? "var(--tenue)" : r.color,
                       backgroundImage: r.esBloqueo
                         ? "repeating-linear-gradient(45deg, rgba(255,255,255,.25) 0 5px, transparent 5px 10px)"
@@ -110,7 +131,7 @@ export function VistaMes({
 
                 {/* Nunca se recortan turnos en silencio: si hay más, se dice cuántos. */}
                 {resto > 0 && (
-                  <Link href={href(f, { vista: "dia" })} className="tenue mes-resto" style={{ fontSize: 11, fontWeight: 500 }}>
+                  <Link href={href(f, { vista: "dia" })} className="tenue mes-resto" style={{ fontSize: 11, fontWeight: 500, position: "relative", zIndex: 1 }}>
                     +{resto} más
                   </Link>
                 )}

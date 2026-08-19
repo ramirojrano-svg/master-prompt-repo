@@ -511,7 +511,7 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           )}
 
           {vista === "mes" ? (
-            <VistaMes dia={agenda} hoy={hoy} href={href} />
+<VistaMes dia={agenda} hoy={hoy} href={href} puedeCrear={puedeCargar || puedeCargarPropia} />
           ) : (
             // Sin permiso para editar turnos ajenos no se pasa la acción: la grilla no ofrece el
             // gesto en vez de ofrecerlo y que el servidor lo rechace después.

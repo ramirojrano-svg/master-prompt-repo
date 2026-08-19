@@ -1025,8 +1025,14 @@ tfoot td {
   .mes-celda {
     padding: 2px 2px !important;
   }
-  /* El número del día, más chico y pegado arriba: es una referencia, no el protagonista. */
-  .mes-celda a[href*="vista=dia"]:first-child {
+  /* El número del día, más chico y pegado arriba: es una referencia, no el protagonista.
+     Va por CLASE y no por posición. Estaba escrito como `a[href*="vista=dia"]:first-child`, y el
+     día que se agregó el "agendar acá" —que también es un <a> con vista=dia en el href y pasó a
+     ser el primer hijo— esta regla le puso `height: 20px` a un elemento con `inset: 0`. En CSS,
+     con top, bottom y height los tres puestos, gana height: el enlace quedó como una franja de
+     20px arriba de la celda, tapado por el número, y tocar el día no hacía nada.
+     Un selector que apunta por posición se rompe cuando cambia el orden, y nadie lo ve venir. */
+  .mes-dia {
     min-width: 20px !important;
     height: 20px !important;
     font-size: 11px !important;
@@ -1045,4 +1051,20 @@ tfoot td {
   .mes-resto {
     font-size: 9px !important;
   }
+}
+
+/* El "agendar acá" de la vista mes: invisible hasta que se lo apunta. Un fondo permanente en cada
+   celda convertiría el calendario en un tablero de botones; así el mes se sigue leyendo como un
+   mes y el gesto aparece cuando la mano va para ahí. */
+.mes-agendar {
+  border-radius: 4px;
+  transition: background 0.12s ease;
+}
+.mes-agendar:hover {
+  background: var(--agua-clara);
+}
+/* En un teléfono no hay "apuntar": el dedo llega y toca. La respuesta es al tocar, y dura lo que
+   dura el toque — sin esto no hay ninguna señal de que la celda hace algo. */
+.mes-agendar:active {
+  background: var(--agua-clara);
 }
