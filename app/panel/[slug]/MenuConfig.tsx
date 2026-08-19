@@ -9,8 +9,9 @@
 // cierre de sesión es un <form> que postea a una acción de servidor, no un enlace: salir CAMBIA
 // estado, y un GET que cambia estado lo dispara cualquier precargador del navegador.
 
+import Link from "next/link";
 import { auth } from "../../../src/lib/auth.ts";
-import { ETIQUETA_ROL, type Rol } from "../../../src/lib/permisos.ts";
+import { ETIQUETA_ROL, puede, type Rol } from "../../../src/lib/permisos.ts";
 import { IconoSalir, IconoTuerca } from "../../Iconos.tsx";
 import { cerrarSesion } from "./salir.ts";
 
@@ -20,9 +21,12 @@ import { cerrarSesion } from "./salir.ts";
  * hoy el email a mano: el Actor trae rol e ids, no datos del usuario. Pasarlo por prop obligaba a
  * consultarlo en las cuatro pantallas y a acordarse de hacerlo en la quinta.
  */
-export async function MenuConfig({ rol }: { rol: Rol }) {
+export async function MenuConfig({ rol, slug }: { rol: Rol; slug: string }) {
   const sesion = await auth();
   const email = sesion?.user?.email ?? "";
+  // El estado del correo es cosa de la instalación, no del día a día: vive acá adentro y no en el
+  // menú lateral, que es para las pantallas que se usan todos los días.
+  const administra = puede(rol, "usuarios.administrar");
 
   return (
     <details className="menu-config" data-burbuja>
@@ -38,6 +42,12 @@ export async function MenuConfig({ rol }: { rol: Rol }) {
             que poder verificar antes de tocar nada. */}
         <p style={{ margin: "0 0 2px", fontWeight: 600, fontSize: 14, wordBreak: "break-all" }}>{email}</p>
         <p className="tenue" style={{ margin: "0 0 12px", fontSize: 12 }}>{ETIQUETA_ROL[rol]}</p>
+
+        {administra && (
+          <p style={{ margin: "0 0 10px", fontSize: 13 }}>
+            <Link href={`/panel/${slug}/correo`}>Envío de correo</Link>
+          </p>
+        )}
 
         <form action={cerrarSesion}>
           <button type="submit" className="btn-suave" style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>

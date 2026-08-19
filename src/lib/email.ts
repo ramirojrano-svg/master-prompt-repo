@@ -67,6 +67,57 @@ export function viaDeEmail(): "resend" | "smtp" | null {
   return null;
 }
 
+// ── Diagnóstico ────────────────────────────────────────────────────────────
+// "El envío no está configurado" es honesto pero no accionable: el que cargó las variables no
+// tiene forma de saber si escribió mal un nombre, si las puso en el entorno equivocado o si el
+// deploy no las tomó. Y desde afuera solo se puede adivinar mirando capturas.
+//
+// Esto NO expone ningún valor. Dice si la variable llegó, cuántos caracteres tiene y si trae los
+// dos errores de pegado que rompen en silencio: comillas alrededor y espacios en los bordes. Con
+// eso el problema se ve en cinco segundos en vez de en cinco intercambios de mensajes.
+
+export type EstadoVariable = {
+  nombre: string;
+  presente: boolean;
+  largo: number;
+  /** El problema detectado, o null. Nunca incluye el valor. */
+  problema: string | null;
+};
+
+function revisar(nombre: string): EstadoVariable {
+  const crudo = process.env[nombre];
+  if (crudo === undefined || crudo === "") return { nombre, presente: false, largo: 0, problema: null };
+
+  // Vercel guarda el valor TAL CUAL se pegó. Copiar de una guía que lo muestra entre comillas las
+  // guarda como parte de la clave, y el proveedor contesta "credencial inválida" sin decir por qué.
+  const comillas = /^["'].*["']$/.test(crudo);
+  const bordes = crudo !== crudo.trim();
+  return {
+    nombre,
+    presente: true,
+    largo: crudo.length,
+    problema: comillas
+      ? "Está entre comillas: sacáselas, se guardan como parte del valor."
+      : bordes
+        ? "Tiene espacios al principio o al final: borralos."
+        : null,
+  };
+}
+
+export type Diagnostico = {
+  via: "resend" | "smtp" | null;
+  resend: EstadoVariable[];
+  smtp: EstadoVariable[];
+};
+
+export function diagnosticoEmail(): Diagnostico {
+  return {
+    via: viaDeEmail(),
+    resend: [revisar("RESEND_API_KEY"), revisar("EMAIL_FROM")],
+    smtp: [revisar("SMTP_USER"), revisar("SMTP_PASS"), revisar("SMTP_HOST"), revisar("SMTP_PORT")],
+  };
+}
+
 export type Mensaje = { para: string; asunto: string; html: string; texto: string };
 
 export async function enviarEmail(a: Mensaje): Promise<ResultadoEnvio> {

@@ -34,7 +34,7 @@ export default async function PanelLayout({
           slug={slug}
           rol={actor.rol}
           perfil={perfil}
-          configuracion={<MenuConfig rol={actor.rol} />}
+          configuracion={<MenuConfig rol={actor.rol} slug={slug} />}
         />
       )}
       <div className="panel-contenido">{children}</div>
