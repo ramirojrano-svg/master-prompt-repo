@@ -21,7 +21,6 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { AgendaVista } from "../../../src/servicios/agenda/dia.ts";
 import { minutosAHora } from "../../../src/dominio/motor/zona.ts";
-import { formatearPesos } from "../../../src/dominio/tarifa.ts";
 import { DIA_CORTO, nombreCorto } from "../../../src/dominio/calendario.ts";
 import { diaSemanaDeFecha } from "../../../src/dominio/motor/zona.ts";
 
@@ -354,10 +353,11 @@ export function Grilla({
                 {bloques.map((u) => {
                   const r = porId.get(u.id);
                   if (!r) return null;
-                  // El importe ya viene PROYECTADO: si el que mira no puede ver plata, llega null.
-                  // Acá no se decide nada de privacidad, solo se muestra lo que el servidor mandó.
-                  const conPlata = "importeCent" in r ? r.importeCent : null;
-                  const importe = conPlata ? formatearPesos(BigInt(conPlata), dia.moneda) : null;
+                  // El bloque NO muestra plata, ni en el cuerpo ni en el tooltip. El calendario es
+                  // lo que queda abierto en la pantalla de recepción, a la vista de quien pase; el
+                  // importe se mira a propósito, tocando el turno (ahí está, con el valor hora) o
+                  // desde Negocio. El servidor lo sigue proyectando según quién mira — esto es
+                  // sobre dónde se muestra, no sobre quién puede verlo.
                   // Un bloqueo no se arrastra: no es el turno de nadie (lo rechaza el servidor
                   // igual, pero ofrecer el gesto y después negarlo es peor que no ofrecerlo).
                   const movible = Boolean(mover) && !r.esBloqueo;
@@ -398,7 +398,7 @@ export function Grilla({
                       onClick={(e) => {
                         if (arrastreRef.current || arrastroRecien.current) e.preventDefault();
                       }}
-                      title={[r.titulo, r.horaTexto, dia.vista === "semana" ? r.salaNombre : null, importe, movible ? "Arrastrá para moverlo" : null]
+                      title={[r.titulo, r.horaTexto, dia.vista === "semana" ? r.salaNombre : null, movible ? "Arrastrá para moverlo" : null]
                         .filter(Boolean)
                         .join(" · ")}
                       aria-label={`${r.salaNombre}, ${r.titulo}, ${r.horaTexto}`}
@@ -429,7 +429,6 @@ export function Grilla({
                       <b>{u.colSpan < u.carriles ? nombreCorto(r.titulo) : r.titulo}</b>
                       {u.span > 1 && <div style={{ opacity: 0.9, fontSize: 11 }}>{r.horaTexto}</div>}
                       {u.span > 2 && dia.vista === "semana" && <div style={{ opacity: 0.9, fontSize: 11 }}>{r.salaNombre}</div>}
-                      {u.span > 2 && importe && <div style={{ opacity: 0.9, fontSize: 11 }}>{importe}</div>}
                     </Bloque>
                   );
                 })}
