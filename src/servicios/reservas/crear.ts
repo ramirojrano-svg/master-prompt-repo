@@ -24,7 +24,9 @@ export type CtxReserva = {
   operadorId: string;
   inquilinoId: string;
   politica: PoliticaCentro;
-  horario: HorarioSemanal; // el de la sala; la fuente de FUERA_DE_HORARIO
+  /** El de la sala; la fuente de FUERA_DE_HORARIO. `null` = sin consultorio, no hay apertura que
+   *  respetar (ver la nota en EntradaReserva). */
+  horario: HorarioSemanal | null;
   bloqueaProfesional: boolean;
   moneda?: string; // del operador; default ARS
   ahora?: Date; // inyectable para tests; en prod es new Date()

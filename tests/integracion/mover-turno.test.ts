@@ -17,7 +17,7 @@ const pgPool = nuevoPool();
 const db = new PrismaClient({ datasourceUrl: `${URL_DB}?connection_limit=20&pool_timeout=20` });
 
 const abierto = [{ desde: "08:00", hasta: "22:00" }];
-const HORARIO: CtxReserva["horario"] = { 0: abierto, 1: abierto, 2: abierto, 3: abierto, 4: abierto, 5: abierto, 6: abierto };
+const HORARIO: CtxMover["horario"] = { 0: abierto, 1: abierto, 2: abierto, 3: abierto, 4: abierto, 5: abierto, 6: abierto };
 const POLITICA: CtxReserva["politica"] = { pasoMin: 30, duracionMinMin: 15, duracionMaxMin: 720, bufferMin: 0, bufferMismoInquilino: 0, antelacionMinMin: 0, horizonteDias: 3650 };
 const AHORA = new Date("2026-08-01T00:00:00Z");
 

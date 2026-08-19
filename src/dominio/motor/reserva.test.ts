@@ -41,6 +41,32 @@ test("fuera de la franja de apertura => FUERA_DE_HORARIO", () => {
   assert.deepEqual(evaluarReserva(base({ intervalo: { inicio: T(19), fin: T(20) } })), { ok: false, codigo: "FUERA_DE_HORARIO" });
 });
 
+// ── Sin consultorio (horario null) ─────────────────────────────────────────
+// El caso de las horas que se facturan sin usar el espacio. Antes se modelaba como una franja
+// 00:00–24:00, y esa franja se descartaba entera —'HH:MM' no llega a las 24— dejando el día sin
+// ninguna apertura: TODA reserva sin consultorio daba FUERA_DE_HORARIO. Estos tres tests son esa
+// regresión, en las tres puntas: adentro del horario, afuera, y que igual no se levantan los otros
+// dos ejes.
+
+test("sin horario, un bloque fuera de toda apertura entra igual", () => {
+  const r = evaluarReserva(base({ horario: null, intervalo: { inicio: T(21), fin: T(23) } }));
+  assert.deepEqual(r, { ok: true });
+});
+
+test("sin horario, un día que la sala tiene cerrado entra igual", () => {
+  // HOR solo abre el miércoles; con null el día de la semana deja de importar.
+  const r = evaluarReserva(base({ horario: { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] } }));
+  assert.deepEqual(r, { ok: false, codigo: "FUERA_DE_HORARIO" }, "con horario vacío sigue cerrado");
+  assert.deepEqual(evaluarReserva(base({ horario: null })), { ok: true });
+});
+
+test("sin horario, el profesional sigue sin poder estar en dos lugares a la vez", () => {
+  const r = evaluarReserva(
+    base({ horario: null, ocupacionesInquilino: [ocu({ salaId: "sa2", inquilinoId: "in1", inicio: T(10, 30), fin: T(11, 30) })] }),
+  );
+  assert.deepEqual(r, { ok: false, codigo: "SOLAPA_INQUILINO" });
+});
+
 test("choque con otra ocupación de la sala => SLOT_OCUPADO", () => {
   const r = evaluarReserva(base({ ocupacionesSala: [ocu({ inicio: T(10, 30), fin: T(11, 30) })] }));
   assert.deepEqual(r, { ok: false, codigo: "SLOT_OCUPADO" });

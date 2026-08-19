@@ -76,19 +76,6 @@ export type ResultadoAlta =
   | { ok: true; creadas: number; conflictos: { fecha: string; codigo: string }[] }
   | { ok: false; error: string };
 
-/**
- * Horario "siempre abierto", para las reservas SIN CONSULTORIO.
- *
- * El horario de apertura dice cuándo se puede entrar AL CENTRO. Una hora que no usa el centro no
- * tiene por qué caer adentro de esa ventana: el profesional que ese día atiende afuera consume su
- * hora igual, y rechazársela porque el consultorio estaba cerrado no protegería nada. Lo que sí se
- * sigue chequeando es el eje del profesional: no puede estar en dos lugares a la vez.
- */
-const SIEMPRE_ABIERTO = ((): CtxReserva["horario"] => {
-  const todo = [{ desde: "00:00", hasta: "24:00" }];
-  return { 0: todo, 1: todo, 2: todo, 3: todo, 4: todo, 5: todo, 6: todo };
-})();
-
 async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClient = prisma): Promise<ResultadoAlta> {
   // Sin consultorio: se factura igual pero no ocupa el espacio, así que el consultorio queda libre
   // para alquilárselo a otro. Es lo que faltaba para el profesional que ciertos días atiende
@@ -113,7 +100,11 @@ async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClie
   const ctx: CtxReserva = {
     operadorId: actor.operadorId,
     inquilinoId: input.inquilinoId,
-    horario: sala ? parseHorarios(sala.horarioJson) : SIEMPRE_ABIERTO,
+    // SIN CONSULTORIO no hay horario que respetar, y eso se dice con null (ver EntradaReserva).
+    // El horario de apertura dice cuándo se puede entrar AL CENTRO; el profesional que ese día
+    // atiende afuera consume su hora igual, y rechazársela porque el consultorio estaba cerrado no
+    // protegería nada. Lo que sí se sigue chequeando es que no esté en dos lugares a la vez.
+    horario: sala ? parseHorarios(sala.horarioJson) : null,
     // Sin sala no hay limpieza entre profesionales que respetar: el buffer existe para el tiempo
     // de dejar el consultorio listo para el que sigue.
     politica: politicaDelPanel(sala?.bufferMin ?? 0),

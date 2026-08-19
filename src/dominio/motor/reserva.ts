@@ -13,7 +13,18 @@ export type VeredictoReserva = { ok: true } | { ok: false; codigo: CodigoReserva
 export type EntradaReserva = {
   fecha: FechaLocal;
   tz: Tz;
-  horario: HorarioSemanal; // el de la SALA
+  /**
+   * El horario de la SALA. `null` significa que NO HAY horario que respetar, y es el caso de las
+   * reservas sin consultorio: el horario de apertura dice cuándo se puede entrar al centro, y una
+   * hora que no usa el centro no tiene por qué caer adentro de esa ventana.
+   *
+   * Es `null` y no un horario de 24 horas a propósito. "Abierto siempre" se había escrito como una
+   * franja 00:00–24:00, pero 'HH:MM' no llega a las 24: `horaAMinutos` rechaza cualquier hora
+   * mayor a 23:59, la franja se descartaba entera y el día quedaba SIN NINGUNA apertura — o sea
+   * cerrado, justo lo contrario de lo que decía. Un caso que no se puede escribir en el tipo no se
+   * finge con un valor límite; se agrega al tipo.
+   */
+  horario: HorarioSemanal | null;
   politica: PoliticaCentro;
   intervalo: Intervalo; // [inicio, fin) pedido, en UTC
   inquilinoId: string;
@@ -24,14 +35,19 @@ export type EntradaReserva = {
 
 /**
  * Distingue los tres códigos que el motor puede dar en el re-chequeo:
- *  - FUERA_DE_HORARIO: el bloque no cae dentro de una franja de apertura continua.
+ *  - FUERA_DE_HORARIO: el bloque no cae dentro de una franja de apertura continua. No aplica si
+ *                      `horario` es null (sin consultorio: no hay apertura que respetar).
  *  - SLOT_OCUPADO:     choca con otra ocupación de la sala (con su buffer estampado).
  *  - SOLAPA_INQUILINO: el inquilino ya tiene otra sala en ese rango (si bloqueaProfesional).
  * El orden importa: primero horario (barato y claro), después los dos ejes de choque.
  */
 export function evaluarReserva(e: EntradaReserva): VeredictoReserva {
-  const franjas = franjasIntervalo(e.horario, e.fecha, e.tz);
-  if (!franjas.some((f) => contiene(f, e.intervalo))) return { ok: false, codigo: "FUERA_DE_HORARIO" };
+  // Sin horario no se saltea el resto: los dos ejes de choque siguen valiendo, y el del
+  // profesional es justamente el que importa acá — que no esté en dos lugares a la vez.
+  if (e.horario) {
+    const franjas = franjasIntervalo(e.horario, e.fecha, e.tz);
+    if (!franjas.some((f) => contiene(f, e.intervalo))) return { ok: false, codigo: "FUERA_DE_HORARIO" };
+  }
 
   for (const o of e.ocupacionesSala) {
     if (seSolapan(intervaloBloqueante(o, e.inquilinoId, e.politica), e.intervalo)) {
