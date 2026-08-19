@@ -85,9 +85,20 @@ test("CHECK dur_max: una ocupación de más de 12 h se rechaza (23514)", async (
   );
 });
 
-test("CHECK sala_requerida: una reserva sin sala se rechaza", async () => {
+// El CHECK cambió cuando aparecieron las reservas SIN CONSULTORIO: son horas que se facturan
+// igual (el profesional usa la recepción y su secretaria, no el espacio) y por eso NO pueden
+// bloquear una sala que en realidad está libre.
+test("una reserva sin sala es válida: son horas que se facturan sin ocupar el espacio", async () => {
+  await insertarOcupacion(pool, { id: "s", salaId: null, inquilinoId: "in1", tipo: "reserva", inicio: T(12), fin: T(13) });
+  const { rows } = await pool.query(`SELECT count(*)::int AS n FROM "Ocupacion" WHERE "id"='s' AND "salaId" IS NULL`);
+  assert.equal(rows[0].n, 1);
+});
+
+// El hold es la excepción, y por eso el CHECK sigue existiendo: una lista de espera es siempre
+// POR un consultorio concreto. "Avisame si se libera algo" sin decir qué no se puede cumplir.
+test("CHECK sala_requerida: un hold sin sala se rechaza (23514)", async () => {
   await assert.rejects(
-    insertarOcupacion(pool, { id: "s", salaId: null, inquilinoId: "in1", tipo: "reserva", inicio: T(12), fin: T(13) }),
+    insertarOcupacion(pool, { id: "h", salaId: null, inquilinoId: "in1", tipo: "hold", inicio: T(12), fin: T(13) }),
     (e: unknown) => sqlstate(e) === "23514",
   );
 });
