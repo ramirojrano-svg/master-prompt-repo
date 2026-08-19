@@ -103,7 +103,12 @@ export default async function SalasPage({
               </td>
               <td style={{ padding: "8px 4px" }} className="tenue">{resumenHorarios(parseHorarios(s.horarioJson)) || "sin horario"}</td>
               <td style={{ padding: "8px 4px", textAlign: "right", whiteSpace: "nowrap" }}>
-                <Link href={`?editar=${s.id}`}>Editar</Link>{" "}
+                {/* Con forma de pastilla y no como texto suelto: en un teléfono un enlace de
+                    dos palabras dentro de una celda es un blanco de 14px de alto que se falla una
+                    de cada tres veces. La pastilla le da el tamaño que pide el dedo. */}
+                <Link href={`?editar=${s.id}`} className="pastilla" style={{ padding: "5px 12px", fontSize: 12 }}>
+                  Editar
+                </Link>{" "}
                 <form action={cambiarArchivo} style={{ display: "inline" }}>
                   <input type="hidden" name="salaId" value={s.id} />
                   <input type="hidden" name="activa" value={s.activa ? "0" : "1"} />

@@ -104,7 +104,10 @@ export default async function InquilinosPage({
         </Link>
       </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
+      {/* `lista-personas`: en el teléfono cada fila se apila (nombre arriba, acciones abajo). Sin
+          eso las tres columnas no entran en 390px y los botones quedaban fuera de la pantalla,
+          sin forma de llegar a ellos. */}
+      <table className="lista-personas" style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
         <tbody>
           {inquilinos.map((i) => (
             <tr key={i.id} style={{ borderBottom: "1px solid var(--borde)", opacity: i.estado === "baja" ? 0.6 : 1 }}>

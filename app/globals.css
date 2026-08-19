@@ -747,3 +747,221 @@ tfoot td {
   top: 44px;
   right: 0;
 }
+
+/* ══ TELÉFONO ═════════════════════════════════════════════════════════════ */
+/* Todo lo de abajo corre a partir de acá y no antes: el punto de corte de 880px que ya existía es
+   para un portátil angosto, donde el layout de escritorio todavía funciona. Un teléfono es otra
+   cosa —360 a 430px de ancho, un dedo en vez de un mouse, y una barra del navegador que aparece y
+   desaparece— y necesita decisiones distintas, no las mismas más apretadas. */
+
+@media (max-width: 720px) {
+  /* ── El menú deja de robar ancho ───────────────────────────────────────── */
+  /* En escritorio el menú es una columna de 196px que empuja el contenido. En un teléfono de
+     360px eso es más de la mitad de la pantalla para la navegación, y la agenda —que es a lo que
+     se viene— queda en un canal de 160px.
+     Pasa a ser un riel fijo de 58px con ícono y una etiqueta chiquita: se ve dónde estás y a
+     dónde ir, sin comerse el contenido. El botón de ocultar se va: acá ya está en su mínimo, y un
+     botón que no cambia nada es peor que no tenerlo. */
+  .menu-lateral {
+    position: fixed;
+    left: 0;
+    top: 0;
+    /* !important porque el ancho también lo fija el atributo data-oculto, que lo maneja el botón
+       que acá no existe: sin esto la pantalla dependería de lo que quedó guardado en el navegador. */
+    width: 64px !important;
+    height: 100dvh; /* dvh y no vh: con vh la última fila queda tapada por la barra del navegador */
+    padding: 8px 4px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    gap: 0;
+  }
+  .menu-alternar {
+    display: none;
+  }
+  .item-lateral {
+    flex-direction: column;
+    gap: 3px;
+    padding: 7px 2px;
+    font-size: 9px;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    text-align: center;
+    white-space: normal; /* "Mis reservas" entra en dos renglones en vez de cortarse */
+    /* Y "Disponibilidad" o "Configuración", que son una sola palabra más larga que el riel, se
+       parten en vez de desbordarse. Con `hyphens` el corte cae donde corta el idioma y lleva guion
+       —"Disponibi-lidad"—; `anywhere` es la red por si el navegador no sabe partir la palabra,
+       pero va segundo para que gane el corte lindo cuando se puede. */
+    hyphens: auto;
+    overflow-wrap: break-word;
+  }
+  /* La etiqueta se ve SIEMPRE. La regla de escritorio la apaga cuando el menú está colapsado, y
+     acá el menú siempre lo está: sin esto quedaría un riel de íconos mudos. */
+  .menu-lateral[data-oculto] .item-lateral > span {
+    visibility: visible;
+  }
+  .item-perfil {
+    margin-bottom: 4px;
+    padding-bottom: 8px;
+  }
+  .panel-contenido {
+    padding-left: 64px;
+  }
+  /* El globo de la tuerca mide 250px y el riel 58: si se abriera pegado al menú se saldría de la
+     pantalla. Se ancla al borde inferior izquierdo, que es donde está la tuerca. */
+  .menu-pie .menu-config > .globo-config,
+  .menu-config > .globo-config {
+    position: fixed;
+    top: auto;
+    bottom: 12px;
+    left: 70px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+  }
+
+  /* ── Que el teclado no dé un salto de zoom ─────────────────────────────── */
+  /* Safari en iPhone hace zoom automático sobre cualquier campo con letra menor a 16px, y al salir
+     NO vuelve: la pantalla queda corrida y hay que pellizcar para acomodarla. No es un gusto
+     tipográfico, es la diferencia entre poder cargar un turno de parado o no. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* ── Barra de arriba ───────────────────────────────────────────────────── */
+  .barra {
+    gap: 8px;
+    padding: 0 10px;
+  }
+  .barra h1 {
+    font-size: 15px;
+  }
+
+  /* ── Contenido ─────────────────────────────────────────────────────────── */
+  /* Los <main> de las pantallas traen padding de 20px; en 360px de ancho eso son 40 que no
+     sobran. */
+  .panel-contenido main {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+  .panel {
+    padding: 16px;
+  }
+  /* Una tabla ancha scrollea DENTRO de su panel. Sin esto estira la página entera y el <body>
+     empieza a moverse en horizontal, que rompe todo: la barra fija se despega y el menú también. */
+  table {
+    font-size: 13px;
+  }
+
+  /* El botón de crear estaba abajo a la IZQUIERDA, que en un teléfono es justo donde ahora corre
+     el riel del menú: se pisaban. Pasa a la derecha, que además es donde cae el pulgar. */
+  .crear-flotante {
+    left: auto;
+    right: 14px;
+    bottom: max(14px, env(safe-area-inset-bottom));
+  }
+  /* Y el formulario se abre hacia arriba pegado a la derecha, ocupando el ancho útil que queda
+     entre el riel y el borde. Anclado a la izquierda del botón se salía de la pantalla. */
+  .crear-flotante > .globo {
+    left: auto;
+    right: 0;
+    width: calc(100vw - 64px - 28px);
+    max-height: calc(100dvh - var(--barra) - 120px);
+  }
+}
+
+/* Ningún elemento puede estirar la página a lo ancho. Es la red final: alcanza UNA tabla sin su
+   contenedor, o una data URL larga sin cortar, para que el <body> scrollee en horizontal — y ahí
+   la barra fija se despega del borde y el riel del menú se corre al desplazarse. */
+@media (max-width: 720px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  img,
+  code,
+  pre {
+    max-width: 100%;
+  }
+  code,
+  pre {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ── Listas de personas en el teléfono ────────────────────────────────────── */
+/* Una tabla de tres columnas —quién, estado, acciones— entra cómoda en un monitor y no entra de
+   ninguna manera en 390px: las acciones quedaban fuera de la pantalla, y como el <body> no scrollea
+   en horizontal (a propósito, si no se rompe la barra fija) quedaban INALCANZABLES. Un botón que
+   existe pero al que no se puede llegar es peor que uno que no está.
+   En el teléfono cada fila se apila: el nombre arriba, y debajo el estado y los botones. */
+@media (max-width: 720px) {
+  .lista-personas,
+  .lista-personas tbody,
+  .lista-personas tr,
+  .lista-personas td {
+    display: block;
+    width: auto;
+  }
+  .lista-personas tr {
+    padding: 10px 0;
+  }
+  .lista-personas td {
+    padding: 2px 0 !important;
+    text-align: left !important;
+    white-space: normal !important;
+  }
+  /* La última celda son las acciones: en fila, con aire entre ellas para el dedo. */
+  .lista-personas td:last-child {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .lista-personas td:last-child > form {
+    margin: 0;
+  }
+}
+
+/* ── El dedo no es un mouse ───────────────────────────────────────────────── */
+/* La norma táctil (WCAG 2.5.5) pide 44px para cualquier cosa que se toque. Los <button> ya lo
+   cumplen desde siempre; lo que quedaba corto eran los ENLACES que se ven como botones —las
+   pastillas, las flechitas del mes, "Editar", "Agregar profesional"—, que en un monitor se
+   aciertan igual con el mouse y en un teléfono se fallan una de cada tres veces.
+   Los enlaces de texto corrido quedan afuera a propósito: la norma los exceptúa, y agrandarlos
+   descuadraría los párrafos donde viven. */
+@media (max-width: 720px) {
+  .pastilla,
+  .btn-suave,
+  .btn-texto,
+  .segmentado > a,
+  .crear-flotante > summary,
+  .menu-config > summary {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* Las flechas de navegar meses: redondas y del tamaño del dedo, no del cursor. */
+  .nav-circ {
+    width: 44px;
+    height: 44px;
+  }
+  /* Cada sección del riel también: son el acceso principal a todo. */
+  .item-lateral {
+    min-height: 46px;
+    justify-content: center;
+  }
+  /* Las casillas: por defecto miden 13px, que con el dedo es una lotería. Y como van dentro de un
+     <label>, agrandar la casilla agranda el blanco real —tocar el texto también la marca—. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 22px;
+    height: 22px;
+  }
+  label:has(> input[type="checkbox"]),
+  label:has(> input[type="radio"]) {
+    min-height: 44px;
+  }
+}
