@@ -91,7 +91,13 @@ export function explicar(f: Falla): { titulo: string; porque: string; pasos: str
         porque:
           `Falta la columna ${f.columna ?? "que el código espera"}: el esquema es de una versión ` +
           "anterior del código. La app se actualizó y la base no.",
-        pasos: ["npm run db:reset   (borra y recrea: son datos de prueba)", "npm run seed", "npm run doctor"],
+        // El aviso va ANTES del comando: `db:reset` borra la base entera, y en una instalación con
+        // turnos cargados eso es la agenda y la facturación de verdad. Ofrecerlo a secas —como se
+        // hacía— es ofrecer un desastre a alguien que está apurado porque la pantalla no carga.
+        pasos: [
+          "En producción: volvé a desplegar. El esquema se aplica solo al construir, sin borrar nada.",
+          "En desarrollo, si la base es de prueba: npm run db:reset && npm run seed",
+        ],
       };
   }
 }

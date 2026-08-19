@@ -145,7 +145,14 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
   // La ocupación del centro (el KPI de arriba y las barras del lateral) es información de
   // negocio: cuánto rinde cada consultorio le importa a quien lo alquila, no a quien lo usa.
   const veOcupacion = puede(actor.rol, "finanzas.ver.agregada");
-  const ocupacionMes = veOcupacion ? await ocupacionMensualPorSala({ operadorId: actor.operadorId, periodo: mesLateral.slice(0, 7) }) : [];
+  // También bajo `intentar`, como las dos consultas de arriba. Quedaba afuera y era el único
+  // camino por el que un problema de base en esta pantalla terminaba en la pantalla en blanco de
+  // Next —"This page couldn't load" y un número— en vez de decir qué falta.
+  const ocupCargada = veOcupacion
+    ? await intentar(() => ocupacionMensualPorSala({ operadorId: actor.operadorId, periodo: mesLateral.slice(0, 7) }))
+    : ({ ok: true, valor: [] } as const);
+  if (!ocupCargada.ok) return <BaseNoLista falla={ocupCargada.falla} />;
+  const ocupacionMes = ocupCargada.valor;
   const ocupPorSala = new Map(ocupacionMes.map((o) => [o.salaId, o]));
 
   /** Arma un link conservando lo que no cambia. Las URLs son el estado de la pantalla. */
@@ -171,25 +178,35 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
   // El profesional también agenda: lo suyo. Sin esto entraba a la agenda y no tenía botón —
   // podía mirar y nada más, que es justo lo contrario de para qué está la app.
   const puedeCargarPropia = puede(actor.rol, "reserva.crear.propia") && actor.inquilinoId !== null;
-  const inquilinos = puedeCargar
-    ? await prisma.inquilino.findMany({
-        where: { operadorId: actor.operadorId, estado: "activo" },
-        select: { id: true, nombre: true },
-        orderBy: { nombre: "asc" },
-      })
-    : [];
+  // Las dos consultas que quedaban sueltas, también bajo `intentar`: son las últimas por las que
+  // un problema de base tiraba la pantalla abajo sin explicar nada.
+  const inqCargados = puedeCargar
+    ? await intentar(() =>
+        prisma.inquilino.findMany({
+          where: { operadorId: actor.operadorId, estado: "activo" },
+          select: { id: true, nombre: true },
+          orderBy: { nombre: "asc" },
+        }),
+      )
+    : ({ ok: true, valor: [] as { id: string; nombre: string }[] } as const);
+  if (!inqCargados.ok) return <BaseNoLista falla={inqCargados.falla} />;
+  const inquilinos = inqCargados.valor;
 
   // Aviso de precio: se muestra la tarifa GENERAL vigente (la que aplica salvo excepción). El
   // precio exacto de cada combinación está en la pantalla de precios; acá alcanza con que nadie
   // cargue una reserva creyendo que no cobra nada.
   const puedePrecios = puede(actor.rol, "tarifa.administrar");
-  const general = puedePrecios
-    ? await prisma.tarifa.findFirst({
-        where: { operadorId: actor.operadorId, salaId: null, inquilinoId: null, vigenteHasta: null },
-        select: { precioHoraCent: true },
-        orderBy: { vigenteDesde: "desc" },
-      })
-    : null;
+  const tarCargada = puedePrecios
+    ? await intentar(() =>
+        prisma.tarifa.findFirst({
+          where: { operadorId: actor.operadorId, salaId: null, inquilinoId: null, vigenteHasta: null },
+          select: { precioHoraCent: true },
+          orderBy: { vigenteDesde: "desc" },
+        }),
+      )
+    : ({ ok: true, valor: null } as const);
+  if (!tarCargada.ok) return <BaseNoLista falla={tarCargada.falla} />;
+  const general = tarCargada.valor;
   const precios = puedePrecios
     ? {
         texto: general
