@@ -12,6 +12,7 @@
 
 import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
+import { cotizar, resolverTarifa } from "../../dominio/tarifa.ts";
 import { parseHorarios } from "../../dominio/motor/horarios.ts";
 import { diaSemanaDeFecha, fechaEnZona, minutosAHora, rangoDiaEnZona } from "../../dominio/motor/zona.ts";
 import { minutosDelDia } from "../../dominio/grilla.ts";
@@ -264,9 +265,25 @@ export type TurnoDelMes = {
   salaId: string | null;
   salaNombre: string;
   minutos: number;
-  importeCent: bigint | null; // null = se creó sin tarifa cargada (≠ $0)
-  /** El precio por hora con el que NACIÓ la reserva. null si se creó sin tarifa cargada. */
-  precioHoraCent: bigint | null;
+  /**
+   * Lo que cuesta esta reserva. NUNCA null: una reserva que existe tiene un valor, y mostrar un
+   * guioncito donde va plata no informa nada — el que lo ve no sabe si es cero, si falta un dato o
+   * si el sistema se equivocó.
+   *
+   * Sale del precio ESTAMPADO al nacer (§8.8). Si nació antes de que hubiera tarifa quedó en null,
+   * y entonces se calcula con la que rige hoy. Eso no reescribe nada: la fila sigue en null y lo
+   * facturado no se toca; es esta pantalla contestando "cuánto sale" con el único precio que hay.
+   */
+  importeCent: bigint;
+  /** El precio por hora que explica el importe. */
+  precioHoraCent: bigint;
+  /** ¿El importe se calculó recién, porque la reserva nació sin precio estampado? Lo necesita la
+   *  administración para saber que a esas horas todavía no se les asentó el cargo. */
+  estimado: boolean;
+  /** No hay NINGUNA tarifa que le aplique: ni estampada ni vigente. El importe es 0, pero eso no
+   *  significa que la hora sea gratis — significa que el centro todavía no le puso precio. Se
+   *  distingue para no afirmar "$0" sobre algo que después se va a cobrar. */
+  sinTarifa: boolean;
   estado: string;
 };
 
@@ -283,8 +300,11 @@ export type DetalleProfesional = {
   totales: {
     reservas: number;
     minutos: number;
-    /** Suma de los importes ESTAMPADOS en los turnos del mes. */
+    /** Lo que suman los turnos del mes: el precio estampado de cada uno, o el vigente cuando la
+     *  reserva nació sin ninguno. Es el número que se cobra. */
     importeCent: bigint;
+    /** Cuántos de esos turnos todavía no tienen el cargo asentado en el libro. */
+    estimadas: number;
     /** Lo facturado según el libro (puede diferir: ajustes, penalidades, notas de crédito). */
     facturadoCent: bigint;
     pagadoCent: bigint;
@@ -316,7 +336,8 @@ export async function detalleProfesional(
   const ultimo = rangoDiaEnZona(dias.at(-1)!, tz);
   if (!primero || !ultimo) return null;
 
-  const [operador, filas, movs, saldoFila] = await Promise.all([
+  const ahora = new Date();
+  const [operador, filas, movs, saldoFila, tarifas] = await Promise.all([
     db.operador.findUniqueOrThrow({ where: { id: op }, select: { moneda: true } }),
     db.ocupacion.findMany({
       where: {
@@ -335,12 +356,42 @@ export async function detalleProfesional(
       FROM "Asiento"
       WHERE "operadorId" = ${op} AND "inquilinoId" = ${inq.id} AND "cuenta" = 'corriente' AND "periodo" = ${a.periodo}`,
     db.asiento.aggregate({ where: { operadorId: op, inquilinoId: inq.id, cuenta: "corriente" }, _sum: { montoCent: true } }),
+    // Las tarifas vigentes, para poder ponerle precio a las reservas que nacieron sin ninguna.
+    db.tarifa.findMany({
+      where: { operadorId: op, vigenteDesde: { lte: ahora }, OR: [{ vigenteHasta: null }, { vigenteHasta: { gt: ahora } }] },
+      select: { id: true, salaId: true, inquilinoId: true, precioHoraCent: true, vigenteDesde: true, vigenteHasta: true },
+    }),
   ]);
+
+  /**
+   * El precio de una reserva. El estampado manda: es lo que se facturó y no se toca (§8.8).
+   *
+   * Cuando no hay —la reserva nació antes de que se cargara ninguna tarifa— se cotiza con la que
+   * rige hoy, y se marca `estimado`. Antes esas reservas mostraban un guioncito y sumaban CERO al
+   * total del mes: la pantalla decía "36 h en 7 reservas × $8.000 la hora" y arriba un total que
+   * correspondía a una sola. Dos números que se contradicen en la misma tarjeta, y el que tiene
+   * que cobrar no sabe cuál creer.
+   */
+  const precioDe = (f: { salaId: string | null; importeCent: bigint | null; precioHoraCent: bigint | null }, minutos: number) => {
+    // Manda el IMPORTE: es la plata que se facturó. El precio por hora es cómo se explica, y si
+    // faltara —una fila a medio llenar— se deduce del importe en vez de tirar todo a estimación:
+    // recalcular con la tarifa de hoy una reserva que YA tiene importe sería reescribir lo
+    // facturado, que es exactamente lo que §8.8 existe para impedir.
+    if (f.importeCent !== null) {
+      const porHora = f.precioHoraCent ?? (minutos > 0 ? (f.importeCent * 60n) / BigInt(minutos) : 0n);
+      return { importeCent: f.importeCent, precioHoraCent: porHora, estimado: false, sinTarifa: false };
+    }
+    // Sin sala la tarifa se resuelve igual que al crear la reserva: por profesional.
+    const tarifa = resolverTarifa(tarifas, { salaId: f.salaId ?? "", inquilinoId: inq.id, ahora });
+    const cot = cotizar(tarifa, minutos);
+    return { importeCent: cot.importeCent, precioHoraCent: cot.precioHoraCent, estimado: true, sinTarifa: tarifa === null };
+  };
 
   const turnos: TurnoDelMes[] = filas.map((f) => {
     const fecha = fechaEnZona(f.inicio, tz);
     const desdeMin = minutosDelDia(f.inicio, tz);
     const hastaMin = minutosDelDia(f.fin, tz) || 24 * 60;
+    const minutos = Math.round((f.fin.getTime() - f.inicio.getTime()) / 60_000);
     return {
       id: f.id,
       fecha,
@@ -350,9 +401,8 @@ export async function detalleProfesional(
       // Sin sala no es un dato que falta: es una reserva que no usa el espacio y se factura
       // igual. Un guioncito se leería como "no se sabe".
       salaNombre: f.sala?.nombre ?? (f.salaId === null ? "Sin consultorio" : "—"),
-      minutos: Math.round((f.fin.getTime() - f.inicio.getTime()) / 60_000),
-      importeCent: f.importeCent,
-      precioHoraCent: f.precioHoraCent,
+      minutos,
+      ...precioDe(f, minutos),
       estado: f.estado,
     };
   });
@@ -383,7 +433,10 @@ export async function detalleProfesional(
     totales: {
       reservas: turnos.length,
       minutos: turnos.reduce((acc, t) => acc + t.minutos, 0),
-      importeCent: turnos.reduce((acc, t) => acc + (t.importeCent ?? 0n), 0n),
+      importeCent: turnos.reduce((acc, t) => acc + t.importeCent, 0n),
+      /** Cuántas de esas reservas todavía no tienen el cargo asentado. La administración necesita
+       *  saberlo: el total de arriba es correcto, pero los libros todavía no lo reflejan. */
+      estimadas: turnos.filter((t) => t.estimado).length,
       facturadoCent: mov.debe,
       pagadoCent: mov.haber,
       saldoCent: saldoFila._sum.montoCent ?? 0n,

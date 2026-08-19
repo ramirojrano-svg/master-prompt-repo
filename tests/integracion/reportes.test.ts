@@ -39,7 +39,7 @@ before(async () => {
   await pgPool.query(`UPDATE "Sala" SET "horarioJson"=$1::jsonb`, [HORARIO]);
 });
 beforeEach(async () => {
-  await pgPool.query('TRUNCATE "Ocupacion", "Asiento" CASCADE');
+  await pgPool.query('TRUNCATE "Ocupacion", "Asiento", "Tarifa" CASCADE');
   await pgPool.query(`UPDATE "Sala" SET "activa"=true, "archivadaEl"=NULL`);
   await pgPool.query(`UPDATE "Inquilino" SET "estado"='activo'`);
 });
@@ -246,11 +246,82 @@ test("el detalle suma los importes ESTAMPADOS y los compara con el libro", async
   assert.equal(d.totales.saldoCent, 450_000n);
 });
 
-test("un turno sin precio muestra null, no cero", async () => {
-  await insertarOcupacion(pgPool, { id: "o1", salaId: "sa1", inquilinoId: "in1", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T14:00:00Z" });
+// ── Reservas que nacieron sin tarifa ────────────────────────────────────────
+// Se carga la agenda antes que los precios, que es el orden natural: primero se ve si la app
+// sirve, después se configura la plata. Esas reservas quedan con el importe en NULL, y antes eso
+// significaba que sumaban CERO al mes: la pantalla mostraba "36 h en 7 reservas × $8.000 la hora"
+// y arriba un total que correspondía a UNA sola. Dos números contradictorios en la misma tarjeta.
+
+async function tarifaGeneral(precioHoraCent: number) {
+  await pgPool.query(
+    `INSERT INTO "Tarifa"("id","operadorId","salaId","inquilinoId","nombre","precioHoraCent","vigenteDesde")
+     VALUES('tGen','op1',NULL,NULL,'General',$1, now() - interval '1 day')`,
+    [precioHoraCent],
+  );
+}
+
+test("EL CASO DEL MES ROTO: 1 reserva con precio y 6 sin, el total son las 7", async () => {
+  await tarifaGeneral(800_000);
+
+  // La que nació con precio: 6 h el 4/5.
+  await insertarOcupacion(pgPool, { id: "o1", salaId: "sa1", inquilinoId: "in1", inicio: "2026-05-04T11:00:00Z", fin: "2026-05-04T17:00:00Z" });
+  await pgPool.query(`UPDATE "Ocupacion" SET "importeCent"=4800000, "precioHoraCent"=800000 WHERE "id"='o1'`);
+
+  // Seis de 5 h que nacieron antes de que hubiera tarifa: importe NULL en la base.
+  for (let i = 0; i < 6; i++) {
+    const dia = String(11 + i).padStart(2, "0");
+    await insertarOcupacion(pgPool, {
+      id: `o${i + 2}`, salaId: "sa1", inquilinoId: "in1",
+      inicio: `2026-05-${dia}T17:00:00Z`, fin: `2026-05-${dia}T22:00:00Z`,
+    });
+  }
+
   const d = await detalleProfesional({ actor: owner, periodo: PERIODO, inquilinoId: "in1" }, db);
-  assert.equal(d!.turnos[0]!.importeCent, null);
-  assert.equal(d!.totales.importeCent, 0n);
+  assert.ok(d);
+  assert.equal(d.totales.reservas, 7);
+  assert.equal(d.totales.minutos, 6 * 60 + 6 * 5 * 60, "6 h + 30 h = 36 h");
+
+  // 36 h × $8.000 = $288.000. Antes daba $48.000: solo la que tenía precio estampado.
+  assert.equal(d.totales.importeCent, 28_800_000n, "el total tiene que ser el de TODAS las reservas");
+  assert.equal(d.totales.estimadas, 6, "seis todavía no tienen el cargo asentado");
+
+  // Ninguna puede quedar sin importe: era el guioncito de la columna.
+  assert.ok(d.turnos.every((t) => t.importeCent > 0n), "ningún turno puede valer 0");
+  assert.ok(d.turnos.every((t) => !t.sinTarifa), "hay tarifa vigente: ninguno queda 'a definir'");
+
+  // Y el precio por hora es UNO SOLO, que es lo que la tarjeta muestra al lado del total.
+  assert.deepEqual([...new Set(d.turnos.map((t) => t.precioHoraCent))], [800_000n]);
+});
+
+test("el precio ESTAMPADO manda: un cambio de tarifa no reescribe lo ya facturado (§8.8)", async () => {
+  await tarifaGeneral(800_000); // hoy la hora vale $8.000
+  // Pero esta reserva nació cuando valía $5.000, y eso quedó estampado.
+  await insertarOcupacion(pgPool, { id: "o1", salaId: "sa1", inquilinoId: "in1", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T14:00:00Z" });
+  await pgPool.query(`UPDATE "Ocupacion" SET "importeCent"=500000, "precioHoraCent"=500000 WHERE "id"='o1'`);
+
+  const d = await detalleProfesional({ actor: owner, periodo: PERIODO, inquilinoId: "in1" }, db);
+  assert.equal(d!.turnos[0]!.importeCent, 500_000n, "vale lo que valía cuando se creó");
+  assert.equal(d!.turnos[0]!.estimado, false);
+  assert.equal(d!.totales.estimadas, 0);
+});
+
+test("sin NINGUNA tarifa el importe no se inventa: queda 'a definir', no $0", async () => {
+  // Nada de tarifas cargadas: el centro todavía no le puso precio a nada.
+  await insertarOcupacion(pgPool, { id: "o1", salaId: "sa1", inquilinoId: "in1", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T14:00:00Z" });
+
+  const d = await detalleProfesional({ actor: owner, periodo: PERIODO, inquilinoId: "in1" }, db);
+  assert.equal(d!.turnos[0]!.sinTarifa, true, "hay que poder distinguirlo de una hora que sale $0");
+  assert.equal(d!.turnos[0]!.importeCent, 0n);
+  assert.equal(d!.totales.importeCent, 0n, "no se suma nada que no se sepa cuánto vale");
+});
+
+test("una reserva SIN CONSULTORIO también se cotiza: se cobra igual que si lo hubiera usado", async () => {
+  await tarifaGeneral(800_000);
+  await insertarOcupacion(pgPool, { id: "o1", salaId: null, inquilinoId: "in1", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T16:00:00Z" });
+
+  const d = await detalleProfesional({ actor: owner, periodo: PERIODO, inquilinoId: "in1" }, db);
+  assert.equal(d!.turnos[0]!.salaNombre, "Sin consultorio");
+  assert.equal(d!.turnos[0]!.importeCent, 2_400_000n, "3 h × $8.000");
 });
 
 test("un mes sin turnos igual muestra el saldo acumulado", async () => {

@@ -344,8 +344,18 @@ export default async function DetalleProfesionalPage({
                       <td style={{ whiteSpace: "nowrap" }}>{t.horaTexto}</td>
                       <td>{t.salaNombre}</td>
                       <td className="num">{horasYMinutos(t.minutos)}</td>
-                      {/* null ≠ $0: "se creó sin precio cargado" no es "salió gratis". */}
-                      <td className="num">{t.importeCent === null ? <span className="tenue">sin precio</span> : plata(t.importeCent)}</td>
+                      {/* Siempre un número: el estampado, o el que sale de la tarifa vigente si la
+                          reserva nació antes de que hubiera precios. El asterisco marca ese
+                          segundo caso — la administración necesita distinguirlos, porque a esas
+                          horas todavía no se les asentó el cargo en el libro. */}
+                      <td className="num">
+                        {plata(t.importeCent)}
+                        {t.estimado && (
+                          <span className="tenue" title="Calculado con el precio vigente: esta reserva nació sin tarifa y el cargo todavía no está asentado">
+                            {" "}*
+                          </span>
+                        )}
+                      </td>
                       <td>
                         {t.estado === "no_show" ? (
                           <span className="pildora" style={{ background: "#fdeceb", color: "var(--error)" }}>no vino</span>
@@ -362,12 +372,28 @@ export default async function DetalleProfesionalPage({
               </table>
             </div>
 
-            {/* El detalle son los turnos; lo facturado es el libro. Si difieren, hay que decirlo. */}
+            {/* El detalle son los turnos; lo facturado es el libro. Si difieren hay que decirlo, y
+                sobre todo POR QUÉ: la causa más común dejó de ser "ajustes y notas de crédito" el
+                día que aparecieron las reservas nacidas sin tarifa. Atribuirlas a un ajuste manda a
+                buscar un movimiento que no existe. */}
             {d.totales.importeCent !== d.totales.facturadoCent && (
               <p className="tenue" style={{ marginTop: 10, fontSize: 12 }}>
                 Los turnos suman {plata(d.totales.importeCent)} y su cuenta registra{" "}
-                {plata(d.totales.facturadoCent)} facturados este mes. La diferencia son movimientos
-                que no son horas de consultorio (ajustes, penalidades o notas de crédito).
+                {plata(d.totales.facturadoCent)} facturados este mes.{" "}
+                {d.totales.estimadas > 0 ? (
+                  <>
+                    {d.totales.estimadas === 1 ? "Hay 1 reserva" : `Hay ${d.totales.estimadas} reservas`} marcadas con{" "}
+                    <b>*</b>: nacieron antes de que hubiera precios cargados, así que el importe está
+                    calculado con la tarifa vigente pero el cargo todavía no se asentó. Se arregla en{" "}
+                    <Link href={`/panel/${slug}/tarifas`}>Precios</Link>, con el botón que pone el
+                    precio a las reservas que quedaron sin él.
+                  </>
+                ) : (
+                  <>
+                    La diferencia son movimientos que no son horas de consultorio (ajustes,
+                    penalidades o notas de crédito).
+                  </>
+                )}
               </p>
             )}
           </>

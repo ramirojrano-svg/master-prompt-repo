@@ -93,7 +93,9 @@ export default async function MisReservasPage({
   // filas que lo forman no se puede discutir, y es justamente el número que se va a discutir.
   const vivos = d.turnos.filter((t) => t.estado !== "cancelada");
   // Los precios por hora que aparecen en el mes, sin repetir. Casi siempre es uno solo.
-  const precios = [...new Set(vivos.map((t) => t.precioHoraCent).filter((p): p is bigint => p != null))];
+  // Los turnos que no tienen precio en ninguna parte no aportan un "precio del mes": incluirlos
+  // pondría un $0 en la lista y la tarjeta diría "con 2 precios distintos" por una tarifa que falta.
+  const precios = [...new Set(vivos.filter((t) => !t.sinTarifa).map((t) => t.precioHoraCent))];
 
   return (
     <>
@@ -139,8 +141,8 @@ export default async function MisReservasPage({
               que además arrastra meses viejos y confunde al lado del total del mes. */}
         </section>
 
-        {/* ── Reserva por reserva ───────────────────────────────────────────── */}
-        <h2 style={{ marginTop: 26 }}>Reserva por reserva</h2>
+        {/* ── Mis reservas ──────────────────────────────────────────────────── */}
+        <h2 style={{ marginTop: 26 }}>Mis reservas</h2>
         {d.turnos.length === 0 ? (
           <p className="tenue">
             No tenés reservas en {nombreDePeriodo(periodo)}. <Link href={`/panel/${slug}`}>Ir al calendario</Link>
@@ -173,13 +175,21 @@ export default async function MisReservasPage({
                       <td style={{ whiteSpace: "nowrap" }}>{t.horaTexto}</td>
                       <td>{t.salaNombre}</td>
                       <td className="num">{horasYMinutos(t.minutos)}</td>
-                      <td className="num">{t.importeCent == null ? <span className="tenue">—</span> : plata(t.importeCent)}</td>
+                      {/* Siempre un valor. El guioncito de antes aparecía en las reservas que
+                          nacieron antes de que hubiera precios, que son justo las que hay que
+                          cobrar igual. Lo único que no se afirma es un importe cuando el centro
+                          todavía no le puso precio a esas horas: ahí "$ 0,00" sería mentira. */}
+                      <td className="num">
+                        {t.sinTarifa ? <span className="tenue">a definir</span> : plata(t.importeCent)}
+                      </td>
                       <td className="num" style={{ whiteSpace: "nowrap" }}>
+                        {/* La última columna es para ACCIONES. Una hora que ya ocurrió no tiene
+                            ninguna —no se mueve ni se cancela— y decirlo en cada fila llenaba la
+                            tabla de una etiqueta que no aporta: la fecha ya está a la izquierda.
+                            "Cancelada" sí queda: eso NO se deduce de la fecha. */}
                         {cancelada ? (
                           <span className="tenue" style={{ fontSize: 12 }}>cancelada</span>
-                        ) : !editable ? (
-                          <span className="tenue" style={{ fontSize: 12 }}>ya pasó</span>
-                        ) : (
+                        ) : !editable ? null : (
                           <details data-burbuja style={{ display: "inline-block", position: "relative" }}>
                             <summary className="btn-texto" style={{ cursor: "pointer", listStyle: "none" }}>
                               Cambiar
