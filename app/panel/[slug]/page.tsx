@@ -349,23 +349,53 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           Hoy
         </Link>
 
-        <span style={{ display: "flex", gap: 2 }}>
+        {/* El período va ENTRE las flechas y no después: "‹ Agosto ›" se lee como una sola cosa
+            —qué estoy mirando y cómo me muevo—, mientras que "‹ › Agosto" son dos controles
+            sueltos y hay que mirar dos veces para entender que las flechas mueven ESE mes. */}
+        <span style={{ display: "flex", alignItems: "center", gap: 2, minWidth: 0, flexShrink: 1 }}>
           <Link className="nav-circ" href={href(navegar(vista, agenda.fecha, -1))} aria-label="Anterior">
             ‹
           </Link>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 20,
+              fontWeight: 500,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              minWidth: 0,
+              flexShrink: 1,
+              textAlign: "center",
+              padding: "0 4px",
+            }}
+          >
+            {agenda.titulo}
+          </h1>
           <Link className="nav-circ" href={href(navegar(vista, agenda.fecha, 1))} aria-label="Siguiente">
             ›
           </Link>
         </span>
 
-        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flexShrink: 1 }}>
-          {agenda.titulo}
-        </h1>
-
         {/* El reloj de la zona del centro: el único lugar donde un error de zona se ve (§4.3.3). */}
         <span className="tenue oculta-mobile" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
           {formatHora(ahora, agenda.tz)} · {agenda.tz.split("/").at(-1)!.replace(/_/g, " ")}
         </span>
+
+        {/* En el teléfono la única vista es el mes, así que el selector no se muestra. Pero tocar
+            un día lleva a la vista del día —es donde se ven los horarios y se carga un turno— y
+            de ahí hay que poder volver. Esto NO es un selector: es la salida de un camino, y por
+            eso aparece solo cuando se está adentro de él.
+            Sin esto, en la app instalada en el teléfono no habría botón de atrás a la vista. */}
+        {vista !== "mes" && (
+          <Link
+            href={href(agenda.fecha, { vista: "mes" })}
+            className="btn-suave solo-mobile"
+            style={{ marginLeft: "auto", padding: "8px 14px", borderRadius: 999, fontSize: 14, whiteSpace: "nowrap" }}
+          >
+            ‹ Mes
+          </Link>
+        )}
 
         {/* Los accesos a las secciones —"Calendario" y "Mis reservas" incluidos— viven en el menú
             lateral, que pone el layout del panel. En la barra quedó solo la elección de vista, que

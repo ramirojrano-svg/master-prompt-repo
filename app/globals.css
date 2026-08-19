@@ -984,10 +984,17 @@ tfoot td {
    No se toca el servidor: la vista sigue viniendo de la URL. Esto decide qué se OFRECE, no qué se
    puede ver — quien abra un enlace a la semana la va a ver igual, apretada pero entera. */
 @media (max-width: 720px) {
-  /* La semana son SIETE columnas horarias: no entra de ninguna manera en 390px y no hay forma de
-     arreglarla, así que no se ofrece. El mes y el día sí: el mes es con lo que abre —es lo que se
-     mira parado, "qué hay este mes"— y el día es a donde se entra tocando una fecha. */
-  .segmentado > a[data-vista="semana"] {
+  /* En el teléfono la agenda es el MES y nada más: el selector de vistas se va entero. La semana
+     no entra en 390px de ninguna manera, y el día no es una vista alternativa sino el detalle al
+     que se llega tocando una fecha — ofrecerlo como opción hacía elegir entre dos cosas que no
+     están al mismo nivel.
+     La vuelta desde el día la da un enlace "‹ Mes" que aparece solo estando adentro. */
+  .segmentado {
+    display: none;
+  }
+  /* El botón "Hoy" ocupa lugar que en 390px hace falta para el mes, y su trabajo lo hace igual el
+     día marcado en la grilla. Se va: la barra queda con el logo, "‹ Agosto ›" y nada más. */
+  .barra > a.btn-suave:not(.solo-mobile) {
     display: none;
   }
 }
