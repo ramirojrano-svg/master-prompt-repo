@@ -725,10 +725,13 @@ tfoot td {
   background: var(--agua-clara);
   color: var(--marca-900);
 }
-.menu-config > .globo-config {
+/* El globo flotante, para cualquier <details> que despliegue un panel.
+   Estaba escrito SOLO como `.menu-config > .globo-config`, así que la misma clase usada en otro
+   lado —el "Cambiar" de Mis reservas— no recibía ni la posición ni el fondo: el panel se dibujaba
+   como un bloque más adentro de la celda y empujaba la fila entera, con los campos desparramados
+   sobre la tabla. Acá va lo que hace que sea un globo; los usos concretos solo ajustan dónde cae. */
+.globo-config {
   position: absolute;
-  top: 44px;
-  right: 0;
   z-index: 50;
   width: 250px;
   padding: 16px;
@@ -736,4 +739,11 @@ tfoot td {
   border: 1px solid var(--borde);
   border-radius: var(--radio);
   box-shadow: var(--sombra-alta);
+  /* Fuera del flujo de la tabla: sin esto, en una fila angosta el globo se comprime a la mitad. */
+  text-align: left;
+}
+
+.menu-config > .globo-config {
+  top: 44px;
+  right: 0;
 }

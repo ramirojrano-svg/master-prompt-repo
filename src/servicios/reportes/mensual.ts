@@ -265,6 +265,8 @@ export type TurnoDelMes = {
   salaNombre: string;
   minutos: number;
   importeCent: bigint | null; // null = se creó sin tarifa cargada (≠ $0)
+  /** El precio por hora con el que NACIÓ la reserva. null si se creó sin tarifa cargada. */
+  precioHoraCent: bigint | null;
   estado: string;
 };
 
@@ -324,7 +326,7 @@ export async function detalleProfesional(
         estado: { in: ESTADOS_VENDIDOS as never[] },
         inicio: { gte: primero.inicio, lt: ultimo.fin },
       },
-      select: { id: true, inicio: true, fin: true, estado: true, importeCent: true, salaId: true, sala: { select: { nombre: true } } },
+      select: { id: true, inicio: true, fin: true, estado: true, importeCent: true, precioHoraCent: true, salaId: true, sala: { select: { nombre: true } } },
       orderBy: { inicio: "asc" },
     }),
     db.$queryRaw<{ debe: bigint; haber: bigint }[]>`
@@ -348,6 +350,7 @@ export async function detalleProfesional(
       salaNombre: f.sala?.nombre ?? "—",
       minutos: Math.round((f.fin.getTime() - f.inicio.getTime()) / 60_000),
       importeCent: f.importeCent,
+      precioHoraCent: f.precioHoraCent,
       estado: f.estado,
     };
   });

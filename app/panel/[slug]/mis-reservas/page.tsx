@@ -91,8 +91,9 @@ export default async function MisReservasPage({
 
   // Las horas del mes valorizadas. Se muestra el detalle Y el total: un número grande sin las
   // filas que lo forman no se puede discutir, y es justamente el número que se va a discutir.
-  const horas = d.totales.minutos / 60;
   const vivos = d.turnos.filter((t) => t.estado !== "cancelada");
+  // Los precios por hora que aparecen en el mes, sin repetir. Casi siempre es uno solo.
+  const precios = [...new Set(vivos.map((t) => t.precioHoraCent).filter((p): p is bigint => p != null))];
 
   return (
     <>
@@ -125,27 +126,17 @@ export default async function MisReservasPage({
           </p>
           <p className="tenue" style={{ margin: 0, fontSize: 13 }}>
             {horasYMinutos(d.totales.minutos)} en {vivos.length} {vivos.length === 1 ? "reserva" : "reservas"}
-            {horas > 0 && <> · {plata(BigInt(Math.round(Number(d.totales.importeCent) / horas)))} la hora en promedio</>}
+            {/* El precio que se muestra es el ESTAMPADO en las reservas, no un promedio ni la
+                tarifa de hoy: es el que explica el total de arriba. Si en el mes convivieran dos
+                precios distintos (porque hubo un cambio a mitad de mes), un solo número mentiría —
+                ahí se dice que hubo varios en vez de elegir uno. */}
+            {precios.length === 1 && <> × {plata(precios[0]!)} la hora</>}
+            {precios.length > 1 && <> · con {precios.length} precios distintos en el mes</>}
           </p>
 
-          {/* El saldo sale del LIBRO, no de la suma de las reservas del mes: incluye meses
-              anteriores, notas de crédito y ajustes. Por eso se muestra aparte y no como si el
-              total de arriba fuera lo que se debe. */}
-          {(d.totales.pagadoCent > 0n || d.totales.saldoCent !== 0n) && (
-            <div style={{ display: "flex", gap: 22, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--borde)", flexWrap: "wrap" }}>
-              <span style={{ fontSize: 13 }}>
-                <span className="tenue">Pagado este mes: </span>
-                <strong>{plata(d.totales.pagadoCent)}</strong>
-              </span>
-              <span style={{ fontSize: 13 }}>
-                <span className="tenue">Tu saldo: </span>
-                <strong style={{ color: d.totales.saldoCent > 0n ? "var(--error)" : "var(--ok)" }}>
-                  {plata(d.totales.saldoCent)}
-                </strong>
-                <span className="tenue"> {d.totales.saldoCent > 0n ? "(acumulado de todos los meses)" : "(al día)"}</span>
-              </span>
-            </div>
-          )}
+          {/* Acá estaban "Pagado este mes" y "Tu saldo". Se sacaron: esta pantalla contesta qué
+              reservé y cuánto suma, y el saldo acumulado es otra conversación —la de cobranza—
+              que además arrastra meses viejos y confunde al lado del total del mes. */}
         </section>
 
         {/* ── Reserva por reserva ───────────────────────────────────────────── */}
@@ -193,7 +184,9 @@ export default async function MisReservasPage({
                             <summary className="btn-texto" style={{ cursor: "pointer", listStyle: "none" }}>
                               Cambiar
                             </summary>
-                            <div className="globo-config" style={{ right: 0, top: 26, width: 250 }}>
+                            {/* Alineado a la derecha de la celda y por debajo del "Cambiar". El ancho lo pone la
+                                  clase; acá solo va dónde cae respecto de su celda. */}
+                            <div className="globo-config" style={{ right: 0, top: 26 }}>
                               <form action={editar}>
                                 <input type="hidden" name="ocupacionId" value={t.id} />
                                 <label htmlFor={`s-${t.id}`} style={{ marginTop: 0 }}>Consultorio</label>
