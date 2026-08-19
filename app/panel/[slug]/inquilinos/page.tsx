@@ -18,20 +18,22 @@ export default async function InquilinosPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string; ok?: string; editar?: string; ver?: string; q?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; editar?: string; ver?: string; q?: string; sin?: string }>;
 }) {
   const { slug } = await params;
-  const { error, ok, editar, ver, q } = await searchParams;
+  const { error, ok, editar, ver, q, sin } = await searchParams;
   // El texto buscado, normalizado una vez: se usa para filtrar y para repintar el campo.
   const busca = (q ?? "").trim();
 
   const actor = await actorDeSesion(slug);
   if (!actor) redirect(`/login?centro=${encodeURIComponent(slug)}`);
   if (!puede(actor.rol, "inquilino.administrar")) redirect(`/panel/${slug}`);
+  const administraUsuarios = puede(actor.rol, "usuarios.administrar");
 
   // Por default se listan los activos; los de baja se ven con ?ver=todos. Un filtro nunca puede
   // hacer desaparecer una fila sin que haya forma de alcanzarla (§6.4).
   const verTodos = ver === "todos";
+  const soloSinAcceso = sin === "acceso";
   const inquilinos = await prisma.inquilino.findMany({
     where: {
       operadorId: actor.operadorId,
@@ -43,11 +45,33 @@ export default async function InquilinosPage({
       ...(busca
         ? { OR: [{ nombre: { contains: busca, mode: "insensitive" as const } }, { pagador: { contains: busca, mode: "insensitive" as const } }] }
         : {}),
+      // "A quién le falta el acceso": es la pregunta al poner la app en marcha, y sin esto había
+      // que recorrer la lista entera abriendo fichas.
+      ...(soloSinAcceso ? { usuario: { is: null } } : {}),
     },
     orderBy: [{ estado: "asc" }, { nombre: "asc" }],
-    select: { id: true, nombre: true, estado: true, pagador: true, foto: true, facturable: true },
+    select: {
+      id: true, nombre: true, estado: true, pagador: true, foto: true, facturable: true,
+      // Quién puede ENTRAR a la app. Sin esto había que abrir las 29 fichas de a una para saber a
+      // quién le falta el acceso, que es exactamente lo que hay que saber al ponerla en marcha.
+      //
+      // Se pide SIEMPRE y se muestra solo a quien administra usuarios. Pedirlo condicionalmente
+      // rompía la inferencia de tipos de Prisma, y no compra nada: a esta pantalla solo llega
+      // quien administra profesionales, que en la matriz de permisos es la misma persona.
+      usuario: { select: { activo: true, usuario: { select: { email: true } } } },
+    },
   });
   const deBaja = await prisma.inquilino.count({ where: { operadorId: actor.operadorId, estado: "baja" } });
+
+  // Cuántos pueden entrar a la app, sobre el total ACTIVO. Se cuenta en la base y no sobre lo que
+  // quedó listado: con el buscador puesto, contar lo visible diría "1 de 3" y la pregunta que se
+  // está haciendo es sobre todos.
+  const [activos, conAcceso] = administraUsuarios
+    ? await Promise.all([
+        prisma.inquilino.count({ where: { operadorId: actor.operadorId, estado: "activo" } }),
+        prisma.usuarioOperador.count({ where: { operadorId: actor.operadorId, activo: true, inquilinoId: { not: null } } }),
+      ])
+    : [0, 0];
 
   const enEdicion = editar ? inquilinos.find((i) => i.id === editar) : undefined;
 
@@ -95,6 +119,20 @@ export default async function InquilinosPage({
             : `${inquilinos.length} listados`}
           {deBaja > 0 && (verTodos ? <> · <Link href="?">ocultar los de baja</Link></> : <> · {deBaja} de baja (<Link href="?ver=todos">ver</Link>)</>)}
         </p>
+        {/* Cuántos pueden usar la app. Es el número que hay que mirar al ponerla en marcha, y hasta
+            ahora había que abrir las 29 fichas de a una para saberlo. */}
+        {administraUsuarios && activos > 0 && (
+          <p className="tenue" style={{ margin: 0, fontSize: 13 }}>
+            {conAcceso === activos ? (
+              <>· todos entran a la app</>
+            ) : (
+              <>
+                · {conAcceso} de {activos} entran a la app{" "}
+                <Link href={`?sin=acceso${verTodos ? "&ver=todos" : ""}`}>(ver a quién le falta)</Link>
+              </>
+            )}
+          </p>
+        )}
         {/* El formulario de alta vive al pie, y con treinta profesionales queda tan abajo que no
             se encuentra: la pantalla parecía no tener forma de agregar a nadie. Este botón lo trae
             a la vista de arriba, que es donde se lo busca — y sin `q` ni `editar`, así "Agregar"
@@ -107,6 +145,16 @@ export default async function InquilinosPage({
       {/* `lista-personas`: en el teléfono cada fila se apila (nombre arriba, acciones abajo). Sin
           eso las tres columnas no entran en 390px y los botones quedaban fuera de la pantalla,
           sin forma de llegar a ellos. */}
+      {soloSinAcceso && (
+        <p className="tenue" style={{ margin: "10px 0 0", fontSize: 13 }}>
+          Mostrando solo a quienes todavía no pueden entrar a la app.{" "}
+          <Link href={`?${verTodos ? "ver=todos" : ""}`}>Ver todos</Link>
+        </p>
+      )}
+      {soloSinAcceso && inquilinos.length === 0 && (
+        <p className="aviso-ok" style={{ marginTop: 12 }}>Todos tienen acceso a la app.</p>
+      )}
+
       <table className="lista-personas" style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
         <tbody>
           {inquilinos.map((i) => (
@@ -130,7 +178,23 @@ export default async function InquilinosPage({
                   </span>
                 </span>
               </td>
-              <td style={{ padding: "8px 4px" }} className="tenue">{ETIQUETA[i.estado]}</td>
+              <td style={{ padding: "8px 4px" }} className="tenue">
+                {ETIQUETA[i.estado]}
+                {/* Si entra a la app o no, y con qué mail. Es lo que hace falta para saber a quién
+                    todavía hay que darle el acceso, y para contestar "¿con qué usuario entro?"
+                    sin abrir la ficha. */}
+                {administraUsuarios && (
+                  <span style={{ display: "block", fontSize: 12, marginTop: 2 }}>
+                    {i.usuario?.activo ? (
+                      <span style={{ wordBreak: "break-all" }}>{i.usuario.usuario.email}</span>
+                    ) : i.usuario ? (
+                      <span style={{ color: "var(--error)" }}>acceso desactivado</span>
+                    ) : (
+                      <Link href={`/panel/${slug}/inquilinos/${i.id}#acceso`}>dar acceso a la app</Link>
+                    )}
+                  </span>
+                )}
+              </td>
               <td style={{ padding: "8px 4px", textAlign: "right", whiteSpace: "nowrap" }}>
                 {/* "Editar" se fue de acá: los datos del profesional se cambian DENTRO de su ficha,
                     que es donde se está mirando a esa persona. En la lista quedan las dos acciones

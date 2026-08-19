@@ -426,7 +426,10 @@ export default async function DetalleProfesionalPage({
 
         {/* ── Acceso a la app ────────────────────────────────────────────── */}
         {administraUsuarios && (
-          <section style={{ marginTop: 26 }}>
+          // El id es el destino del enlace "dar acceso a la app" de la lista: sin él, ese enlace
+          // deja al final de la ficha y hay que buscar la sección a ojo. `scrollMarginTop` la baja
+          // por debajo de la barra fija, que si no la tapa.
+          <section id="acceso" style={{ marginTop: 26, scrollMarginTop: 76 }}>
             <h2>Acceso a la app</h2>
             {acceso ? (
               <div className="panel">
