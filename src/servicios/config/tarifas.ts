@@ -34,6 +34,37 @@ export type ResultadoTarifa =
   | { ok: true; id: string }
   | { ok: false; error: "SALA_INEXISTENTE" | "PROFESIONAL_INEXISTENTE" | "NO_ENCONTRADA" };
 
+/**
+ * "Todos menos…": el precio general MÁS el precio propio de los que quedan afuera de ese general.
+ *
+ * Existe porque las dos mitades son una sola decisión. Guardarlas por separado —primero el general,
+ * después cada excepción— deja una ventana en la que el nuevo general ya rige para gente a la que
+ * el operador acaba de decidir cobrarle otra cosa; si en esa ventana alguien reserva, se factura a
+ * un precio que nadie quiso. Van juntas o no va ninguna.
+ *
+ * El precio de cada excepción se pide explícito y no se hereda: dejar a alguien "afuera del
+ * general" sin decir cuánto paga lo deja SIN TARIFA, y sin tarifa una reserva no genera deuda. El
+ * agujero sería silencioso — se descubre a fin de mes, cuando el resumen viene en cero.
+ */
+export const TarifasLoteInput = z.object({
+  precioHora: z.coerce.number().finite().min(0).max(100_000_000),
+  excepciones: z
+    .array(
+      z.object({
+        inquilinoId: z.string().min(1),
+        precioHora: z.coerce.number().finite().min(0).max(100_000_000),
+      }),
+    )
+    .max(500)
+    .default([]),
+});
+
+export type TarifasLoteInputT = z.infer<typeof TarifasLoteInput>;
+
+export type ResultadoLote =
+  | { ok: true; general: string; excepciones: number }
+  | { ok: false; error: "PROFESIONAL_INEXISTENTE" | "PROFESIONAL_REPETIDO" };
+
 /** Pesos → centavos, sin float en el resultado. Math.round acá es sobre 2 decimales, no sobre plata acumulada. */
 export function aCentavos(pesos: number): bigint {
   return BigInt(Math.round(pesos * 100));
@@ -88,6 +119,63 @@ async function poner(actor: Actor, input: TarifaInputT, db: PrismaClient): Promi
   });
 }
 
+async function ponerLote(actor: Actor, input: TarifasLoteInputT, db: PrismaClient): Promise<ResultadoLote> {
+  const ids = input.excepciones.map((e) => e.inquilinoId);
+  // Dos precios para la misma persona en el mismo guardado: cuál gana dependería del orden del
+  // array, que es una respuesta que no se le puede dar a nadie. Se rechaza y se pide corregir.
+  if (new Set(ids).size !== ids.length) return { ok: false, error: "PROFESIONAL_REPETIDO" };
+
+  // Pertenencia: los ids vienen del cliente. Se verifica que TODOS sean de este centro antes de
+  // escribir nada — si uno solo es ajeno, no se guarda ni el general.
+  if (ids.length > 0) {
+    const propios = await db.inquilino.findMany({
+      where: { id: { in: ids }, operadorId: actor.operadorId },
+      select: { id: true, nombre: true },
+    });
+    if (propios.length !== ids.length) return { ok: false, error: "PROFESIONAL_INEXISTENTE" };
+
+    const nombres = new Map(propios.map((p) => [p.id, p.nombre]));
+    return await db.$transaction(async (tx) => {
+      const general = await escribirTarifa(tx, actor.operadorId, null, "General", input.precioHora);
+      for (const e of input.excepciones) {
+        await escribirTarifa(tx, actor.operadorId, e.inquilinoId, nombres.get(e.inquilinoId)!, e.precioHora);
+      }
+      return { ok: true as const, general, excepciones: input.excepciones.length };
+    });
+  }
+
+  const general = await db.$transaction(async (tx) => escribirTarifa(tx, actor.operadorId, null, "General", input.precioHora));
+  return { ok: true, general, excepciones: 0 };
+}
+
+/**
+ * Cerrar la vigente de ese alcance y crear la nueva. Es el gesto de §8.8 —un precio no se edita—
+ * extraído para que el alta de a una y la de a lote no puedan divergir: si mañana cambia la regla
+ * (por ejemplo, guardar quién lo cambió), cambia en un solo lugar.
+ *
+ * `tx` y no `db`: se llama N veces dentro de una transacción y las N tienen que ir juntas.
+ */
+async function escribirTarifa(
+  tx: Pick<PrismaClient, "tarifa">,
+  operadorId: string,
+  inquilinoId: string | null,
+  nombre: string,
+  precioHora: number,
+): Promise<string> {
+  const ahora = new Date();
+  // El precio NO depende del consultorio: es del profesional o general del centro. `salaId: null`
+  // en el where importa tanto como en el data — sin él se cerrarían también las tarifas por sala.
+  await tx.tarifa.updateMany({
+    where: { operadorId, salaId: null, inquilinoId, vigenteHasta: null },
+    data: { vigenteHasta: ahora },
+  });
+  const t = await tx.tarifa.create({
+    data: { operadorId, salaId: null, inquilinoId, nombre, precioHoraCent: aCentavos(precioHora), vigenteDesde: ahora },
+    select: { id: true },
+  });
+  return t.id;
+}
+
 /**
  * Da de baja un precio sin poner otro: el alcance vuelve a caer en el que le siga por
  * especificidad (la de sala, o la general). No borra: cierra.
@@ -101,6 +189,7 @@ async function cerrar(actor: Actor, input: { tarifaId: string }, db: PrismaClien
 }
 
 export const ponerTarifa = definirAccion({ permiso: "tarifa.administrar", schema: TarifaInput }, (a, i) => poner(a, i, prisma));
+export const ponerTarifasEnLote = definirAccion({ permiso: "tarifa.administrar", schema: TarifasLoteInput }, (a, i) => ponerLote(a, i, prisma));
 export const cerrarTarifa = definirAccion(
   { permiso: "tarifa.administrar", schema: z.object({ tarifaId: z.string().min(1) }) },
   (a, i) => cerrar(a, i, prisma),
@@ -109,6 +198,7 @@ export const cerrarTarifa = definirAccion(
 /** Versiones inyectables, para los tests. */
 export const tarifasCon = (db: PrismaClient) => ({
   poner: definirAccion({ permiso: "tarifa.administrar", schema: TarifaInput }, (a, i) => poner(a, i, db)),
+  ponerLote: definirAccion({ permiso: "tarifa.administrar", schema: TarifasLoteInput }, (a, i) => ponerLote(a, i, db)),
   cerrar: definirAccion({ permiso: "tarifa.administrar", schema: z.object({ tarifaId: z.string().min(1) }) }, (a, i) => cerrar(a, i, db)),
 });
 

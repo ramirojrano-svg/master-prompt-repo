@@ -4,6 +4,7 @@ import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
 import { tarifasCon, tarifasVigentes } from "../../src/servicios/config/tarifas.ts";
+import { resolverTarifa } from "../../src/dominio/tarifa.ts";
 import { crearOcupacion, type CtxReserva } from "../../src/servicios/reservas/crear.ts";
 import { prisma } from "../../src/db/prisma.ts";
 import type { Actor } from "../../src/lib/actor.ts";
@@ -12,6 +13,7 @@ import { nuevoPool, reiniciarEsquema, seedBase, TZ_SEDE, URL_DB } from "./db.ts"
 const pgPool = nuevoPool();
 const db = new PrismaClient({ datasourceUrl: URL_DB });
 const tarifas = tarifasCon(db);
+const { ponerLote } = tarifas;
 
 const owner: Actor = { usuarioId: "u1", operadorId: "op1", rol: "owner", inquilinoId: null };
 const profesional: Actor = { usuarioId: "u4", operadorId: "op1", rol: "inquilino_titular", inquilinoId: "in1" };
@@ -218,4 +220,54 @@ test("un HOLD no cobra: todavía no es una reserva", async () => {
   const o = await db.ocupacion.findUniqueOrThrow({ where: { id: r.id }, select: { importeCent: true } });
   assert.equal(o.importeCent, null);
   assert.equal(await db.asiento.count(), 0);
+});
+
+// ── "Todos menos…": el general y las excepciones, en un solo guardado ──────────
+
+test('"todos menos" deja al excluido con SU precio y al resto con el general', async () => {
+  const r = await ponerLote(owner, { precioHora: 8000, excepciones: [{ inquilinoId: "in1", precioHora: 5000 }] });
+  assert.ok(r.ok && r.data.ok, "tiene que guardar");
+
+  // Lo que importa no es que existan dos filas: es a cuánto sale la hora de cada uno. Se pregunta
+  // con la MISMA función que usa el alta de reserva, no leyendo las filas a mano.
+  const vigentes = await tarifasVigentes("op1", db);
+  const ahora = new Date();
+  const deIn1 = resolverTarifa(vigentes, { salaId: "sa1", inquilinoId: "in1", ahora });
+  const deIn2 = resolverTarifa(vigentes, { salaId: "sa1", inquilinoId: "in2", ahora });
+  assert.equal(deIn1?.precioHoraCent, 500_000n, "el excluido paga lo suyo");
+  assert.equal(deIn2?.precioHoraCent, 800_000n, "el resto paga el general");
+});
+
+test('"todos menos" con un id de otro centro no escribe NADA, ni el general', async () => {
+  // El punto: es todo o nada. Si el general se guardara igual, el operador tendria el precio nuevo
+  // corriendo para todos justo cuando quiso dejar a alguien afuera.
+  const antes = await db.tarifa.count({ where: { operadorId: "op1" } });
+  const r = await ponerLote(owner, { precioHora: 8000, excepciones: [{ inquilinoId: "ajeno", precioHora: 5000 }] });
+  assert.ok(r.ok && !r.data.ok && r.data.error === "PROFESIONAL_INEXISTENTE");
+  assert.equal(await db.tarifa.count({ where: { operadorId: "op1" } }), antes, "no se escribio ninguna fila");
+});
+
+test('"todos menos" con el mismo profesional dos veces se rechaza', async () => {
+  // Cual de los dos importes gana dependeria del orden del array: no hay respuesta que darle a
+  // nadie, asi que se pide corregir en vez de elegir por el operador.
+  const antes = await db.tarifa.count({ where: { operadorId: "op1" } });
+  const r = await ponerLote(owner, {
+    precioHora: 8000,
+    excepciones: [{ inquilinoId: "in1", precioHora: 5000 }, { inquilinoId: "in1", precioHora: 6000 }],
+  });
+  assert.ok(r.ok && !r.data.ok && r.data.error === "PROFESIONAL_REPETIDO");
+  assert.equal(await db.tarifa.count({ where: { operadorId: "op1" } }), antes);
+});
+
+test('"todos menos" sin nadie marcado es simplemente el precio general', async () => {
+  const r = await ponerLote(owner, { precioHora: 7000, excepciones: [] });
+  assert.ok(r.ok && r.data.ok && r.data.excepciones === 0);
+  const vigentes = await tarifasVigentes("op1", db);
+  assert.equal(resolverTarifa(vigentes, { salaId: "sa1", inquilinoId: "in2", ahora: new Date() })?.precioHoraCent, 700_000n);
+});
+
+test("§6.2 · un profesional no puede usar el guardado en lote", async () => {
+  // La puerta de atras: si el camino nuevo no chequeara permiso, alcanzaria con llamarlo directo.
+  const r = await ponerLote(profesional, { precioHora: 1, excepciones: [] });
+  assert.ok(!r.ok && r.error === "SIN_PERMISO");
 });
