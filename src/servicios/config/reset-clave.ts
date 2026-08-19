@@ -49,10 +49,22 @@ function hashDeToken(t: string): string {
   return createHash("sha256").update(t).digest("hex");
 }
 
+/**
+ * El enviador se puede inyectar, igual que la base.
+ *
+ * NO es una puerta de atrás: el token sigue sin salir nunca de esta función en producción —el
+ * default es el envío real y el parámetro no está expuesto en ninguna ruta—. Es lo que permite
+ * que un test verifique el circuito completo (que el enlace se arme bien, que el token sirva una
+ * sola vez, que el anterior se queme) sin mandar correo de verdad ni leer el token de la base,
+ * que es justamente lo que NO se puede hacer porque ahí solo está el hash.
+ */
+export type Enviador = typeof enviarEmail;
+
 export async function pedirReset(
   input: { email: string },
   ctx: { urlBase: string },
   db: PrismaClient = prisma,
+  enviar: Enviador = enviarEmail,
 ): Promise<ResultadoPedido> {
   if (!emailListo()) return { ok: false, error: "SIN_EMAIL_CONFIGURADO" };
 
@@ -77,7 +89,7 @@ export async function pedirReset(
 
   const enlace = `${ctx.urlBase.replace(/\/+$/, "")}/restablecer?token=${encodeURIComponent(token)}`;
   const cuerpo = mailDeReset({ nombre: usuario.nombre, enlace, minutos: MINUTOS_VIGENCIA });
-  const envio = await enviarEmail({ para: usuario.email, ...cuerpo });
+  const envio = await enviar({ para: usuario.email, ...cuerpo });
 
   // Si el proveedor lo rechaza tampoco se le cuenta al que pidió: la respuesta es la misma para
   // todos. Queda en el log del servidor, que es donde se mira cuando alguien reclama.
