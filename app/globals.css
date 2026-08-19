@@ -965,3 +965,23 @@ tfoot td {
     min-height: 44px;
   }
 }
+
+/* ── En el teléfono, solo la vista Día ────────────────────────────────────── */
+/* Semana son siete columnas y mes son treinta y un días: en 390px de ancho ninguna de las dos se
+   lee, y ofrecerlas es ofrecer dos caminos que terminan en una pantalla peor. El día entra bien y
+   es lo que se mira parado en la recepción.
+   No se toca el servidor: la vista sigue viniendo de la URL. Esto decide qué se OFRECE, no qué se
+   puede ver — quien abra un enlace a la semana la va a ver igual, apretada pero entera. */
+@media (max-width: 720px) {
+  .segmentado > a[data-vista="semana"],
+  .segmentado > a[data-vista="mes"] {
+    display: none;
+  }
+  /* Estando en Día, el control quedaría con un solo botón que además es el actual: un cartel que
+     no hace nada. Se apaga entero y la barra respira.
+     Pero si se llegó a semana o mes por un enlace, "Día" queda visible y es la salida — esconderlo
+     siempre dejaría a alguien encerrado en una vista que no se puede leer. */
+  .segmentado:has(> a[data-vista="dia"][aria-current="page"]) {
+    display: none;
+  }
+}

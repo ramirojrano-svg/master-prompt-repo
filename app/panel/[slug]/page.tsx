@@ -360,14 +360,17 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
         {/* Los accesos a las secciones —"Calendario" y "Mis reservas" incluidos— viven en el menú
             lateral, que pone el layout del panel. En la barra quedó solo la elección de vista, que
             es de esta pantalla y de ninguna otra. */}
+        {/* `data-vista` no es decorativo: en el teléfono el CSS esconde semana y mes, y la regla
+            necesita nombrar cuál es cuál. Por posición se rompería el día que se agregue una
+            vista o se reordenen. */}
         <nav className="segmentado" style={{ marginLeft: "auto" }}>
-          <Link href={href(agenda.fecha, { vista: "dia" })} aria-current={vista === "dia" ? "page" : undefined}>
+          <Link data-vista="dia" href={href(agenda.fecha, { vista: "dia" })} aria-current={vista === "dia" ? "page" : undefined}>
             Día
           </Link>
-          <Link href={href(agenda.fecha, { vista: "semana" })} aria-current={vista === "semana" ? "page" : undefined}>
+          <Link data-vista="semana" href={href(agenda.fecha, { vista: "semana" })} aria-current={vista === "semana" ? "page" : undefined}>
             Semana
           </Link>
-          <Link href={href(agenda.fecha, { vista: "mes" })} aria-current={vista === "mes" ? "page" : undefined}>
+          <Link data-vista="mes" href={href(agenda.fecha, { vista: "mes" })} aria-current={vista === "mes" ? "page" : undefined}>
             Mes
           </Link>
         </nav>
