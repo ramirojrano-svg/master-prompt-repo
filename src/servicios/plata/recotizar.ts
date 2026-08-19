@@ -54,7 +54,9 @@ export type PendientePorProfesional = {
   nombre: string;
   reservas: number;
   minutos: number;
-  /** El precio por hora que se les va a aplicar, o null si no hay ninguna tarifa para esa persona. */
+  /** El precio por hora que se les va a aplicar, o null si no hay NINGUNA tarifa para esa persona.
+   *  Cero no es null: es alguien que usa el consultorio y no factura, y esa es una decisión
+   *  tomada, no un dato que falta. */
   precioHoraCent: bigint | null;
   importeCent: bigint;
 };
@@ -109,9 +111,12 @@ export async function pendientesPorProfesional(
     acc.reservas++;
     acc.minutos += minutos;
     acc.importeCent += cot.importeCent;
-    // Se guarda el precio por hora que se vio. Si una persona tuviera dos (por sala), queda el
-    // primero; el importe de la fila sigue siendo la suma exacta, que es el número que importa.
-    if (acc.precioHoraCent === null && cot.precioHoraCent > 0n) acc.precioHoraCent = cot.precioHoraCent;
+    // Se guarda el precio por hora que se vio. La condición mira si HAY TARIFA, no si el precio es
+    // mayor que cero: con `> 0n` el que no factura quedaba indistinguible del que no tiene tarifa
+    // cargada, y son dos situaciones opuestas — una está resuelta y la otra hay que arreglarla.
+    // Si una persona tuviera dos precios (por sala), queda el primero; el importe de la fila sigue
+    // siendo la suma exacta, que es el número que importa.
+    if (acc.precioHoraCent === null && cot.tarifaId !== null) acc.precioHoraCent = cot.precioHoraCent;
     porId.set(id, acc);
   }
 
@@ -154,7 +159,11 @@ async function recotizar(actor: Actor, _input: unknown, db: PrismaClient): Promi
     const tarifa = resolverTarifa(tarifas, { salaId: o.salaId ?? "", inquilinoId: o.inquilinoId!, ahora });
     const minutos = Math.round((o.fin.getTime() - o.inicio.getTime()) / 60_000);
     const cot = cotizar(tarifa, minutos);
-    if (!tarifa || cot.importeCent <= 0n) {
+    // SIN TARIFA y TARIFA DE CERO son cosas distintas, y confundirlas costaba caro: alguien que
+    // usa el consultorio pero no factura (un socio del centro) tiene precio CERO, y su reserva
+    // tiene que quedar estampada en $0. Tratándolo como "sin tarifa" quedaba en null para siempre,
+    // reapareciendo en el cartel de "reservas sin precio" en cada vuelta, sin forma de sacarlo.
+    if (!tarifa) {
       sinTarifa++;
       continue;
     }
@@ -183,6 +192,13 @@ async function recotizar(actor: Actor, _input: unknown, db: PrismaClient): Promi
           data: { tarifaId: cot.tarifaId, precioHoraCent: cot.precioHoraCent, importeCent: cot.importeCent },
         });
         if (r.count === 0) continue;
+        // La reserva YA quedó con precio, aunque ese precio sea cero: cuenta como hecha, si no
+        // volvería a salir en el cartel de pendientes en la próxima vuelta.
+        aplicadas.push(cot.importeCent);
+
+        // Pero un cargo de $0 no se asienta: es el mismo criterio que usa el alta de una reserva.
+        // Un movimiento de cero en la cuenta corriente no dice nada y ensucia el resumen.
+        if (cot.importeCent === 0n) continue;
 
         await asentarIdempotente(tx, {
           operadorId: op,
@@ -197,7 +213,6 @@ async function recotizar(actor: Actor, _input: unknown, db: PrismaClient): Promi
           clave: `cargo_uso:${o.id}`,
           reservaId: o.id,
         });
-        aplicadas.push(cot.importeCent);
       }
       return aplicadas;
     });

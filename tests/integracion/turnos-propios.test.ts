@@ -155,3 +155,56 @@ test("un profesional no puede usar la acción AJENA", async () => {
   const r = await crearAjena(otro, { ...base, fecha: enDias(14), inquilinoId: "in1" });
   assert.ok(!r.ok, "la puerta de 'a nombre de otro' le sigue cerrada");
 });
+
+// ── Lo que ya pasó no se toca ───────────────────────────────────────────────
+// La pantalla no ofrece el botón, pero esconderlo no alcanza: una server action es un endpoint
+// HTTP público. Cancelar una hora que ya ocurrió no libera nada —la sala estuvo ocupada igual— y
+// le borraría de la cuenta algo que sí usó.
+
+/** Una reserva que ya ocurrió. Se inserta cruda: el motor, con razón, no deja crear en el pasado. */
+async function reservaPasada(id: string, inquilinoId: string) {
+  const ayer = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const fin = new Date(ayer.getTime() + 60 * 60 * 1000);
+  await pgPool.query(
+    `INSERT INTO "Ocupacion"("id","operadorId","sedeId","salaId","inquilinoId","tipo","estado","inicio","fin","tzSede")
+     VALUES($1,'op1','se1','sa1',$2,'reserva','confirmada',$3,$4,$5)`,
+    [id, inquilinoId, ayer, fin, TZ_SEDE],
+  );
+}
+
+test("el profesional NO puede cancelar un turno que ya pasó", async () => {
+  await reservaPasada("vieja", "in1");
+
+  const r = await cancelarPropia(laura, { ocupacionId: "vieja", alcance: "solo" });
+  assert.ok(r.ok, "el permiso está: lo que falla es la regla, no el rol");
+  if (r.ok) assert.equal(r.data.ok === false && r.data.error, "YA_EMPEZO");
+
+  const fila = await db.ocupacion.findUniqueOrThrow({ where: { id: "vieja" }, select: { estado: true } });
+  assert.equal(fila.estado, "confirmada", "sigue en pie: no se canceló nada");
+});
+
+test("tampoco puede MOVERLO: correr una hora que ya ocurrió es reescribir el pasado", async () => {
+  await reservaPasada("vieja2", "in1");
+
+  const r = await moverPropia(laura, {
+    ocupacionId: "vieja2",
+    salaDestinoId: "sa2",
+    fecha: enDias(3),
+    hora: "11:00",
+  });
+  assert.ok(r.ok);
+  if (r.ok) assert.equal(r.data.ok === false && r.data.error, "YA_EMPEZO");
+
+  const fila = await db.ocupacion.findUniqueOrThrow({ where: { id: "vieja2" }, select: { salaId: true } });
+  assert.equal(fila.salaId, "sa1", "no se movió");
+});
+
+test("un turno FUTURO se sigue pudiendo cancelar: la regla es la fecha, no un bloqueo general", async () => {
+  const creada = await crearPropia(laura, { ...base, fecha: enDias(5) });
+  assert.ok(creada.ok && creada.data.ok);
+  if (!creada.ok || !creada.data.ok) return;
+
+  const id = (await db.ocupacion.findFirstOrThrow({ where: { inquilinoId: "in1" }, select: { id: true } })).id;
+  const r = await cancelarPropia(laura, { ocupacionId: id, alcance: "solo" });
+  assert.ok(r.ok && r.data.ok, "el de la semana que viene sí se cancela");
+});

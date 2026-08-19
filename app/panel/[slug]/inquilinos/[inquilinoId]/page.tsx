@@ -106,6 +106,8 @@ export default async function DetalleProfesionalPage({
       inquilinoId,
       nombre: formData.get("nombre"),
       pagador: formData.get("pagador"),
+      // Una casilla destildada no viaja en el formulario: ausente significa "no se le factura".
+      facturable: formData.get("facturable") === "true",
     });
     revalidatePath(rutaDetalle);
     redirect(`${volverA}${r.ok && r.data.ok ? "&ok=datos" : "&error=DATOS"}`);
@@ -185,17 +187,36 @@ export default async function DetalleProfesionalPage({
 
       <main style={{ padding: 20, maxWidth: 1000, margin: "0 auto" }}>
         {/* ── Los números del mes ────────────────────────────────────────── */}
+        {/* Quien no factura no tiene números de plata: mostrarle cuatro tarjetas en cero invita a
+            pensar que falta cargar algo. Las horas sí, que son reales y ocupan la agenda. */}
         <section style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-          {[
-            { t: "Horas usadas", v: horasYMinutos(d.totales.minutos), p: `${d.totales.reservas} turnos en ${d.totales.diasDistintos} días` },
-            { t: "Facturado", v: plata(d.totales.facturadoCent), p: "cargado a su cuenta este mes" },
+          {(d.inquilino.facturable
+            ? [
+            // Las cuatro son DEL MES, y todas miran las reservas que hay cargadas — no las que ya
+            // ocurrieron. "Horas usadas" iba subiendo a medida que pasaban los días y no servía
+            // para lo que se usa esta pantalla: saber de antemano cuánto va a facturar el mes.
+            {
+              t: "Horas a utilizar en el mes",
+              v: horasYMinutos(d.totales.minutos),
+              p: `${d.totales.reservas} turnos en ${d.totales.diasDistintos} días`,
+            },
+            { t: "Facturación", v: plata(d.totales.importeCent), p: "por las horas reservadas este mes" },
             { t: "Pagó", v: plata(d.totales.pagadoCent), p: "pagos registrados este mes" },
             {
               t: "Saldo",
               v: plata(d.totales.saldoCent),
-              p: d.totales.saldoCent > 0n ? "debe, acumulado de todos los meses" : "sin deuda",
+              p: d.totales.saldoCent > 0n ? "queda a deber por este mes" : "al día",
             },
-          ].map((c) => (
+          ]
+            : [
+                {
+                  t: "Horas a utilizar en el mes",
+                  v: horasYMinutos(d.totales.minutos),
+                  p: `${d.totales.reservas} turnos en ${d.totales.diasDistintos} días`,
+                },
+                { t: "Facturación", v: "No factura", p: "usa los consultorios sin cargo" },
+              ]
+          ).map((c) => (
             <div key={c.t} className="panel" style={{ padding: 18 }}>
               <p className="tenue" style={{ margin: 0, fontSize: 13 }}>{c.t}</p>
               <p style={{ fontSize: 25, margin: "6px 0 2px", fontWeight: 600, letterSpacing: "-0.02em" }}>{c.v}</p>
@@ -300,8 +321,8 @@ export default async function DetalleProfesionalPage({
 
         {d.totales.reservas === 0 ? (
           <p className="tenue" style={{ marginTop: 24 }}>
-            No usó ningún consultorio en {nombreDePeriodo(periodo)}. El saldo de arriba sigue siendo
-            el acumulado: una deuda vieja no desaparece porque este mes no haya venido.
+            No tiene ningún consultorio reservado en {nombreDePeriodo(periodo)}, así que este mes
+            no le factura nada.
           </p>
         ) : (
           <>
@@ -458,6 +479,24 @@ export default async function DetalleProfesionalPage({
               <p className="tenue" style={{ margin: "4px 0 0", fontSize: 12 }}>
                 Solo para facturar y cobrar. La deuda sigue siendo de quien usó el consultorio:
                 pasarla a otra cuenta descuadraría las dos.
+              </p>
+
+              {/* Quien usa el consultorio pero no es cliente del centro. No es lo mismo que una
+                  tarifa de $0: ese seguiría apareciendo en Negocio con una fila de ceros. */}
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, fontWeight: 400 }}>
+                <input
+                  type="checkbox"
+                  name="facturable"
+                  value="true"
+                  defaultChecked={d.inquilino.facturable}
+                  style={{ width: "auto", margin: 0 }}
+                />
+                Se le factura
+              </label>
+              <p className="tenue" style={{ margin: "4px 0 0", fontSize: 12 }}>
+                Destildalo para quien usa los consultorios pero no paga —un socio, vos mismo—. No se
+                le cobra, no suma a la facturación y no aparece en Negocio. Sus horas siguen
+                ocupando la agenda, y lo ya facturado no se toca.
               </p>
 
               <p style={{ marginTop: 14, marginBottom: 0 }}>

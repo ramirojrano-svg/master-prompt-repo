@@ -80,7 +80,6 @@ test("horas y plata por profesional, agregadas en SQL", async () => {
   assert.equal(in1.minutos, 210, "2 h + 1 h 30");
   assert.equal(in1.facturadoCent, 2_800_000n);
   assert.equal(in1.pagadoCent, 1_000_000n, "lo que pagó se muestra aparte, no neteado");
-  assert.equal(in1.saldoCent, 1_800_000n);
 
   assert.equal(r.totales.facturadoCent, 3_600_000n);
   assert.equal(r.totales.cobradoCent, 1_000_000n);
@@ -98,23 +97,40 @@ test("el detalle SUMA EXACTO el total facturado (§6.8)", async () => {
   assert.equal(r.sinDetallarCent, 0n);
 });
 
-test("la deuda NO se netea con los que tienen saldo a favor (§5.6)", async () => {
-  await asiento("in1", 1_000_000n, PERIODO, "a1"); // debe $10.000
-  await asiento("in2", -400_000n, PERIODO, "a2", "pago"); // pagó de más: $4.000 a favor
-  const r = await reporteMensual({ actor: owner, periodo: PERIODO }, db);
-  assert.ok(r);
-  assert.equal(r.totales.deudaCent, 1_000_000n, "la deuda es $10.000, no $6.000");
-  assert.equal(r.profesionales.find((p) => p.id === "in2")?.saldoCent, -400_000n);
-});
-
-test("el saldo es ACUMULADO, no el del mes: la deuda vieja no se borra al cambiar de página", async () => {
+// El tablero de Negocio ya no muestra saldos. Traía el ACUMULADO de todos los meses en la misma
+// fila que "facturado del mes", y esos dos números no son comparables: al lado uno del otro
+// parecía que alguien debía millones por un mes de 30 horas. El saldo que importa es el del mes y
+// vive en la ficha de cada profesional, donde está junto a su facturación del mismo período.
+test("Negocio muestra facturado y pagado DEL MES, sin arrastrar meses viejos", async () => {
   await asiento("in1", 500_000n, "2026-04", "viejo");
   await asiento("in1", 300_000n, PERIODO, "nuevo");
   const r = await reporteMensual({ actor: owner, periodo: PERIODO }, db);
   assert.ok(r);
   const in1 = r.profesionales.find((p) => p.id === "in1")!;
-  assert.equal(in1.facturadoCent, 300_000n, "facturado del mes: solo mayo");
-  assert.equal(in1.saldoCent, 800_000n, "saldo: todo lo que debe hasta hoy");
+  assert.equal(in1.facturadoCent, 300_000n, "solo mayo: lo de abril no entra");
+  assert.equal(r.totales.facturadoCent, 300_000n);
+});
+
+test("quien NO factura queda afuera del tablero, aunque tenga horas", async () => {
+  await pgPool.query(`UPDATE "Inquilino" SET "facturable"=false WHERE "id"='in2'`);
+  await insertarOcupacion(pgPool, { id: "o1", salaId: "sa1", inquilinoId: "in1", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T14:00:00Z" });
+  await insertarOcupacion(pgPool, { id: "o2", salaId: "sa2", inquilinoId: "in2", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T18:00:00Z" });
+
+  const r = await reporteMensual({ actor: owner, periodo: PERIODO }, db);
+  assert.ok(r);
+  assert.ok(!r.profesionales.some((p) => p.id === "in2"), "no puede aparecer ni con una fila de ceros");
+  assert.ok(r.profesionales.some((p) => p.id === "in1"), "el que sí factura sigue estando");
+  await pgPool.query(`UPDATE "Inquilino" SET "facturable"=true WHERE "id"='in2'`);
+});
+
+test("y tampoco entra por la puerta de atrás: un asiento suyo no lo mete en la lista", async () => {
+  await pgPool.query(`UPDATE "Inquilino" SET "facturable"=false WHERE "id"='in2'`);
+  await asiento("in2", 900_000n, PERIODO, "colado");
+
+  const r = await reporteMensual({ actor: owner, periodo: PERIODO }, db);
+  assert.ok(r);
+  assert.ok(!r.profesionales.some((p) => p.id === "in2"));
+  await pgPool.query(`UPDATE "Inquilino" SET "facturable"=true WHERE "id"='in2'`);
 });
 
 test("el profesional DE BAJA con historia sigue apareciendo (§3.6)", async () => {
@@ -243,7 +259,10 @@ test("el detalle suma los importes ESTAMPADOS y los compara con el libro", async
   assert.equal(d.totales.importeCent, 800_000n, "lo que suman los turnos");
   assert.equal(d.totales.facturadoCent, 950_000n, "lo que dice el libro (turno + penalidad)");
   assert.equal(d.totales.pagadoCent, 500_000n);
-  assert.equal(d.totales.saldoCent, 450_000n);
+  // El saldo sale de las RESERVAS del mes menos lo pagado en el mes, no de los débitos del libro:
+  // $8.000 de la hora − $5.000 pagados. La penalidad es un movimiento aparte y no es una hora de
+  // consultorio, así que no entra en "lo que va a facturar por las horas del mes".
+  assert.equal(d.totales.saldoCent, 300_000n);
 });
 
 // ── Reservas que nacieron sin tarifa ────────────────────────────────────────
@@ -324,13 +343,15 @@ test("una reserva SIN CONSULTORIO también se cotiza: se cobra igual que si lo h
   assert.equal(d!.turnos[0]!.importeCent, 2_400_000n, "3 h × $8.000");
 });
 
-test("un mes sin turnos igual muestra el saldo acumulado", async () => {
+test("un mes sin turnos no debe nada POR ESE MES, aunque arrastre deuda de antes", async () => {
   await asiento("in1", 300_000n, "2026-04", "viejo");
   const d = await detalleProfesional({ actor: owner, periodo: PERIODO, inquilinoId: "in1" }, db);
   assert.ok(d);
   assert.equal(d.totales.reservas, 0);
   assert.equal(d.totales.facturadoCent, 0n, "este mes no facturó nada");
-  assert.equal(d.totales.saldoCent, 300_000n, "pero la deuda vieja sigue ahí");
+  // La deuda de abril existe y se sigue reclamando; simplemente no es el saldo DE MAYO. Mezclarlas
+  // era lo que hacía aparecer millones al lado de un mes de 30 horas.
+  assert.equal(d.totales.saldoCent, 0n, "no usó nada en mayo: por mayo no debe nada");
 });
 
 test("un profesional de OTRO operador no existe acá (pertenencia, no findUnique)", async () => {
@@ -343,4 +364,39 @@ test("un profesional de OTRO operador no existe acá (pertenencia, no findUnique
 
 test("un período inválido en el detalle devuelve null, no una pantalla rota", async () => {
   assert.equal(await detalleProfesional({ actor: owner, periodo: "2026-99", inquilinoId: "in1" }, db), null);
+});
+
+// ── El saldo de la ficha es DEL MES ─────────────────────────────────────────
+// Antes traía el acumulado de todos los meses, debajo de "Facturación del mes". Con un año de
+// historia eso mostraba millones al lado de un mes de 30 horas, y no había forma de saber cuánto
+// reclamarle por el período que se estaba mirando — que es para lo que se abre la pantalla.
+
+test("el saldo de la ficha es del MES: reservas del mes menos lo que pagó en el mes", async () => {
+  await pgPool.query(
+    `INSERT INTO "Tarifa"("id","operadorId","salaId","inquilinoId","nombre","precioHoraCent","vigenteDesde")
+     VALUES('t1','op1',NULL,NULL,'General',800000, now() - interval '1 day')`,
+  );
+  // Deuda vieja, de otro mes: no puede aparecer en el saldo de mayo.
+  await asiento("in1", 5_000_000n, "2026-04", "deuda-vieja");
+
+  // 3 h en mayo a $8.000 = $24.000, y pagó $10.000 en mayo.
+  await insertarOcupacion(pgPool, { id: "o1", salaId: "sa1", inquilinoId: "in1", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T16:00:00Z" });
+  await asiento("in1", -1_000_000n, PERIODO, "pago-mayo", "pago");
+
+  const d = await detalleProfesional({ actor: owner, periodo: PERIODO, inquilinoId: "in1" }, db);
+  assert.ok(d);
+  assert.equal(d.totales.importeCent, 2_400_000n, "la facturación del mes son sus reservas");
+  assert.equal(d.totales.pagadoCent, 1_000_000n);
+  assert.equal(d.totales.saldoCent, 1_400_000n, "$24.000 - $10.000, sin arrastrar abril");
+});
+
+test("las horas del mes incluyen las que TODAVÍA NO PASARON: es lo que va a usar, no lo que usó", async () => {
+  // Mayo de 2026 es futuro respecto del reloj cuando se escribió esto, y el punto es justamente
+  // que el número no dependa de qué día se mire la pantalla.
+  await insertarOcupacion(pgPool, { id: "o1", salaId: "sa1", inquilinoId: "in1", inicio: "2026-05-04T13:00:00Z", fin: "2026-05-04T16:00:00Z" });
+  await insertarOcupacion(pgPool, { id: "o2", salaId: "sa1", inquilinoId: "in1", inicio: "2026-05-28T13:00:00Z", fin: "2026-05-28T16:00:00Z" });
+
+  const d = await detalleProfesional({ actor: owner, periodo: PERIODO, inquilinoId: "in1" }, db);
+  assert.equal(d!.totales.minutos, 360, "las dos reservas del mes, hayan ocurrido o no");
+  assert.equal(d!.totales.reservas, 2);
 });

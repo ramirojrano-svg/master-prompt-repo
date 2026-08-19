@@ -1,36 +1,18 @@
-// app/page.tsx — portada mínima. La superficie pública del centro (/c/[slug]) es F6 y nace
-// apagada por default (§12 #9).
+// app/page.tsx — la raíz va DERECHO al login.
 //
-// "Entrar" va PRIMERO y como botón: esta pantalla es donde cae quien cerró sesión y vuelve a
-// abrir la app. Antes el único camino era "Creá tu centro", así que salir dejaba encerrado —con
-// la cuenta intacta y sin ninguna puerta a la vista— y la única salida era escribir la URL del
-// panel de memoria. Crear un centro es lo que se hace UNA vez; entrar, todos los días.
-import Link from "next/link";
-import { altaAbierta } from "../src/lib/alta-abierta.ts";
-import { Logo } from "./Logo.tsx";
+// Acá había una portada con el logo, una frase y un botón "Entrar". Sobraba: en una instalación de
+// un solo centro, el primer contacto con la app es siempre iniciar sesión, y esa portada era una
+// pantalla de más entre el usuario y lo que venía a hacer. El botón "Entrar" existía porque cerrar
+// sesión dejaba acá y no había ninguna puerta a la vista; ahora la puerta ES esta pantalla.
+//
+// Es un redirect del SERVIDOR y no una página que se redibuja: el navegador nunca llega a pintar
+// la portada, así que no hay parpadeo.
+//
+// El alta pública de centros (/alta) sigue existiendo y sigue apagada por default; quien la
+// encienda llega por su URL. No hace falta una portada solo para enlazarla.
+
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return (
-    <main style={{ maxWidth: 460, margin: "72px auto", padding: "0 16px", textAlign: "center" }}>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-        <Logo alto={96} />
-      </div>
-      <p className="tenue" style={{ marginTop: 0 }}>
-        Agenda, profesionales y cuenta corriente de un centro de consultorios.
-      </p>
-
-      <p style={{ marginTop: 26 }}>
-        <Link href="/login" className="pastilla" style={{ padding: "11px 30px", fontSize: 15 }}>
-          Entrar
-        </Link>
-      </p>
-
-      {/* Con el alta cerrada el enlace no se muestra: llevaría a un 404. */}
-      {altaAbierta() && (
-        <p className="tenue" style={{ marginTop: 22, fontSize: 13 }}>
-          ¿Todavía no tenés centro? <Link href="/alta">Creá el tuyo</Link>
-        </p>
-      )}
-    </main>
-  );
+  redirect("/login");
 }

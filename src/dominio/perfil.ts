@@ -40,3 +40,20 @@ export type PerfilEntrada = z.infer<typeof PerfilInput>;
 export function nombreConTitulo(p: { nombre: string; titulo?: string | null }): string {
   return p.titulo ? `${p.titulo} ${p.nombre}` : p.nombre;
 }
+
+/**
+ * Las iniciales con las que se dibuja a alguien que no cargó foto. Toma la primera letra de las
+ * dos primeras palabras REALES del nombre.
+ *
+ * Se saltean los títulos ("Dra. María Gómez" da MG, no DM) y lo que viene entre paréntesis, que en
+ * este centro es la especialidad: "Marta Terrón (Alergista)" tiene que dar MT.
+ */
+export function inicialesDe(nombre: string): string {
+  const limpio = nombre
+    .replace(/\([^)]*\)/g, " ") // la especialidad no es parte del nombre
+    .split(/\s+/)
+    .filter((p) => p && !(TITULOS as readonly string[]).includes(p));
+
+  const letras = limpio.slice(0, 2).map((p) => p[0] ?? "");
+  return letras.join("").toUpperCase() || "?";
+}

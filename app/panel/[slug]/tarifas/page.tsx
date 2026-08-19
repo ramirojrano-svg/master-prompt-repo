@@ -255,6 +255,11 @@ export default async function TarifasPage({
                     <td className="num">
                       {p.precioHoraCent === null ? (
                         <span style={{ color: "var(--error)" }}>sin tarifa</span>
+                      ) : p.precioHoraCent === 0n ? (
+                        // Cero no es un dato que falte: es alguien que usa el consultorio y no
+                        // factura. Mostrarlo como "$ 0,00" al lado de un "sin tarifa" en rojo
+                        // invita a "arreglarlo", que es justo lo que no hay que hacer.
+                        <span className="tenue">no factura</span>
                       ) : (
                         plata(p.precioHoraCent)
                       )}

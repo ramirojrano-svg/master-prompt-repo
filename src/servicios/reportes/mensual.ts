@@ -35,8 +35,6 @@ export type FilaProfesional = {
   facturadoCent: bigint;
   /** Lo que pagó en el período (créditos, en positivo). */
   pagadoCent: bigint;
-  /** Saldo ACUMULADO al día de hoy, no el del mes: > 0 = debe. */
-  saldoCent: bigint;
 };
 
 export type FilaSala = {
@@ -59,8 +57,6 @@ export type ReporteMensual = {
   totales: {
     facturadoCent: bigint;
     cobradoCent: bigint;
-    /** Deuda real: suma SOLO de los saldos positivos. Netear con los que tienen saldo a favor la esconde (§5.6). */
-    deudaCent: bigint;
     reservas: number;
     minutos: number;
     aperturaMin: number;
@@ -100,7 +96,7 @@ export async function reporteMensual(
   const desde = primero.inicio;
   const hasta = ultimo.fin;
 
-  const [operador, salasTodas, inquilinos, porInquilino, porSala, plataPeriodo, saldos, totalFacturado] =
+  const [operador, salasTodas, inquilinos, porInquilino, porSala, plataPeriodo, totalFacturado] =
     await Promise.all([
       db.operador.findUniqueOrThrow({ where: { id: op }, select: { moneda: true } }),
 
@@ -112,8 +108,11 @@ export async function reporteMensual(
       }),
 
       // Todos, incluidos los de baja, por lo mismo.
+      // Solo los FACTURABLES. Quien usa el consultorio pero no es cliente del centro —un socio, el
+      // propio dueño— no es parte del negocio: una fila suya con ceros no informa nada y ensucia
+      // todas las comparaciones (el que más facturó, el promedio, el ranking).
       db.inquilino.findMany({
-        where: { operadorId: op },
+        where: { operadorId: op, facturable: true },
         select: { id: true, nombre: true, estado: true },
         orderBy: { nombre: "asc" },
       }),
@@ -155,13 +154,6 @@ export async function reporteMensual(
         WHERE "operadorId" = ${op} AND "cuenta" = 'corriente' AND "periodo" = ${a.periodo}
         GROUP BY "inquilinoId"`,
 
-      // Saldo ACUMULADO (todos los períodos): es lo que se le reclama a alguien, no el del mes.
-      db.$queryRaw<{ id: string; saldo: bigint }[]>`
-        SELECT "inquilinoId" AS id, COALESCE(SUM("montoCent"), 0)::bigint AS saldo
-        FROM "Asiento"
-        WHERE "operadorId" = ${op} AND "cuenta" = 'corriente'
-        GROUP BY "inquilinoId"`,
-
       // El total, calculado APARTE del detalle: si no coinciden, se muestra la diferencia.
       db.$queryRaw<{ debe: bigint; haber: bigint }[]>`
         SELECT COALESCE(SUM(CASE WHEN "montoCent" > 0 THEN "montoCent" ELSE 0 END), 0)::bigint AS debe,
@@ -172,11 +164,18 @@ export async function reporteMensual(
 
   const ocup = new Map(porInquilino.map((r) => [r.id, r]));
   const mov = new Map(plataPeriodo.map((r) => [r.id, r]));
-  const saldo = new Map(saldos.map((r) => [r.id, r.saldo]));
 
   // La lista arranca de los inquilinos y suma cualquier id que aparezca solo en las agregaciones:
-  // un id huérfano no puede hacer que la plata se evapore del reporte.
-  const ids = new Set<string>([...inquilinos.map((i) => i.id), ...ocup.keys(), ...mov.keys()]);
+  // un id huérfano no puede hacer que la plata se evapore del reporte. Pero los NO FACTURABLES se
+  // excluyen aunque aparezcan en una agregación: no es un huérfano, es alguien que decidimos que
+  // no es parte del negocio, y colarlo por la puerta de atrás sería peor que no filtrarlo.
+  const facturables = new Set(inquilinos.map((i) => i.id));
+  const noFacturables = new Set(
+    (await db.inquilino.findMany({ where: { operadorId: op, facturable: false }, select: { id: true } })).map((i) => i.id),
+  );
+  const ids = new Set<string>(
+    [...facturables, ...ocup.keys(), ...mov.keys()].filter((id) => !noFacturables.has(id)),
+  );
   const nombre = new Map(inquilinos.map((i) => [i.id, i.nombre]));
 
   const profesionales: FilaProfesional[] = [...ids]
@@ -191,7 +190,6 @@ export async function reporteMensual(
         minutos: Math.round(o?.minutos ?? 0),
         facturadoCent: m?.debe ?? 0n,
         pagadoCent: m?.haber ?? 0n,
-        saldoCent: saldo.get(id) ?? 0n,
       };
     })
     // Primero quien más facturó; los que no tuvieron movimiento quedan al final pero NO se filtran.
@@ -235,7 +233,6 @@ export async function reporteMensual(
     totales: {
       facturadoCent: tot.debe,
       cobradoCent: tot.haber,
-      deudaCent: profesionales.reduce((acc, p) => acc + (p.saldoCent > 0n ? p.saldoCent : 0n), 0n),
       reservas: salas.reduce((acc, s) => acc + s.reservas, 0),
       minutos: minutosTotal,
       aperturaMin: aperturaTotal,
@@ -291,7 +288,7 @@ export type DetalleProfesional = {
   periodo: string;
   tz: string;
   moneda: string;
-  inquilino: { id: string; nombre: string; activo: boolean; pagador: string | null };
+  inquilino: { id: string; nombre: string; activo: boolean; pagador: string | null; facturable: boolean };
   turnos: TurnoDelMes[];
   /** Cuántas horas por día de la semana: "siempre martes y jueves" se ve de una. */
   porDiaSemana: { dia: number; reservas: number; minutos: number }[];
@@ -308,6 +305,9 @@ export type DetalleProfesional = {
     /** Lo facturado según el libro (puede diferir: ajustes, penalidades, notas de crédito). */
     facturadoCent: bigint;
     pagadoCent: bigint;
+    /** Lo que va a deber por ESTE mes: lo que suman sus reservas menos lo que pagó en el mes.
+     *  No es el acumulado de todos los meses — ese número, al lado de "facturación del mes", se
+     *  leía como si fueran comparables y no lo son. */
     saldoCent: bigint;
     diasDistintos: number;
   };
@@ -323,7 +323,7 @@ export async function detalleProfesional(
   // Pertenencia: el id vino de la URL. findFirst({id, operadorId}), nunca findUnique({id}).
   const inq = await db.inquilino.findFirst({
     where: { id: a.inquilinoId, operadorId: op },
-    select: { id: true, nombre: true, estado: true, pagador: true },
+    select: { id: true, nombre: true, estado: true, pagador: true, facturable: true },
   });
   if (!inq) return null;
 
@@ -337,7 +337,7 @@ export async function detalleProfesional(
   if (!primero || !ultimo) return null;
 
   const ahora = new Date();
-  const [operador, filas, movs, saldoFila, tarifas] = await Promise.all([
+  const [operador, filas, movs, tarifas] = await Promise.all([
     db.operador.findUniqueOrThrow({ where: { id: op }, select: { moneda: true } }),
     db.ocupacion.findMany({
       where: {
@@ -355,7 +355,6 @@ export async function detalleProfesional(
              COALESCE(SUM(CASE WHEN "montoCent" < 0 THEN -"montoCent" ELSE 0 END), 0)::bigint AS haber
       FROM "Asiento"
       WHERE "operadorId" = ${op} AND "inquilinoId" = ${inq.id} AND "cuenta" = 'corriente' AND "periodo" = ${a.periodo}`,
-    db.asiento.aggregate({ where: { operadorId: op, inquilinoId: inq.id, cuenta: "corriente" }, _sum: { montoCent: true } }),
     // Las tarifas vigentes, para poder ponerle precio a las reservas que nacieron sin ninguna.
     db.tarifa.findMany({
       where: { operadorId: op, vigenteDesde: { lte: ahora }, OR: [{ vigenteHasta: null }, { vigenteHasta: { gt: ahora } }] },
@@ -426,22 +425,31 @@ export async function detalleProfesional(
     periodo: a.periodo,
     tz,
     moneda: operador.moneda,
-    inquilino: { id: inq.id, nombre: inq.nombre, activo: inq.estado === "activo", pagador: inq.pagador },
+    inquilino: { id: inq.id, nombre: inq.nombre, activo: inq.estado === "activo", pagador: inq.pagador, facturable: inq.facturable },
     turnos,
     porDiaSemana,
     porFranja,
-    totales: {
-      reservas: turnos.length,
-      minutos: turnos.reduce((acc, t) => acc + t.minutos, 0),
-      importeCent: turnos.reduce((acc, t) => acc + t.importeCent, 0n),
-      /** Cuántas de esas reservas todavía no tienen el cargo asentado. La administración necesita
-       *  saberlo: el total de arriba es correcto, pero los libros todavía no lo reflejan. */
-      estimadas: turnos.filter((t) => t.estimado).length,
-      facturadoCent: mov.debe,
-      pagadoCent: mov.haber,
-      saldoCent: saldoFila._sum.montoCent ?? 0n,
-      diasDistintos: new Set(turnos.map((t) => t.fecha)).size,
-    },
+    totales: (() => {
+      // La facturación del mes son sus RESERVAS, no los débitos del libro. Las dos coinciden
+      // cuando todo tiene su cargo asentado, pero mientras haya reservas sin precio el libro va
+      // atrás — y el que tiene que cobrar necesita el número de lo que va a cobrar, no el de lo
+      // que quedó registrado hasta ahora.
+      const importeCent = turnos.reduce((acc, t) => acc + t.importeCent, 0n);
+      return {
+        reservas: turnos.length,
+        minutos: turnos.reduce((acc, t) => acc + t.minutos, 0),
+        importeCent,
+        /** Cuántas de esas reservas todavía no tienen el cargo asentado. La administración necesita
+         *  saberlo: el total de arriba es correcto, pero los libros todavía no lo reflejan. */
+        estimadas: turnos.filter((t) => t.estimado).length,
+        facturadoCent: mov.debe,
+        pagadoCent: mov.haber,
+        // DEL MES: lo que suman sus reservas menos lo que pagó en el mes. Nunca negativo hacia
+        // abajo por un pago viejo, porque los dos términos son del mismo período.
+        saldoCent: importeCent - mov.haber,
+        diasDistintos: new Set(turnos.map((t) => t.fecha)).size,
+      };
+    })(),
   };
 }
 

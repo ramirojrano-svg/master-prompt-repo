@@ -425,23 +425,19 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
         {/* ── Lienzo ────────────────────────────────────────────────────── */}
         <section className="lienzo">
           {/* KPI con el DENOMINADOR visible: un porcentaje sin denominador no se puede auditar. */}
-          <p
-            id="kpi"
-            className="tenue"
-            style={{ margin: 0, padding: "8px 16px", borderBottom: "1px solid var(--borde)", fontSize: 13, display: "flex", gap: 14, flexWrap: "wrap" }}
-          >
-            {veOcupacion && (
-              <span>
-                Ocupación <strong style={{ color: "var(--texto)" }}>{agenda.kpis.ocupacionPct}%</strong> ({horasYMinutos(agenda.kpis.ocupadasMin)} de{" "}
-                {horasYMinutos(agenda.kpis.disponiblesMin)})
-              </span>
-            )}
-            <span>
-              {agenda.reservas.filter((r) => !r.esBloqueo).length} turno
-              {agenda.reservas.filter((r) => !r.esBloqueo).length === 1 ? "" : "s"}
-            </span>
-            {sp.error && !puedeCargar && <span className="error">{mensajeDeError(sp.error)}</span>}
-          </p>
+          {/* Acá vivía una franja con "Ocupación 50% (21 h de 42 h) · 8 turnos". Se sacó: encima de
+              la grilla, donde se viene a mirar QUÉ hay agendado, era una línea de estadística que
+              se lee una vez y después solo ocupa alto. El porcentaje de ocupación sigue estando en
+              Negocio, que es la pantalla donde se va a buscar, y por consultorio en el lateral.
+              La franja sobrevive SOLO para el error: eso sí hay que verlo, y acá arriba. */}
+          {sp.error && !puedeCargar && (
+            <p
+              className="tenue"
+              style={{ margin: 0, padding: "8px 16px", borderBottom: "1px solid var(--borde)", fontSize: 13 }}
+            >
+              <span className="error">{mensajeDeError(sp.error)}</span>
+            </p>
+          )}
 
           {/* El resultado del alta va ACÁ y no adentro del panel de crear: ese panel se cierra
               solo al guardar, así que un aviso adentro no lo ve nadie — y con series es donde más

@@ -52,7 +52,7 @@ export default async function ReportesPage({
   const { porRubro } = await gastosDelMes({ operadorId: actor.operadorId, periodo });
 
   const plata = (c: bigint) => formatearPesos(c, r.moneda);
-  const conActividad = r.profesionales.filter((p) => p.reservas > 0 || p.facturadoCent !== 0n || p.pagadoCent !== 0n || p.saldoCent !== 0n);
+  const conActividad = r.profesionales.filter((p) => p.reservas > 0 || p.facturadoCent !== 0n || p.pagadoCent !== 0n);
   const quietos = r.profesionales.length - conActividad.length;
 
   // Los conjuntos que alimentan los gráficos. Se filtra lo que no tiene nada que mostrar: una
@@ -68,7 +68,6 @@ export default async function ReportesPage({
   const tarjetas = [
     { titulo: "Facturado en el mes", valor: plata(r.totales.facturadoCent), pie: `${r.totales.reservas} turnos · ${r.totales.profesionalesConActividad} profesionales` },
     { titulo: "Cobrado en el mes", valor: plata(r.totales.cobradoCent), pie: "pagos con fecha de este mes" },
-    { titulo: "Deuda al día de hoy", valor: plata(r.totales.deudaCent), pie: "suma de los que deben, de todos los meses" },
     { titulo: "Ocupación", valor: `${r.totales.ocupacionPct}%`, pie: `${horasYMinutos(r.totales.minutos)} vendidas de ${horasYMinutos(r.totales.aperturaMin)} abiertas` },
   ];
 
@@ -248,7 +247,6 @@ export default async function ReportesPage({
                 datos={[
                   { etiqueta: "Facturado", valor: Number(r.totales.facturadoCent), texto: plata(r.totales.facturadoCent) },
                   { etiqueta: "Cobrado", valor: Number(r.totales.cobradoCent), texto: plata(r.totales.cobradoCent) },
-                  { etiqueta: "Deuda", valor: Number(r.totales.deudaCent), texto: plata(r.totales.deudaCent) },
                 ]}
               />
               <p className="tenue" style={{ margin: "6px 0 0", fontSize: 12 }}>
@@ -304,7 +302,6 @@ export default async function ReportesPage({
                   <th className="num">Horas</th>
                   <th className="num">Facturado</th>
                   <th className="num">Pagó</th>
-                  <th className="num">Saldo</th>
                 </tr>
               </thead>
               <tbody>
@@ -318,9 +315,6 @@ export default async function ReportesPage({
                     <td className="num">{horasYMinutos(p.minutos)}</td>
                     <td className="num">{plata(p.facturadoCent)}</td>
                     <td className="num">{plata(p.pagadoCent)}</td>
-                    <td className="num" style={{ color: p.saldoCent > 0n ? "var(--error)" : undefined, fontWeight: 600 }}>
-                      {plata(p.saldoCent)}
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -331,7 +325,6 @@ export default async function ReportesPage({
                   <td className="num">{horasYMinutos(r.totales.minutos)}</td>
                   <td className="num">{plata(r.totales.facturadoCent)}</td>
                   <td className="num">{plata(r.totales.cobradoCent)}</td>
-                  <td className="num">{plata(r.totales.deudaCent)}</td>
                 </tr>
               </tfoot>
             </table>

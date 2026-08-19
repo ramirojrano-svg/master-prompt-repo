@@ -42,3 +42,16 @@ export function duracionMin(i: Intervalo): number {
 export function contiene(cont: Intervalo, dentro: Intervalo): boolean {
   return cont.inicio <= dentro.inicio && dentro.fin <= cont.fin;
 }
+
+/**
+ * ¿Ese momento ya llegó? Es una comparación de INSTANTES, no de rangos, pero vive acá por la misma
+ * razón que `contiene`: §4.2 prohíbe comparar `.inicio` a mano en el resto del repo, y la regla
+ * está bien puesta — la mitad de los bugs de agenda salen de un `<=` escrito de apuro en el lugar
+ * equivocado. Tenerla con nombre además dice qué significa: "el turno ya empezó".
+ *
+ * `<=` y no `<`: un turno que arranca EXACTAMENTE ahora ya empezó. Cancelarlo en ese instante no
+ * libera nada — el consultorio está ocupado desde este segundo.
+ */
+export function yaEmpezo(inicio: Date, ahora: Date = new Date()): boolean {
+  return inicio.getTime() <= ahora.getTime();
+}

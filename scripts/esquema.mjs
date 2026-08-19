@@ -57,6 +57,9 @@ const sql = readFileSync(MIGRACION, "utf8");
 const PARCHES = [
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "titulo" TEXT',
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "foto" TEXT',
+  // Quien usa el consultorio pero no es cliente del centro. Nace en TRUE: todos los que ya están
+  // cargados facturan, que es lo que venía pasando hasta ahora.
+  'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "facturable" BOOLEAN NOT NULL DEFAULT true',
   // Los pedidos de "olvidé mi contraseña". Tabla nueva: se crea con IF NOT EXISTS igual que las
   // columnas, así una base ya cargada la suma sin perder nada.
   `CREATE TABLE IF NOT EXISTS "TokenClave" (

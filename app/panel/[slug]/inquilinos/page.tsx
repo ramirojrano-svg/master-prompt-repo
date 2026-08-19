@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { Buscador } from "./Buscador.tsx";
+import { Avatar } from "../Avatar.tsx";
 import { Cabecera } from "../Cabecera.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
@@ -44,7 +45,7 @@ export default async function InquilinosPage({
         : {}),
     },
     orderBy: [{ estado: "asc" }, { nombre: "asc" }],
-    select: { id: true, nombre: true, estado: true, pagador: true },
+    select: { id: true, nombre: true, estado: true, pagador: true, foto: true, facturable: true },
   });
   const deBaja = await prisma.inquilino.count({ where: { operadorId: actor.operadorId, estado: "baja" } });
 
@@ -57,7 +58,11 @@ export default async function InquilinosPage({
     const inquilinoId = String(formData.get("inquilinoId") ?? "");
     const nombre = formData.get("nombre");
     const pagador = formData.get("pagador");
-    const r = inquilinoId ? await editarInquilino(a, { nombre, pagador, inquilinoId }) : await crearInquilino(a, { nombre, pagador });
+    // La casilla no viaja cuando está destildada: ausente = no se le factura.
+    const facturable = formData.get("facturable") === "true";
+    const r = inquilinoId
+      ? await editarInquilino(a, { nombre, pagador, inquilinoId, facturable })
+      : await crearInquilino(a, { nombre, pagador, facturable });
     revalidatePath(`/panel/${slug}/inquilinos`);
     const qs = !r.ok ? `?error=${r.error}` : !r.data.ok ? `?error=${r.data.error}` : "?ok=1";
     redirect(`/panel/${slug}/inquilinos${qs}`);
@@ -104,15 +109,23 @@ export default async function InquilinosPage({
           {inquilinos.map((i) => (
             <tr key={i.id} style={{ borderBottom: "1px solid var(--borde)", opacity: i.estado === "baja" ? 0.6 : 1 }}>
               <td style={{ padding: "8px 4px" }}>
-                {/* El nombre ES el acceso a la ficha: es lo que uno toca cuando quiere ver a
-                    alguien, y tenerlo como texto muerto obligaba a buscar el camino en otra
-                    pantalla. */}
-                <Link href={`/panel/${slug}/inquilinos/${i.id}`} style={{ fontWeight: 500 }}>
-                  {i.nombre}
-                </Link>
-                {/* Quién abona se ve en la lista: es lo que hace falta saber al momento de
-                    facturar, y buscarlo abriendo cada ficha no sirve para eso. */}
-                {i.pagador && <span className="tenue" style={{ fontSize: 12 }}> · abona {i.pagador}</span>}
+                {/* La foto adelante del nombre: en una lista de 35 renglones iguales, la cara se
+                    reconoce sin leer. Quien no cargó ninguna muestra sus iniciales, así la columna
+                    no se desalinea ni parece que falte un dato. */}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                  <Avatar nombre={i.nombre} foto={i.foto} />
+                  <span>
+                    {/* El nombre ES el acceso a la ficha: es lo que uno toca cuando quiere ver a
+                        alguien, y tenerlo como texto muerto obligaba a buscar el camino en otra
+                        pantalla. */}
+                    <Link href={`/panel/${slug}/inquilinos/${i.id}`} style={{ fontWeight: 500 }}>
+                      {i.nombre}
+                    </Link>
+                    {/* Quién abona se ve en la lista: es lo que hace falta saber al momento de
+                        facturar, y buscarlo abriendo cada ficha no sirve para eso. */}
+                    {i.pagador && <span className="tenue" style={{ fontSize: 12 }}> · abona {i.pagador}</span>}
+                  </span>
+                </span>
               </td>
               <td style={{ padding: "8px 4px" }} className="tenue">{ETIQUETA[i.estado]}</td>
               <td style={{ padding: "8px 4px", textAlign: "right", whiteSpace: "nowrap" }}>
@@ -156,6 +169,25 @@ export default async function InquilinosPage({
         <p className="tenue" style={{ margin: "4px 0 0", fontSize: 12 }}>
           Solo para facturar y cobrar. La deuda sigue siendo de quien usó el consultorio: pasarla a
           otra cuenta descuadraría las dos.
+        </p>
+
+        {/* Quien usa el consultorio pero no es cliente del centro. NO es lo mismo que ponerle una
+            tarifa de $0: ese seguiría apareciendo en Negocio con una fila de ceros, ensuciando el
+            ranking y los promedios. Destildado, queda afuera de la facturación y del tablero.
+            Sus horas siguen en la agenda: el consultorio está ocupado igual. */}
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, fontWeight: 400 }}>
+          <input
+            type="checkbox"
+            name="facturable"
+            value="true"
+            defaultChecked={enEdicion ? enEdicion.facturable : true}
+            style={{ width: "auto", margin: 0 }}
+          />
+          Se le factura
+        </label>
+        <p className="tenue" style={{ margin: "4px 0 0", fontSize: 12 }}>
+          Destildalo para quien usa los consultorios pero no paga —un socio, vos mismo—. No se le
+          cobra, no suma a la facturación y no aparece en Negocio. Lo ya facturado no se toca.
         </p>
 
         {mensaje && <p className="error" style={{ marginTop: 12 }}>{mensaje}</p>}

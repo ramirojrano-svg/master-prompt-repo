@@ -15,6 +15,7 @@ import { moverOcupacion, type ResultadoMover } from "../reservas/mover.ts";
 import { cancelarOcupacion } from "../reservas/cancelar.ts";
 import { marcarNoShow, revertirNoShow } from "../reservas/no-show.ts";
 import { parseHorarios } from "../../dominio/motor/horarios.ts";
+import { yaEmpezo } from "../../dominio/motor/intervalos.ts";
 import { instanteDeHoraLocal } from "../../dominio/motor/zona.ts";
 import { PASO_DEFAULT, DURACION_MAX_MIN, DURACION_MIN_MIN } from "../../dominio/motor/limites.ts";
 import { ocurrenciasEnElHorizonte, REPETICIONES, type Repeticion } from "../../dominio/repeticion.ts";
@@ -270,6 +271,8 @@ export function mensajeDeMovimiento(codigo: string): string {
       return "Esa fecha está fuera del plazo que se puede agendar.";
     case "NO_ENCONTRADA":
       return "Ese turno ya no existe. Recargá la agenda.";
+    case "YA_EMPEZO":
+      return "Ese turno ya pasó: no se puede cancelar ni mover. Si hay un error, avisale al centro.";
     case "SIN_PERMISO":
       return "Tu rol no puede mover turnos de otros profesionales.";
     case "SIN_CAMBIOS":
@@ -294,6 +297,8 @@ export function mensajeDeTurno(codigo: string): string {
       return "El turno no está en un estado que permita esa marca.";
     case "NO_ENCONTRADA":
       return "Ese turno ya no existe. Recargá la agenda.";
+    case "YA_EMPEZO":
+      return "Ese turno ya pasó: no se puede cancelar ni mover. Si hay un error, avisale al centro.";
     case "SIN_PERMISO":
       return "Tu rol no puede modificar turnos de otros profesionales.";
     default:
@@ -358,11 +363,19 @@ async function cancelarPropia(actor: Actor, input: z.infer<typeof TurnoInput>, d
 
   const fila = await db.ocupacion.findFirst({
     where: { id: input.ocupacionId, operadorId: actor.operadorId },
-    select: { inquilinoId: true },
+    select: { inquilinoId: true, inicio: true },
   });
   // Mismo resultado para "no existe" y "no es tuyo": responder distinto convierte la pantalla en
   // un detector de turnos ajenos (§6.11).
   if (!fila || fila.inquilinoId !== inquilinoId) return { ok: false as const, error: "NO_ENCONTRADO" as const };
+
+  // Una hora que ya empezó no se cancela: no libera nada —la sala estuvo ocupada igual— y borraría
+  // de la cuenta algo que sí se usó. La pantalla ya no ofrece el botón, pero esconderlo no alcanza:
+  // una server action es un endpoint HTTP público al que se le puede pegar directo.
+  //
+  // El ADMINISTRADOR sí puede: necesita poder corregir una carga equivocada. Esto es solo el
+  // camino PROPIO, el del profesional sobre su turno.
+  if (yaEmpezo(fila.inicio)) return { ok: false as const, error: "YA_EMPEZO" as const };
 
   return cancelarOcupacion(input, { operadorId: actor.operadorId }, db);
 }
@@ -382,9 +395,11 @@ async function moverPropia(actor: Actor, input: z.infer<typeof MoverReservaInput
 
   const fila = await db.ocupacion.findFirst({
     where: { id: input.ocupacionId, operadorId: actor.operadorId },
-    select: { inquilinoId: true },
+    select: { inquilinoId: true, inicio: true },
   });
   if (!fila || fila.inquilinoId !== inquilinoId) return { ok: false as const, error: "NO_ENCONTRADO" as const };
+  // Misma regla que al cancelar: mover una hora que ya ocurrió es reescribir el pasado.
+  if (yaEmpezo(fila.inicio)) return { ok: false as const, error: "YA_EMPEZO" as const };
 
   return moverDesdePanel(actor, input, db);
 }

@@ -194,6 +194,13 @@ model Inquilino {
   titulo     String?
   foto       String?
 
+  /// ¿Se le factura? Falso para quien usa el consultorio pero no es un cliente del centro — un
+  /// socio, el propio dueño. No es lo mismo que una tarifa de $0: ese seguiría apareciendo en el
+  /// tablero de negocio con una fila de ceros, sumando cero y ocupando un renglón. Con esto queda
+  /// FUERA de la facturación y de los números del mes, que es lo que significa "no factura".
+  /// Sus horas siguen existiendo en la agenda: el consultorio está ocupado igual.
+  facturable Boolean @default(true)
+
   operador    Operador    @relation(fields: [operadorId], references: [id], onDelete: Cascade)
   ocupaciones Ocupacion[]
   usuario     UsuarioOperador?
