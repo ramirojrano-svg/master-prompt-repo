@@ -6,7 +6,7 @@
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { AnilloVolumen, BarrasVolumen } from "./Graficos.tsx";
+import { AnilloVolumen, BarrasVolumen, BarrasVolumenAgrupadas, SERIES } from "./Graficos.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { reporteMensual } from "../../../../src/servicios/reportes/mensual.ts";
@@ -64,12 +64,6 @@ export default async function ReportesPage({
   /** Un porcentaje que viaja en décimas de punto. 703 ⇒ "70,3%". */
   const pct = (d: number) => `${(d / 10).toFixed(1).replace(".", ",")}%`;
   const color = (c: bigint) => (c < 0n ? "var(--error)" : "var(--ok)");
-  const tope = (neg?.historia ?? []).reduce((max, m) => {
-    const alto = m.facturadoCent > m.gastosCent ? m.facturadoCent : m.gastosCent;
-    return alto > max ? alto : max;
-  }, 1n);
-  // El mínimo de 2% es para que un mes chico se vea, no para inventar volumen: un CERO va en cero.
-  const altura = (c: bigint) => (c <= 0n ? "0%" : `${Math.max(2, Number((c * 100n) / tope))}%`);
 
   const tarjetas = [
     { titulo: "Facturado en el mes", valor: plata(r.totales.facturadoCent), pie: `${r.totales.reservas} turnos · ${r.totales.profesionalesConActividad} profesionales` },
@@ -84,7 +78,7 @@ export default async function ReportesPage({
         <Link href={`/panel/${slug}`} style={{ display: "flex", alignItems: "center" }} aria-label="Volver a la agenda">
           <Logo alto={26} variante="compacto" />
         </Link>
-        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 500 }}>Métricas de {nombreDePeriodo(periodo)}</h1>
+        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 500 }}>Negocio · {nombreDePeriodo(periodo)}</h1>
         <nav style={{ display: "flex", gap: 2 }}>
           <Link className="nav-circ" href={`?periodo=${periodoAnterior(periodo)}`} aria-label="Mes anterior">
             ‹
@@ -157,26 +151,28 @@ export default async function ReportesPage({
 
           {/* ── La tendencia ──────────────────────────────────────────────────── */}
           <h2 style={{ marginTop: 26 }}>Los últimos seis meses</h2>
+          {/* Antes esto se dibujaba con divs y altos en porcentaje, y en la misma pantalla
+              convivían dos lenguajes visuales para decir lo mismo. Ahora usa el mismo gráfico
+              isométrico que el resto: la altura de la cara frontal codifica el valor y las barras
+              se comparan a ojo sin que el dibujo mienta. */}
           <div className="panel">
-            <div style={{ display: "flex", gap: 18, alignItems: "flex-end", height: 190, padding: "8px 0" }}>
-              {neg.historia.map((m) => (
-                <div key={m.periodo} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, height: "100%" }}>
-                  <div style={{ flex: 1, display: "flex", gap: 4, alignItems: "flex-end", width: "100%", justifyContent: "center" }}>
-                    {/* Facturado y gastos, lado a lado: la distancia entre las dos barras ES el
-                        resultado, y se lee de un vistazo sin hacer la resta. */}
-                    <span title={`Facturado ${plata(m.facturadoCent)}`} style={{ width: "38%", height: altura(m.facturadoCent), background: "var(--marca-500)", borderRadius: "4px 4px 0 0" }} />
-                    <span title={`Gastos ${plata(m.gastosCent)}`} style={{ width: "38%", height: altura(m.gastosCent), background: "var(--alerta)", borderRadius: "4px 4px 0 0", opacity: 0.75 }} />
-                  </div>
-                  <span className="tenue" style={{ fontSize: 11, whiteSpace: "nowrap" }}>{m.periodo.slice(5)}/{m.periodo.slice(2, 4)}</span>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: color(m.resultadoCent) }}>
-                    {m.resultadoCent === 0n ? "—" : plata(m.resultadoCent)}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <p className="tenue" style={{ margin: "10px 0 0", fontSize: 12, display: "flex", gap: 16 }}>
-              <span><span style={{ display: "inline-block", width: 10, height: 10, background: "var(--marca-500)", borderRadius: 2, marginRight: 6 }} />Facturado</span>
-              <span><span style={{ display: "inline-block", width: 10, height: 10, background: "var(--alerta)", opacity: 0.75, borderRadius: 2, marginRight: 6 }} />Gastos</span>
+            <BarrasVolumenAgrupadas
+              series={[
+                { nombre: "Facturado", color: SERIES[0]! },
+                { nombre: "Gastos", color: SERIES[5]! },
+              ]}
+              grupos={neg.historia.map((m) => ({
+                etiqueta: `${m.periodo.slice(5)}/${m.periodo.slice(2, 4)}`,
+                valores: [Number(m.facturadoCent), Number(m.gastosCent)],
+                textos: [plata(m.facturadoCent), plata(m.gastosCent)],
+                // Debajo de cada mes, el resultado: es la resta que si no hay que hacer a ojo.
+                pie: m.resultadoCent === 0n ? "—" : plata(m.resultadoCent),
+                pieColor: color(m.resultadoCent),
+              }))}
+            />
+            <p className="tenue" style={{ margin: "10px 0 0", fontSize: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <span><span style={{ display: "inline-block", width: 10, height: 10, background: SERIES[0], borderRadius: 2, marginRight: 6 }} />Facturado</span>
+              <span><span style={{ display: "inline-block", width: 10, height: 10, background: SERIES[5], borderRadius: 2, marginRight: 6 }} />Gastos</span>
               <span>Debajo de cada mes, el resultado.</span>
             </p>
           </div>

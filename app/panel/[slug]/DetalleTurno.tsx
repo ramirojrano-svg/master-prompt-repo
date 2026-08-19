@@ -51,6 +51,12 @@ export function DetalleTurno({
   // `serieId` solo existe en la proyección con identidad; para el resto no hay nada que preguntar.
   const esSerie = "serieId" in turno && turno.serieId != null;
 
+  // El precio por hora de este turno: el importe estampado, llevado a 60 minutos. Un turno de 4 h
+  // por $24.000 son $6.000 la hora. Se redondea hacia abajo al centavo, igual que `cotizar`, para
+  // no mostrar un peso que después no aparece en ninguna suma.
+  const importeCent = "importeCent" in turno ? turno.importeCent : null;
+  const valorHoraCent = importeCent != null && minutos > 0 ? (BigInt(importeCent) * 60n) / BigInt(minutos) : null;
+
   // Un turno cancelado o ya movido es historia: se muestra, no se opera.
   const vivo = estado === "confirmada" || estado === "no_show";
   const acciones = puedeEditar && vivo && !turno.esBloqueo;
@@ -89,6 +95,19 @@ export function DetalleTurno({
         <dd style={{ margin: 0 }}>{turno.salaNombre}</dd>
         <dt className="tenue">Estado</dt>
         <dd style={{ margin: 0 }}>{ROTULO[estado] ?? "Ocupado"}</dd>
+        {/* Cuánto sale la hora de ESTE turno. Sale del importe estampado en la reserva dividido su
+            duración, y no de volver a resolver la tarifa vigente: si el precio subió después, lo
+            que hay que poder ver acá es lo que se cobró, no lo que se cobraría hoy.
+
+            Aparece solo para quien ve plata. Eso no se decide acá: el importe llega en null en la
+            proyección de quien no puede verlo, así que el profesional que mira el turno del de al
+            lado no tiene el dato ni aunque abra el panel. */}
+        {valorHoraCent !== null && (
+          <>
+            <dt className="tenue">Valor hora</dt>
+            <dd style={{ margin: 0 }}>{formatearPesos(valorHoraCent, moneda)}</dd>
+          </>
+        )}
         {motivo && (
           <>
             <dt className="tenue">Motivo</dt>
@@ -143,7 +162,13 @@ export function DetalleTurno({
               {/* Si es parte de una serie hay que PREGUNTAR el alcance, como cualquier calendario:
                   sin la pregunta, "cancelar" o deja cincuenta turnos que nadie quiere, o se lleva
                   puestos los que ya pasaron. El default es el más chico —solo este—: el alcance
-                  amplio se elige a propósito, nunca se asume. */}
+                  amplio se elige a propósito, nunca se asume.
+
+                  "Todos los de la serie" no se ofrece. Alcanzaba con un click de más para borrar
+                  también los turnos YA DADOS —los del mes pasado, que están facturados y cobrados—
+                  y eso no es cancelar, es reescribir el historial. Lo que de verdad se quiere al
+                  dar de baja una serie es "de acá en adelante", que es la opción del medio. El
+                  servicio sigue aceptando el alcance completo: se saca del panel, no del motor. */}
               {esSerie && (
                 <fieldset style={{ border: "none", padding: 0, margin: "4px 0 12px" }}>
                   <legend className="tenue" style={{ fontSize: 12, padding: 0, marginBottom: 6 }}>
@@ -152,7 +177,6 @@ export function DetalleTurno({
                   {[
                     { v: "solo", t: "Solo este turno" },
                     { v: "siguientes", t: "Este y los siguientes" },
-                    { v: "serie", t: "Todos los de la serie" },
                   ].map((o, i) => (
                     <label key={o.v} htmlFor={`alcance-${o.v}`} style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 4px", fontSize: 13, color: "var(--texto)", fontWeight: 400 }}>
                       <input id={`alcance-${o.v}`} type="radio" name="alcance" value={o.v} defaultChecked={i === 0} style={{ width: "auto", margin: 0 }} />

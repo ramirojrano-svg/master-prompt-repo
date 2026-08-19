@@ -151,3 +151,101 @@ export function AnilloVolumen({ datos, alto = 240 }: { datos: Dato[]; alto?: num
     </div>
   );
 }
+
+export type Grupo = {
+  etiqueta: string;
+  /** Un valor por serie, en el mismo orden que `series`. */
+  valores: number[];
+  /** Los mismos valores ya formateados, para el globito. */
+  textos: string[];
+  /** Línea al pie de la columna (acá: el resultado del mes). */
+  pie?: string;
+  pieColor?: string;
+};
+
+/**
+ * Barras AGRUPADAS con el mismo volumen isométrico que `BarrasVolumen`: varias series por
+ * categoría, una al lado de la otra.
+ *
+ * Existe porque el gráfico de los seis meses estaba dibujado aparte con divs y bordes CSS, y en la
+ * misma pantalla que estos convivían dos lenguajes visuales distintos para decir lo mismo. Ahora la
+ * regla del 3D —extrusión pareja, sin fuga— vale para todos los gráficos, que es lo que permite
+ * comparar alturas a ojo sin que el dibujo mienta.
+ *
+ * La separación DENTRO del grupo es mayor que la profundidad de la extrusión a propósito: si fuera
+ * menor, el volumen de una barra taparía a su vecina y la de la derecha se vería más baja de lo que
+ * es.
+ */
+export function BarrasVolumenAgrupadas({
+  grupos,
+  series,
+  alto = 190,
+}: {
+  grupos: Grupo[];
+  /** Nombre y color de cada serie. El color se pasa explícito: acá el orden no es "el i-ésimo dato"
+   *  sino un significado fijo (facturado / gastos) que no puede cambiar según cuántos meses haya. */
+  series: { nombre: string; color: string }[];
+  alto?: number;
+}) {
+  if (grupos.length === 0 || series.length === 0) return null;
+
+  const P = 12; // profundidad de la extrusión
+  const ANCHO_BARRA = 26;
+  const HUECO = 14; // dentro del grupo; > P para que un volumen no tape al de al lado
+  const SEPARACION = 26; // entre grupos
+  const MARGEN_SUP = 26;
+  const MARGEN_INF = 44; // dos renglones al pie: el mes y el resultado
+  const anchoGrupo = series.length * ANCHO_BARRA + (series.length - 1) * HUECO;
+  const w = grupos.length * (anchoGrupo + SEPARACION) + SEPARACION + P;
+  const h = alto + MARGEN_SUP + MARGEN_INF;
+  const base = alto + MARGEN_SUP;
+  // El máximo se toma sobre TODAS las series juntas: con una escala por serie, gastos y facturado
+  // se dibujarían con la misma altura aunque uno sea el doble del otro.
+  const max = Math.max(...grupos.flatMap((g) => g.valores), 1);
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} role="img" style={{ maxWidth: "100%", height: "auto", display: "block", margin: "0 auto" }}>
+        <path d={`M0 ${base} L${w - P} ${base} L${w} ${base - P} L${P} ${base - P} Z`} fill="var(--panel-2)" />
+        <line x1={0} y1={base} x2={w - P} y2={base} stroke="var(--borde-fuerte)" strokeWidth={1} />
+
+        {grupos.map((g, gi) => {
+          const x0 = SEPARACION + gi * (anchoGrupo + SEPARACION);
+          return (
+            <g key={g.etiqueta}>
+              {series.map((s, si) => {
+                const valor = g.valores[si] ?? 0;
+                // Altura 0 para el valor 0, no un mínimo de 2px: un mes sin gastos tiene que
+                // verse vacío, no con una rayita que se confunde con "poquito".
+                const altura = valor <= 0 ? 0 : Math.max(2, (valor / max) * (alto - 8));
+                const x = x0 + si * (ANCHO_BARRA + HUECO);
+                const y = base - altura;
+                if (altura === 0) return null;
+                return (
+                  <g key={s.nombre}>
+                    <title>{`${s.nombre} ${g.etiqueta}: ${g.textos[si] ?? ""}`}</title>
+                    <path d={`M${x} ${y} L${x + P} ${y - P} L${x + ANCHO_BARRA + P} ${y - P} L${x + ANCHO_BARRA} ${y} Z`} fill={tono(s.color, 0.3)} />
+                    <path
+                      d={`M${x + ANCHO_BARRA} ${y} L${x + ANCHO_BARRA + P} ${y - P} L${x + ANCHO_BARRA + P} ${base - P} L${x + ANCHO_BARRA} ${base} Z`}
+                      fill={tono(s.color, -0.28)}
+                    />
+                    <rect x={x} y={y} width={ANCHO_BARRA} height={altura} fill={s.color} />
+                  </g>
+                );
+              })}
+
+              <text x={x0 + anchoGrupo / 2} y={base + 17} textAnchor="middle" fontSize={11} fill="var(--tenue)">
+                {g.etiqueta}
+              </text>
+              {g.pie && (
+                <text x={x0 + anchoGrupo / 2} y={base + 33} textAnchor="middle" fontSize={11} fontWeight={600} fill={g.pieColor ?? "var(--texto)"}>
+                  {g.pie}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}

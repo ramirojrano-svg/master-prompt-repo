@@ -96,9 +96,9 @@ export function MenuLateral({
     { id: "salas", href: `${raiz}/salas`, texto: "Consultorios", icono: <IconoConsultorio />, mostrar: puede(rol, "sala.administrar") },
     { id: "inquilinos", href: `${raiz}/inquilinos`, texto: "Profesionales", icono: <IconoProfesional />, mostrar: puede(rol, "inquilino.administrar") },
     { id: "tarifas", href: `${raiz}/tarifas`, texto: "Precios", icono: <IconoPrecio />, mostrar: puede(rol, "tarifa.administrar") },
-    // Gastos va ANTES de Métricas: se carga durante el mes, y Métricas es la lectura que lo usa.
+    // Gastos va ANTES de Negocio: se carga durante el mes, y Negocio es la lectura que lo usa.
     { id: "gastos", href: `${raiz}/gastos`, texto: "Gastos", icono: <IconoGasto />, mostrar: puede(rol, "finanzas.ver.agregada") },
-    { id: "reportes", href: `${raiz}/reportes`, texto: "Métricas", icono: <IconoMetrica />, mostrar: puede(rol, "finanzas.ver.agregada") },
+    { id: "reportes", href: `${raiz}/reportes`, texto: "Negocio", icono: <IconoMetrica />, mostrar: puede(rol, "finanzas.ver.agregada") },
     { id: "mis-reservas", href: `${raiz}/mis-reservas`, texto: "Mis reservas", icono: <IconoLista />, mostrar: esProfesional },
   ];
 
