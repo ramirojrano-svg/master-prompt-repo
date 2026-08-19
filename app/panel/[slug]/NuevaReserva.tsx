@@ -13,6 +13,7 @@ export type OpcionInquilino = { id: string; nombre: string };
 export function NuevaReserva({
   salas,
   inquilinos,
+  permiteSinSala,
   fecha,
   accion,
   error,
@@ -25,6 +26,10 @@ export function NuevaReserva({
 }: {
   salas: OpcionSala[];
   inquilinos: OpcionInquilino[];
+  /** ¿Ofrecer "Sin consultorio"? Es una función de la administración: el profesional que necesita
+   *  esas horas las pide y se las cargan. Va como permiso propio y no colgado de que la lista de
+   *  profesionales venga vacía — esa era una coincidencia, no la regla. */
+  permiteSinSala: boolean;
   fecha: string;
   accion: (formData: FormData) => Promise<void>;
   /** Cuando se llegó tocando una celda de la grilla: el consultorio y la hora de esa celda. */
@@ -65,19 +70,19 @@ export function NuevaReserva({
         Consultorio
       </label>
       {/* El consultorio de la celda que se tocó; si se llegó por el botón "+", el primero.
-          "Sin consultorio" son horas que se facturan igual pero no ocupan el espacio: el
-          profesional que ese día atiende afuera. Sirve para que su hora no bloquee una sala que en
-          realidad está libre y se le puede alquilar a otro.
-          Solo aparece cuando hay lista de profesionales, o sea para la administración. Y no es la
-          pantalla la que lo impide: el esquema de la acción propia exige sala, así que un POST
-          directo del profesional tampoco pasa. */}
-      <select id="salaId" name="salaId" required={inquilinos.length === 0} defaultValue={salaInicial ?? salas[0]?.id ?? ""}>
+          "Sin consultorio" son horas que se facturan igual pero no ocupan el espacio. Es una
+          herramienta de la ADMINISTRACIÓN: el profesional que necesita esas horas se las pide al
+          dueño del centro y se las cargan desde el panel.
+          Y no es la pantalla la que lo impide: el esquema de la acción propia exige sala, así que
+          un POST directo del profesional tampoco pasa. Esconder la opción es cortesía; el que
+          manda es el servidor. */}
+      <select id="salaId" name="salaId" required={!permiteSinSala} defaultValue={salaInicial ?? salas[0]?.id ?? ""}>
         {salas.map((s) => (
           <option key={s.id} value={s.id}>
             {s.nombre}
           </option>
         ))}
-        {inquilinos.length > 0 && <option value="">Sin consultorio (no ocupa sala)</option>}
+        {permiteSinSala && <option value="">Sin consultorio (no ocupa sala)</option>}
       </select>
 
       <Horario horaInicial={horaInicial} aperturaMin={aperturaMin} cierreMin={cierreMin} />

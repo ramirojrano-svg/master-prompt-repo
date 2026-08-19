@@ -520,6 +520,9 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
               salas={agenda.salas.filter((s) => s.activa).map((s) => ({ id: s.id, nombre: s.nombre }))}
               // Vacío para el profesional: no elige de quién es el turno, es suyo.
               inquilinos={puedeCargar ? inquilinos : []}
+              // Agendar sin consultorio es de la administración: el profesional que necesita esas
+              // horas se las pide al dueño del centro. Mismo permiso que crear el turno de otro.
+              permiteSinSala={puedeCargar}
               fecha={agenda.fecha}
               // Lo que dijo la celda que se tocó. Se valida contra las salas visibles: un `sala=`
               // escrito a mano en la URL no tiene por qué existir, y un select con un valor que no

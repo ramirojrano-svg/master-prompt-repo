@@ -15,6 +15,7 @@ import { diasDeVista, tituloDeVista, type Vista } from "../../dominio/calendario
 import { proyectarReserva, type ReservaDTO } from "../../dominio/proyeccion.ts";
 import { LOOKBACK_MIN } from "../../dominio/motor/limites.ts";
 import type { Actor } from "../../lib/actor.ts";
+import { puede } from "../../lib/permisos.ts";
 
 /** Id de la columna sintética donde caen las reservas que no usan consultorio. */
 export const SIN_SALA = "sin-sala";
@@ -111,13 +112,25 @@ export async function cargarAgenda(
     orderBy: { inicio: "asc" },
   });
 
-  const conActividad = new Set(filasOcup.map((f) => f.salaId).filter((s): s is string => s !== null));
+  // Las reservas SIN CONSULTORIO son una herramienta de la ADMINISTRACIÓN: se agendan a pedido,
+  // hablando con el dueño del centro, y no son algo que el profesional maneje. Así que para quien
+  // no puede crearlas, directamente no existen — se sacan acá, en el origen, y no en la pantalla.
+  //
+  // El filtro se cuelga del MISMO permiso que habilita la función (`reserva.crear.ajena`): quien
+  // no la puede usar, no la ve. Dos reglas separadas —una para crear y otra para mirar— se
+  // desincronizan el día que alguien toca una sola.
+  //
+  // Ojo con el `tipo`: un BLOQUEO global también viene sin sala, y ese sí lo tiene que ver todo el
+  // mundo, porque significa que el centro cerró.
+  const verSinSala = puede(a.actor.rol, "reserva.crear.ajena");
+  const filasVisibles = verSinSala ? filasOcup : filasOcup.filter((f) => !(f.salaId === null && f.tipo === "reserva"));
 
-  // Las reservas SIN CONSULTORIO se facturan pero no usan el espacio (el profesional que ese día
-  // atiende afuera). Necesitan una columna igual: sin ella serían invisibles en la agenda y
-  // "no aparece" es indistinguible de "no se creó". La columna es SINTÉTICA —no hay una fila
-  // `Sala` detrás— y solo se dibuja los días en que hay algo, para no ocupar ancho por las dudas.
-  const haySinSala = filasOcup.some((f) => f.salaId === null && f.tipo === "reserva");
+  const conActividad = new Set(filasVisibles.map((f) => f.salaId).filter((s): s is string => s !== null));
+
+  // La columna de las reservas sin consultorio. Sin ella serían invisibles en la agenda, y
+  // "no aparece" es indistinguible de "no se creó". Es SINTÉTICA —no hay una fila `Sala` detrás—
+  // y solo se dibuja los días en que hay algo, para no ocupar ancho por las dudas.
+  const haySinSala = filasVisibles.some((f) => f.salaId === null && f.tipo === "reserva");
   const salas: SalaVista[] = [
     ...salasTodas
       .filter((s) => s.activa || conActividad.has(s.id))
@@ -130,7 +143,7 @@ export async function cargarAgenda(
   const pedidas = a.salas?.filter((id) => salas.some((s) => s.id === id)) ?? null;
   const salasVisibles = pedidas && pedidas.length > 0 ? pedidas : salas.map((s) => s.id);
   const visible = new Set(salasVisibles);
-  const enVista = filasOcup.filter((f) => f.salaId === null || visible.has(f.salaId));
+  const enVista = filasVisibles.filter((f) => f.salaId === null || visible.has(f.salaId));
 
   // Apertura de CADA día del rango (no de una semana en abstracto): es el denominador del KPI.
   const aperturas: { desdeMin: number; hastaMin: number }[] = [];

@@ -16,6 +16,7 @@ import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
 import { crearReservaAjenaCon, crearReservaPropiaCon } from "../../src/servicios/agenda/acciones.ts";
+import { cargarDia, SIN_SALA } from "../../src/servicios/agenda/dia.ts";
 import { prisma } from "../../src/db/prisma.ts";
 import type { Actor } from "../../src/lib/actor.ts";
 import { fechaEnZona, sumarDiasLocal, diaSemanaDeFecha } from "../../src/dominio/motor/zona.ts";
@@ -42,7 +43,7 @@ function proximoMiercoles(): string {
 
 const MIERCOLES = proximoMiercoles();
 /** 10 a 13, el horario del caso real. */
-const SIN_SALA = { salaId: "", fecha: MIERCOLES, hora: "10:00", duracionMin: 180, inquilinoId: "in1" };
+const TURNO_SIN_SALA = { salaId: "", fecha: MIERCOLES, hora: "10:00", duracionMin: 180, inquilinoId: "in1" };
 
 before(async () => {
   await reiniciarEsquema(pgPool);
@@ -64,7 +65,7 @@ after(async () => {
 });
 
 test("un turno suelto sin consultorio se crea, aunque ese día TODOS los consultorios estén cerrados", async () => {
-  const r = await ajena(owner, SIN_SALA);
+  const r = await ajena(owner, TURNO_SIN_SALA);
   assert.ok(r.ok, `el envoltorio rechazó: ${r.ok ? "" : r.error}`);
   assert.ok(r.data.ok, `no se creó: ${r.data.ok ? "" : r.data.error}`);
 
@@ -74,7 +75,7 @@ test("un turno suelto sin consultorio se crea, aunque ese día TODOS los consult
 });
 
 test("LA REGRESIÓN: la serie semanal de los miércoles se crea entera, sin ninguna fecha afuera", async () => {
-  const r = await ajena(owner, { ...SIN_SALA, repeticion: "semanal" });
+  const r = await ajena(owner, { ...TURNO_SIN_SALA, repeticion: "semanal" });
   assert.ok(r.ok && r.data.ok, "la serie tiene que crearse");
   if (!r.ok || !r.data.ok) return;
 
@@ -87,7 +88,7 @@ test("LA REGRESIÓN: la serie semanal de los miércoles se crea entera, sin ning
 });
 
 test("el consultorio queda LIBRE: otro profesional puede alquilarlo a la misma hora", async () => {
-  const a = await ajena(owner, SIN_SALA);
+  const a = await ajena(owner, TURNO_SIN_SALA);
   assert.ok(a.ok && a.data.ok);
 
   // Lunes, que es cuando la sala abre, para que el único motivo posible de rechazo sea el choque.
@@ -104,7 +105,7 @@ test("se cobra igual que si hubiera usado el consultorio", async () => {
      VALUES('t1','op1',NULL,NULL,'General',800000, now() - interval '1 day')`,
   );
 
-  const r = await ajena(owner, SIN_SALA);
+  const r = await ajena(owner, TURNO_SIN_SALA);
   assert.ok(r.ok && r.data.ok);
 
   const fila = await db.ocupacion.findFirst({ where: { operadorId: "op1" }, select: { importeCent: true, precioHoraCent: true } });
@@ -128,11 +129,58 @@ test("sin consultorio el profesional sigue sin poder estar en dos lugares a la v
   // de rechazo. En miércoles el segundo turno daría FUERA_DE_HORARIO —correcto, pero por la sala—
   // y el test no estaría probando lo que dice.
   const lunes = sumarDiasLocal(MIERCOLES, 5)!;
-  const a = await ajena(owner, { ...SIN_SALA, fecha: lunes });
+  const a = await ajena(owner, { ...TURNO_SIN_SALA, fecha: lunes });
   assert.ok(a.ok && a.data.ok, "el de 10 a 13 sin consultorio tiene que entrar");
 
   // Misma persona, mismo rango, ahora pidiendo un consultorio: tiene que chocar.
   const b = await ajena(owner, { salaId: "sa1", fecha: lunes, hora: "11:00", duracionMin: 60, inquilinoId: "in1" });
   assert.ok(b.ok && !b.data.ok);
   if (b.ok && !b.data.ok) assert.equal(b.data.error, "SOLAPA_INQUILINO");
+});
+
+// ── Quién la ve ────────────────────────────────────────────────────────────
+// Agendar sin consultorio es una herramienta de la ADMINISTRACIÓN: el profesional que necesita
+// esas horas se las pide al dueño del centro. Si no la puede usar, tampoco tiene por qué verla.
+
+test("el profesional NO ve la columna Sin consultorio, ni siquiera si el turno es suyo", async () => {
+  const r = await ajena(owner, TURNO_SIN_SALA);
+  assert.ok(r.ok && r.data.ok);
+
+  const suya = await cargarDia({ actor: profesional, fecha: MIERCOLES }, db);
+  assert.ok(suya, "la agenda del día tiene que cargar");
+  assert.ok(!suya.salas.some((x) => x.id === SIN_SALA), "la columna no puede aparecer");
+  assert.equal(suya.reservas.length, 0, "y el turno tampoco: para él esas horas no existen en la agenda");
+});
+
+test("el administrador SÍ la ve: es el control del test anterior", async () => {
+  const r = await ajena(owner, TURNO_SIN_SALA);
+  assert.ok(r.ok && r.data.ok);
+
+  const admin = await cargarDia({ actor: owner, fecha: MIERCOLES }, db);
+  assert.ok(admin, "la agenda del día tiene que cargar");
+  assert.ok(admin.salas.some((x) => x.id === SIN_SALA), "el admin tiene que verla");
+  assert.equal(admin.reservas.length, 1);
+});
+
+test("un BLOQUEO global sigue viéndose: también viene sin sala, pero significa que el centro cerró", async () => {
+  // El filtro mira el tipo, no solo la ausencia de sala. Si mirara solo la sala, esconderle al
+  // profesional que el centro está cerrado lo dejaría creyendo que puede reservar.
+  await pgPool.query(
+    `INSERT INTO "Ocupacion"("id","operadorId","sedeId","salaId","inquilinoId","tipo","estado","inicio","fin","tzSede")
+     VALUES('bloq','op1',NULL,NULL,NULL,'bloqueo','confirmada',$1,$2,$3)`,
+    [
+      new Date(`${MIERCOLES}T13:00:00.000Z`),
+      new Date(`${MIERCOLES}T15:00:00.000Z`),
+      TZ_SEDE,
+    ],
+  );
+
+  const suya = await cargarDia({ actor: profesional, fecha: MIERCOLES }, db);
+  assert.ok(suya, "la agenda del día tiene que cargar");
+  // Llega, y es lo único que llega: la reserva sin consultorio quedó afuera, el cierre no.
+  assert.equal(suya.reservas.length, 1, "el bloqueo global tiene que llegarle igual");
+  assert.equal(suya.reservas[0]!.id, "bloq");
+  // `esBloqueo` viene en false y está bien: sale de la proyección, y al profesional no se le
+  // cuenta QUÉ es lo que ocupa una franja ajena. Ve que no está libre, que es lo que necesita.
+  assert.equal(suya.reservas[0]!.titulo, "Ocupado");
 });
