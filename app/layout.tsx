@@ -5,6 +5,20 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "EMOAPP — gestión de alquiler de consultorios",
   description: "Agenda, inquilinos y cuenta corriente de un centro de consultorios.",
+  // iOS NO lee el `display: standalone` del manifiesto: tiene su propio juego de etiquetas, y sin
+  // ellas el acceso directo del iPhone abre Safari con la barra de direcciones a la vista. Con
+  // esto abre en pantalla completa, igual que en Android.
+  appleWebApp: {
+    capable: true,
+    title: "EMOAPP",
+    // `default` deja la barra de estado con fondo claro, que es el de la app. `black-translucent`
+    // la superpone al contenido y taparía la barra superior del panel.
+    statusBarStyle: "default",
+  },
+  // Next emite `mobile-web-app-capable`, que es el estándar de hoy. Los iPhone anteriores a
+  // iOS 16.4 solo entienden la etiqueta vieja de Apple, y sin ella abren con la barra de Safari a
+  // la vista. Cuesta una línea y todavía hay teléfonos así en uso.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 /**
