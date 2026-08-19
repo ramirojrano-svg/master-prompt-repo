@@ -864,19 +864,20 @@ tfoot td {
     font-size: 13px;
   }
 
-  /* El botón de crear estaba abajo a la IZQUIERDA, que en un teléfono es justo donde ahora corre
-     el riel del menú: se pisaban. Pasa a la derecha, que además es donde cae el pulgar. */
+  /* El botón de crear va abajo a la IZQUIERDA, igual que en la computadora: es donde se lo busca.
+     No pegado al borde, sino justo a la derecha del riel del menú — encima taparía
+     "Configuración", que es la última fila de ese riel. */
   .crear-flotante {
-    left: auto;
-    right: 14px;
+    left: calc(64px + 12px);
+    right: auto;
     bottom: max(14px, env(safe-area-inset-bottom));
   }
-  /* Y el formulario se abre hacia arriba pegado a la derecha, ocupando el ancho útil que queda
-     entre el riel y el borde. Anclado a la izquierda del botón se salía de la pantalla. */
+  /* El formulario se abre hacia arriba y anclado a la izquierda del botón, usando el ancho útil
+     que queda entre el riel y el borde derecho. */
   .crear-flotante > .globo {
-    left: auto;
-    right: 0;
-    width: calc(100vw - 64px - 28px);
+    left: 0;
+    right: auto;
+    width: calc(100vw - 64px - 24px);
     max-height: calc(100dvh - var(--barra) - 120px);
   }
 }
