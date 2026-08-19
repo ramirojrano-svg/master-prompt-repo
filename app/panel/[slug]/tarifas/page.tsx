@@ -8,12 +8,13 @@ import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { Cabecera } from "../Cabecera.tsx";
 import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
+import { horasYMinutos } from "../../../../src/dominio/reporte.ts";
 import { abonosVigentes, cobrarAbonosDelMes, ponerAbonoMensual } from "../../../../src/servicios/config/abonos.ts";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { cerrarTarifa, ponerTarifa, ponerTarifasEnLote, tarifasVigentes } from "../../../../src/servicios/config/tarifas.ts";
-import { recotizarPendientes, reservasSinPrecio } from "../../../../src/servicios/plata/recotizar.ts";
+import { pendientesPorProfesional, recotizarPendientes, reservasSinPrecio } from "../../../../src/servicios/plata/recotizar.ts";
 import { FormPrecio } from "./FormPrecio.tsx";
 import { BotonEnviar } from "../BotonEnviar.tsx";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
@@ -23,7 +24,7 @@ export default async function TarifasPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string; ok?: string; cobrados?: string; repetidos?: string; cotizadas?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; cobrados?: string; repetidos?: string; cotizadas?: string; restantes?: string }>;
 }) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -65,6 +66,9 @@ export default async function TarifasPage({
   // Reservas que nacieron antes de que hubiera precios y quedaron sin importe. Es plata que no
   // se está cobrando, y sin este número nadie se entera: en la agenda se ven normales.
   const sinPrecio = await reservasSinPrecio(actor.operadorId);
+  // A quién le corresponden y con qué precio van a entrar. Se calcula solo si hay algo pendiente:
+  // en el caso normal —cero— no se paga ninguna consulta de más.
+  const pendientes = sinPrecio > 0 ? await pendientesPorProfesional(actor.operadorId) : [];
   const plata = (c: bigint) => formatearPesos(c, operador.moneda);
 
 
@@ -109,7 +113,9 @@ export default async function TarifasPage({
     if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
     const r = await recotizarPendientes(a, {});
     revalidatePath(`/panel/${slug}/tarifas`);
-    redirect(`/panel/${slug}/tarifas${r.ok ? `?cotizadas=${r.data.cotizadas}` : `?error=${r.error}`}`);
+    redirect(
+      `/panel/${slug}/tarifas${r.ok ? `?cotizadas=${r.data.cotizadas}&restantes=${r.data.restantes}` : `?error=${r.error}`}`,
+    );
   }
 
   async function guardarAbono(formData: FormData) {
@@ -224,16 +230,68 @@ export default async function TarifasPage({
           <p className="tenue" style={{ margin: "6px 0 0", fontSize: 13 }}>
             No toca las que ya tienen importe: un precio estampado no se reescribe.
           </p>
+
+          {/* A QUIÉNES corresponden, y con qué precio van a entrar. Un botón que factura 1421
+              reservas de un saque sin decir a quién le pega no se puede revisar antes de
+              apretarlo: acá se ve que cada uno entra con SU valor hora, o que a alguno le falta
+              la tarifa y por eso no va a entrar. */}
+          <div style={{ overflowX: "auto", margin: "14px 0 0" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Profesional</th>
+                  <th className="num">Reservas</th>
+                  <th className="num">Horas</th>
+                  <th className="num">Valor hora</th>
+                  <th className="num">Suma</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendientes.map((p) => (
+                  <tr key={p.inquilinoId}>
+                    <td>{p.nombre}</td>
+                    <td className="num">{p.reservas}</td>
+                    <td className="num">{horasYMinutos(p.minutos)}</td>
+                    <td className="num">
+                      {p.precioHoraCent === null ? (
+                        <span style={{ color: "var(--error)" }}>sin tarifa</span>
+                      ) : (
+                        plata(p.precioHoraCent)
+                      )}
+                    </td>
+                    <td className="num">{p.precioHoraCent === null ? "—" : plata(p.importeCent)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {pendientes.some((p) => p.precioHoraCent === null) && (
+            <p className="tenue" style={{ margin: "10px 0 0", fontSize: 13 }}>
+              A los que dicen <b>sin tarifa</b> no se les va a poder poner precio: cargales primero
+              el valor hora acá abajo y volvé a apretar.
+            </p>
+          )}
+
           <p style={{ marginTop: 14, marginBottom: 0 }}>
             <BotonEnviar enviando="Poniendo precios…">Ponerles el precio vigente</BotonEnviar>
           </p>
         </form>
       )}
       {sp.cotizadas && (
-        <p className="aviso-ok" style={{ marginTop: 20 }}>
-          {sp.cotizadas === "0"
+        <p className={sp.restantes && sp.restantes !== "0" ? "aviso-error" : "aviso-ok"} style={{ marginTop: 20 }}>
+          {sp.cotizadas === "0" && (!sp.restantes || sp.restantes === "0")
             ? "No se pudo poner precio a ninguna: falta cargar la tarifa que les corresponde."
             : `${sp.cotizadas} ${Number(sp.cotizadas) === 1 ? "reserva quedó facturada" : "reservas quedaron facturadas"}.`}
+          {/* Con muchas pendientes el trabajo no entra en el tiempo de una función, así que se
+              hace por tandas. Decir cuántas faltan es lo que convierte un corte silencioso en un
+              paso más: lo hecho está hecho y volver a apretar sigue donde quedó. */}
+          {sp.restantes && sp.restantes !== "0" && (
+            <span style={{ display: "block", fontWeight: 400, marginTop: 4 }}>
+              Quedan {sp.restantes} por hacer: eran muchas para una sola pasada. Apretá el botón de
+              nuevo para seguir — nada se cobra dos veces.
+            </span>
+          )}
         </p>
       )}
 

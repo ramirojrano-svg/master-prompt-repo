@@ -32,6 +32,31 @@ export type ResultadoRecotizar = {
   /** Cuántas siguen sin precio porque tampoco hay tarifa que les aplique. */
   sinTarifa: number;
   totalCent: bigint;
+  /** Cuántas quedaron sin tocar porque se acabó el tiempo. Se sigue apretando el botón. */
+  restantes: number;
+};
+
+/** Cuántas reservas se resuelven por transacción. Ni una (1421 idas y vueltas a una base remota
+ *  no entran en el tiempo de una función) ni todas (una transacción gigante tampoco). */
+const LOTE = 50;
+
+/**
+ * Cuánto se trabaja antes de devolver el control. Una función de Vercel se corta a los 10 segundos
+ * y lo que estaba a mitad de camino se pierde SIN decir nada: la pantalla queda con el botón
+ * girando para siempre. Es mejor cortar solo, contar cuánto se hizo y cuánto falta.
+ */
+const PRESUPUESTO_MS = 7_000;
+
+/** A quién le corresponden las reservas sin precio, y a cuánto saldría ponérselo. Contesta la
+ *  pregunta que se hace cualquiera antes de apretar un botón que toca plata: ¿a quiénes afecta? */
+export type PendientePorProfesional = {
+  inquilinoId: string;
+  nombre: string;
+  reservas: number;
+  minutos: number;
+  /** El precio por hora que se les va a aplicar, o null si no hay ninguna tarifa para esa persona. */
+  precioHoraCent: bigint | null;
+  importeCent: bigint;
 };
 
 /** Cuántas reservas están esperando un precio. Para poder ofrecerlo solo cuando hace falta. */
@@ -39,6 +64,58 @@ export async function reservasSinPrecio(operadorId: string, db: PrismaClient = p
   return db.ocupacion.count({
     where: { operadorId, tipo: TipoOcupacion.reserva, estado: { in: VIVOS }, importeCent: null, inquilinoId: { not: null } },
   });
+}
+
+/**
+ * El desglose: a quién le corresponden esas reservas y qué precio se le va a aplicar a cada uno.
+ *
+ * Un botón que dice "hay 1421 reservas sin precio" y las factura de una no da forma de revisar
+ * nada antes de apretarlo. Con el desglose se ve que a Mariano le van a entrar sus horas a $7.500
+ * y a Patricia a $7.000 —o que a alguno no le va a entrar ninguna porque le falta la tarifa—
+ * ANTES de tocar la cuenta corriente de nadie.
+ */
+export async function pendientesPorProfesional(
+  operadorId: string,
+  db: PrismaClient = prisma,
+): Promise<PendientePorProfesional[]> {
+  const filas = await db.ocupacion.findMany({
+    where: { operadorId, tipo: TipoOcupacion.reserva, estado: { in: VIVOS }, importeCent: null, inquilinoId: { not: null } },
+    select: { salaId: true, inquilinoId: true, inicio: true, fin: true, inquilino: { select: { nombre: true } } },
+  });
+  if (filas.length === 0) return [];
+
+  const ahora = new Date();
+  const tarifas = await db.tarifa.findMany({
+    where: { operadorId, vigenteDesde: { lte: ahora }, OR: [{ vigenteHasta: null }, { vigenteHasta: { gt: ahora } }] },
+    select: { id: true, salaId: true, inquilinoId: true, precioHoraCent: true, vigenteDesde: true, vigenteHasta: true },
+  });
+
+  const porId = new Map<string, PendientePorProfesional>();
+  for (const f of filas) {
+    const id = f.inquilinoId!;
+    const minutos = Math.round((f.fin.getTime() - f.inicio.getTime()) / 60_000);
+    // El precio se resuelve con la MISMA función que usa el botón: si acá dijera una cosa y el
+    // botón hiciera otra, el desglose sería peor que no tenerlo.
+    const cot = cotizar(resolverTarifa(tarifas, { salaId: f.salaId ?? "", inquilinoId: id, ahora }), minutos);
+
+    const acc = porId.get(id) ?? {
+      inquilinoId: id,
+      nombre: f.inquilino?.nombre ?? "—",
+      reservas: 0,
+      minutos: 0,
+      precioHoraCent: null as bigint | null,
+      importeCent: 0n,
+    };
+    acc.reservas++;
+    acc.minutos += minutos;
+    acc.importeCent += cot.importeCent;
+    // Se guarda el precio por hora que se vio. Si una persona tuviera dos (por sala), queda el
+    // primero; el importe de la fila sigue siendo la suma exacta, que es el número que importa.
+    if (acc.precioHoraCent === null && cot.precioHoraCent > 0n) acc.precioHoraCent = cot.precioHoraCent;
+    porId.set(id, acc);
+  }
+
+  return [...porId.values()].sort((a, b) => b.reservas - a.reservas);
 }
 
 async function recotizar(actor: Actor, _input: unknown, db: PrismaClient): Promise<ResultadoRecotizar> {
@@ -49,7 +126,7 @@ async function recotizar(actor: Actor, _input: unknown, db: PrismaClient): Promi
     select: { id: true, salaId: true, inquilinoId: true, inicio: true, fin: true, tzSede: true },
     orderBy: { inicio: "asc" },
   });
-  if (pendientes.length === 0) return { ok: true, cotizadas: 0, sinTarifa: 0, totalCent: 0n };
+  if (pendientes.length === 0) return { ok: true, cotizadas: 0, sinTarifa: 0, totalCent: 0n, restantes: 0 };
 
   const ahora = new Date();
   const [operador, tarifas] = await Promise.all([
@@ -63,54 +140,76 @@ async function recotizar(actor: Actor, _input: unknown, db: PrismaClient): Promi
   let cotizadas = 0;
   let sinTarifa = 0;
   let totalCent = 0n;
+  let procesadas = 0;
+  const arranque = Date.now();
 
+  // Primero se decide el precio de TODAS (es cálculo puro, no toca la base) y se separan las que
+  // no tienen tarifa. Así el trabajo contra la base es solo escribir.
+  const conPrecio: { o: (typeof pendientes)[number]; cot: ReturnType<typeof cotizar> }[] = [];
   for (const o of pendientes) {
     // El precio que se aplica es el VIGENTE HOY, no el que había cuando se creó: cuando se creó no
-    // había ninguno, que es justamente el motivo por el que está en esta lista.
+    // había ninguno, que es justamente el motivo por el que está en esta lista. Y se resuelve POR
+    // PROFESIONAL: la tarifa a nombre de una persona le gana a la general (§ especificidad), así
+    // que cada uno entra con su propio valor hora.
     const tarifa = resolverTarifa(tarifas, { salaId: o.salaId ?? "", inquilinoId: o.inquilinoId!, ahora });
-    if (!tarifa) {
-      sinTarifa++;
-      continue;
-    }
     const minutos = Math.round((o.fin.getTime() - o.inicio.getTime()) / 60_000);
     const cot = cotizar(tarifa, minutos);
-    if (cot.importeCent <= 0n) {
+    if (!tarifa || cot.importeCent <= 0n) {
       sinTarifa++;
       continue;
     }
-
-    // Una transacción POR RESERVA y no una sola para todas: son cientos de filas y un lote entero
-    // en una transacción contra una base remota se pasa del tiempo límite y no se guarda ninguna.
-    // Si se corta a la mitad, lo hecho queda hecho y volver a correrlo termina el resto — el
-    // asiento es idempotente por reserva, así que nada se cobra dos veces.
-    await db.$transaction(async (tx) => {
-      // El WHERE repite `importeCent: null`: entre la lectura de arriba y esta escritura pudo
-      // haber pasado cualquier cosa, y pisar un importe ya puesto sería reescribir lo facturado.
-      const r = await tx.ocupacion.updateMany({
-        where: { id: o.id, operadorId: op, importeCent: null },
-        data: { tarifaId: cot.tarifaId, precioHoraCent: cot.precioHoraCent, importeCent: cot.importeCent },
-      });
-      if (r.count === 0) return;
-
-      await asentarIdempotente(tx, {
-        operadorId: op,
-        inquilinoId: o.inquilinoId!,
-        concepto: "cargo_uso",
-        montoCent: cot.importeCent,
-        moneda: operador.moneda,
-        periodo: periodoDeInstante(o.inicio, o.tzSede),
-        fechaHecho: o.inicio,
-        // La MISMA clave que usa el alta: si por lo que sea la reserva ya tenía su asiento, este
-        // no entra. La cuenta corriente no se puede cargar dos veces por la misma hora.
-        clave: `cargo_uso:${o.id}`,
-        reservaId: o.id,
-      });
-      cotizadas++;
-      totalCent += cot.importeCent;
-    });
+    conPrecio.push({ o, cot });
   }
 
-  return { ok: true, cotizadas, sinTarifa, totalCent };
+  // De a LOTE por transacción, y no una por reserva. Con 1421 pendientes, una transacción por
+  // fila son 1421 idas y vueltas a una base remota: no entra en el tiempo de una función y la
+  // pantalla se queda con el botón girando hasta que el servidor corta sin decir nada.
+  //
+  // Si se corta igual, lo hecho queda hecho: volver a apretar sigue donde quedó. El asiento es
+  // idempotente por reserva, así que nada se cobra dos veces.
+  for (let i = 0; i < conPrecio.length; i += LOTE) {
+    // El presupuesto se mira ANTES de empezar un lote, no en el medio: cortar una transacción por
+    // la mitad no ahorra tiempo, solo pierde el trabajo.
+    if (Date.now() - arranque > PRESUPUESTO_MS) break;
+
+    const lote = conPrecio.slice(i, i + LOTE);
+    const hechas = await db.$transaction(async (tx) => {
+      const aplicadas: bigint[] = [];
+      for (const { o, cot } of lote) {
+        // El WHERE repite `importeCent: null`: entre la lectura de arriba y esta escritura pudo
+        // haber pasado cualquier cosa, y pisar un importe ya puesto sería reescribir lo facturado.
+        const r = await tx.ocupacion.updateMany({
+          where: { id: o.id, operadorId: op, importeCent: null },
+          data: { tarifaId: cot.tarifaId, precioHoraCent: cot.precioHoraCent, importeCent: cot.importeCent },
+        });
+        if (r.count === 0) continue;
+
+        await asentarIdempotente(tx, {
+          operadorId: op,
+          inquilinoId: o.inquilinoId!,
+          concepto: "cargo_uso",
+          montoCent: cot.importeCent,
+          moneda: operador.moneda,
+          periodo: periodoDeInstante(o.inicio, o.tzSede),
+          fechaHecho: o.inicio,
+          // La MISMA clave que usa el alta: si por lo que sea la reserva ya tenía su asiento, este
+          // no entra. La cuenta corriente no se puede cargar dos veces por la misma hora.
+          clave: `cargo_uso:${o.id}`,
+          reservaId: o.id,
+        });
+        aplicadas.push(cot.importeCent);
+      }
+      return aplicadas;
+    });
+
+    // Los contadores se suman AFUERA de la transacción: si Prisma la reintenta, el callback corre
+    // de nuevo y lo que se hubiera sumado adentro quedaría contado dos veces.
+    cotizadas += hechas.length;
+    for (const c of hechas) totalCent += c;
+    procesadas += lote.length;
+  }
+
+  return { ok: true, cotizadas, sinTarifa, totalCent, restantes: conPrecio.length - procesadas };
 }
 
 export const recotizarPendientes = definirAccion(
