@@ -10,7 +10,7 @@ import { esUniqueViolado } from "../../db/errores.ts";
 import { desagregarIva } from "../../lib/plata/dinero.ts";
 
 // Los cargos (débitos) del período. Los pagos NO entran a la liquidación (§5.4).
-const FACTURABLES: Concepto[] = [
+export const FACTURABLES: Concepto[] = [
   "cargo_uso",
   "cargo_excedente",
   "cargo_membresia",

@@ -103,6 +103,9 @@ export function MenuLateral({
     // Gastos va ANTES de Negocio: se carga durante el mes, y Negocio es la lectura que lo usa.
     { id: "gastos", href: `${raiz}/gastos`, texto: "Gastos", icono: <IconoGasto />, mostrar: puede(rol, "finanzas.ver.agregada") },
     { id: "reportes", href: `${raiz}/reportes`, texto: "Negocio", icono: <IconoMetrica />, mostrar: puede(rol, "finanzas.ver.agregada") },
+    // Cierre va DESPUÉS de Negocio: primero se mira cómo vino el mes, después se lo cierra. Es el
+    // orden en que se hace, una vez por mes.
+    { id: "cierre", href: `${raiz}/cierre`, texto: "Cierre de mes", icono: <IconoLista />, mostrar: puede(rol, "periodo.cerrar") },
     { id: "mis-reservas", href: `${raiz}/mis-reservas`, texto: "Mis reservas", icono: <IconoLista />, mostrar: esProfesional },
   ];
 
