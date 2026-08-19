@@ -83,6 +83,26 @@ model Usuario {
   creadoEl      DateTime @default(now()) @db.Timestamptz(6)
 
   operadores UsuarioOperador[]
+  tokens     TokenClave[]
+}
+
+/// Un pedido de "olvidé mi contraseña", pendiente de usar.
+///
+/// Se guarda el HASH del token, nunca el token: quien lee esta tabla no tiene que poder entrar a
+/// ninguna cuenta. Es la misma razón por la que `Usuario.passwordHash` no guarda la contraseña.
+/// Un token es de UN uso y vence rápido — es una llave que viaja por mail, y el mail queda en una
+/// bandeja de entrada para siempre.
+model TokenClave {
+  id        String    @id @default(cuid())
+  usuarioId String
+  tokenHash String    @unique // sha-256 del token que viajó por mail
+  expiraEl  DateTime  @db.Timestamptz(6)
+  usadoEl   DateTime? @db.Timestamptz(6) // sellado al usarse: un token no se canjea dos veces
+  creadoEl  DateTime  @default(now()) @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, expiraEl])
 }
 
 /// Dos roles de centro: administrador y profesional. Los de un centro con mostrador —gestor,

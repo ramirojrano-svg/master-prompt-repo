@@ -57,6 +57,17 @@ const sql = readFileSync(MIGRACION, "utf8");
 const PARCHES = [
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "titulo" TEXT',
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "foto" TEXT',
+  // Los pedidos de "olvidé mi contraseña". Tabla nueva: se crea con IF NOT EXISTS igual que las
+  // columnas, así una base ya cargada la suma sin perder nada.
+  `CREATE TABLE IF NOT EXISTS "TokenClave" (
+     "id" TEXT NOT NULL PRIMARY KEY,
+     "usuarioId" TEXT NOT NULL REFERENCES "Usuario"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+     "tokenHash" TEXT NOT NULL UNIQUE,
+     "expiraEl" TIMESTAMPTZ(6) NOT NULL,
+     "usadoEl" TIMESTAMPTZ(6),
+     "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
+  'CREATE INDEX IF NOT EXISTS "TokenClave_usuarioId_expiraEl_idx" ON "TokenClave"("usuarioId", "expiraEl")',
   // Una RESERVA puede no tener sala (horas que se facturan sin usar el espacio). Se reemplaza el
   // CHECK viejo: DROP + ADD porque Postgres no tiene "ALTER CONSTRAINT" para cambiar la condición.
   // Sigue siendo idempotente — correrlo dos veces deja lo mismo.

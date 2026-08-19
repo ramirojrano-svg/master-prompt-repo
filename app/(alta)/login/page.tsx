@@ -8,6 +8,7 @@
 // estaban perfectas. Distinguirlo no filtra nada del padrón: el fallo de infraestructura no
 // depende de qué email se tipeó.
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { GOOGLE_LISTO, signIn } from "../../../src/lib/auth.ts";
 import { prisma } from "../../../src/db/prisma.ts";
 import { Logo } from "../../Logo.tsx";
@@ -34,7 +35,7 @@ async function centroDe(email: string): Promise<string | null> {
   return uo?.operador.slug ?? null;
 }
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; centro?: string }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; centro?: string; cambiada?: string }> }) {
   // En Next 16 searchParams es una Promise (§11.0).
   const sp = await searchParams;
 
@@ -95,6 +96,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             Agenda, profesionales y facturación de Espacio Montes de Oca.
           </p>
 
+          {sp.cambiada && (
+            <p className="aviso-ok" style={{ marginTop: 14 }}>
+              Contraseña cambiada. Entrá con la nueva.
+            </p>
+          )}
+
           <label htmlFor="email">Email</label>
           <input id="email" name="email" type="email" required autoComplete="email" placeholder="vos@email.com" />
 
@@ -129,6 +136,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <button type="submit" style={{ width: "100%" }}>
               Entrar
             </button>
+          </p>
+
+          {/* El enlace va DENTRO del formulario, debajo del botón: es donde se lo busca cuando la
+              contraseña no entró, no en un rincón de la pantalla. */}
+          <p className="tenue" style={{ textAlign: "center", fontSize: 13, marginTop: 14, marginBottom: 0 }}>
+            <Link href="/olvide">¿Olvidaste tu contraseña?</Link>
           </p>
         </form>
 

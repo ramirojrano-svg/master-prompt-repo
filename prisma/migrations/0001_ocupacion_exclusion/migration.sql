@@ -134,6 +134,23 @@ CREATE TABLE "Inquilino" (
 );
 
 -- CreateTable
+CREATE TABLE "TokenClave" (
+    "id" TEXT NOT NULL,
+    "usuarioId" TEXT NOT NULL,
+    -- El HASH del token, nunca el token: quien lee esta tabla no debe poder entrar a ninguna cuenta.
+    "tokenHash" TEXT NOT NULL,
+    "expiraEl" TIMESTAMPTZ(6) NOT NULL,
+    "usadoEl" TIMESTAMPTZ(6),
+    "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "TokenClave_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "TokenClave_tokenHash_key" ON "TokenClave"("tokenHash");
+CREATE INDEX "TokenClave_usuarioId_expiraEl_idx" ON "TokenClave"("usuarioId", "expiraEl");
+ALTER TABLE "TokenClave" ADD CONSTRAINT "TokenClave_usuarioId_fkey"
+  FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- CreateTable
 CREATE TABLE "Membresia" (
     "id" TEXT NOT NULL,
     "operadorId" TEXT NOT NULL,
