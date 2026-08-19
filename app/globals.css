@@ -464,6 +464,11 @@ tfoot td {
   font-weight: 600;
 }
 
+/* Apagado por defecto; se prende en el bloque de pantalla chica. Ver `.oculta-mobile`. */
+.solo-mobile {
+  display: none;
+}
+
 @media (max-width: 880px) {
   :root {
     --sidebar: 0px;
@@ -488,6 +493,12 @@ tfoot td {
   }
   .oculta-mobile {
     display: none !important;
+  }
+  /* El complemento: lo que aparece SOLO en pantalla chica. Va acá, en el mismo bloque, para que
+     las dos reglas cambien juntas — si una se moviera de punto de corte y la otra no, habría un
+     ancho en el que se ven las dos cosas o ninguna. */
+  .solo-mobile {
+    display: inline;
   }
 }
 
@@ -973,15 +984,58 @@ tfoot td {
    No se toca el servidor: la vista sigue viniendo de la URL. Esto decide qué se OFRECE, no qué se
    puede ver — quien abra un enlace a la semana la va a ver igual, apretada pero entera. */
 @media (max-width: 720px) {
-  .segmentado > a[data-vista="semana"],
-  .segmentado > a[data-vista="mes"] {
+  /* La semana son SIETE columnas horarias: no entra de ninguna manera en 390px y no hay forma de
+     arreglarla, así que no se ofrece. El mes y el día sí: el mes es con lo que abre —es lo que se
+     mira parado, "qué hay este mes"— y el día es a donde se entra tocando una fecha. */
+  .segmentado > a[data-vista="semana"] {
     display: none;
   }
-  /* Estando en Día, el control quedaría con un solo botón que además es el actual: un cartel que
-     no hace nada. Se apaga entero y la barra respira.
-     Pero si se llegó a semana o mes por un enlace, "Día" queda visible y es la salida — esconderlo
-     siempre dejaría a alguien encerrado en una vista que no se puede leer. */
-  .segmentado:has(> a[data-vista="dia"][aria-current="page"]) {
-    display: none;
+}
+
+/* ── La vista mes en el teléfono ──────────────────────────────────────────── */
+/* Siete columnas en 390px menos el riel del menú son 46px por día. Todo tiene que achicarse a esa
+   medida: con los tamaños de escritorio entran dos letras por chip y el número del día empuja a
+   los turnos fuera de la celda. */
+@media (max-width: 720px) {
+  .mes {
+    /* dvh y no vh: con vh la última semana queda tapada por la barra del navegador, que es
+       justamente la que trae el día de hoy cuando estamos a fin de mes. */
+    height: calc(100dvh - var(--barra)) !important;
+  }
+  .mes-encabezado > div {
+    padding: 5px 0 !important;
+    font-size: 10px !important;
+  }
+  /* "DOM LUN MAR" ocupa el ancho de la celda para decir algo que se sabe por la posición. En el
+     teléfono va la inicial, que alcanza y no compite con los nombres de abajo. */
+  .mes-encabezado > div {
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .mes-grilla {
+    min-height: 0 !important;
+  }
+  .mes-celda {
+    padding: 2px 2px !important;
+  }
+  /* El número del día, más chico y pegado arriba: es una referencia, no el protagonista. */
+  .mes-celda a[href*="vista=dia"]:first-child {
+    min-width: 20px !important;
+    height: 20px !important;
+    font-size: 11px !important;
+  }
+  /* Cada letra cuenta: la celda mide 46px y de ahí sale cuántas del nombre se leen. Bajar de 9 a
+     8 y sacar el aire lateral son dos o tres letras más, que es la diferencia entre "Nata…" y
+     "Natalia…" — o sea entre adivinar y reconocer. */
+  .mes-chip {
+    font-size: 8px !important;
+    line-height: 1.3;
+    padding: 1px 2px !important;
+    margin-bottom: 1px !important;
+    border-radius: 3px;
+    letter-spacing: -0.02em;
+  }
+  .mes-resto {
+    font-size: 9px !important;
   }
 }

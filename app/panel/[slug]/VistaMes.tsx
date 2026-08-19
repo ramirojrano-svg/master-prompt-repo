@@ -30,16 +30,19 @@ export function VistaMes({
   const semanas = Array.from({ length: 6 }, (_, s) => dia.dias.slice(s * 7, s * 7 + 7));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - var(--barra) - 58px)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid var(--borde)" }}>
+    <div className="mes" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - var(--barra) - 58px)" }}>
+      <div className="mes-encabezado" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid var(--borde)" }}>
         {DIA_CORTO.map((d) => (
           <div key={d} className="tenue" style={{ padding: "8px 0", textAlign: "center", fontSize: 11, letterSpacing: "0.04em" }}>
-            {d}
+            {/* En el teléfono la inicial alcanza: la posición ya dice qué día es, y "DOM" ocupa el
+                ancho de la celda para repetirlo. El nombre corto vuelve en cuanto hay lugar. */}
+            <span className="oculta-mobile">{d}</span>
+            <span className="solo-mobile">{d.slice(0, 1)}</span>
           </div>
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gridTemplateRows: "repeat(6, 1fr)", flex: 1, minHeight: 520 }}>
+      <div className="mes-grilla" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gridTemplateRows: "repeat(6, 1fr)", flex: 1, minHeight: 520 }}>
         {semanas.flatMap((semana) =>
           semana.map((f) => {
             const delMes = f.slice(0, 7) === mesAncla;
@@ -50,6 +53,7 @@ export function VistaMes({
             return (
               <div
                 key={f}
+                className="mes-celda"
                 style={{
                   borderRight: "1px solid var(--borde)",
                   borderBottom: "1px solid var(--borde)",
@@ -83,7 +87,7 @@ export function VistaMes({
                 {visibles.map((r) => (
                   <div
                     key={r.id}
-                    className="evento"
+                    className="evento mes-chip"
                     title={`${r.titulo} · ${r.horaTexto} · ${r.salaNombre}`}
                     style={{
                       background: r.esBloqueo ? "var(--tenue)" : r.color,
@@ -96,13 +100,17 @@ export function VistaMes({
                       textOverflow: "ellipsis",
                     }}
                   >
-                    {r.horaTexto.slice(0, 5)} <b>{nombreCorto(r.titulo)}</b>
+                    {/* La hora se apaga en pantallas chicas: en una celda de 46px no entra, y lo
+                        que se busca de un vistazo es QUIÉN, no a qué hora. La hora completa sigue
+                        estando en el tooltip y en la vista del día. */}
+                    <span className="oculta-mobile">{r.horaTexto.slice(0, 5)} </span>
+                    <b>{nombreCorto(r.titulo)}</b>
                   </div>
                 ))}
 
                 {/* Nunca se recortan turnos en silencio: si hay más, se dice cuántos. */}
                 {resto > 0 && (
-                  <Link href={href(f, { vista: "dia" })} className="tenue" style={{ fontSize: 11, fontWeight: 500 }}>
+                  <Link href={href(f, { vista: "dia" })} className="tenue mes-resto" style={{ fontSize: 11, fontWeight: 500 }}>
                     +{resto} más
                   </Link>
                 )}

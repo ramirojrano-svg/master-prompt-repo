@@ -6,10 +6,12 @@
 // Eso es lo que hace que el botón "atrás" funcione, que se pueda mandar por WhatsApp el link de
 // un día concreto, y que la pantalla no dependa de JavaScript para navegar.
 
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { actorDeSesion } from "../../../src/lib/sesion.ts";
+import { esMovil } from "../../../src/lib/movil.ts";
 import { intentar } from "../../../src/lib/db-salud.ts";
 import { BaseNoLista } from "../../BaseNoLista.tsx";
 import { cargarAgenda } from "../../../src/servicios/agenda/dia.ts";
@@ -116,7 +118,15 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
   const actor = sesion.valor;
   if (!actor) redirect(`/login?centro=${encodeURIComponent(slug)}`);
 
-  const vista: Vista = sp.vista && esVista(sp.vista) ? sp.vista : "dia";
+  // Con qué vista abre la agenda cuando la URL no lo dice. En un monitor el DÍA —se ve la grilla
+  // horaria entera—; en un teléfono el MES, que es lo que se mira parado: "qué hay este mes".
+  // La grilla del día en 326px de ancho útil obliga a arrastrar de costado para ver el tercer
+  // consultorio, y eso no es una agenda, es un rompecabezas.
+  //
+  // Se decide en el servidor por el user-agent y no en el navegador por el ancho: con CSS la
+  // página se pintaría en una vista y saltaría a la otra, y el parpadeo se ve.
+  const movil = esMovil((await headers()).get("user-agent"));
+  const vista: Vista = sp.vista && esVista(sp.vista) ? sp.vista : movil ? "mes" : "dia";
   const salasFiltro = sp.salas ? sp.salas.split(",").filter(Boolean) : null;
 
   // También bajo `intentar`: con el esquema viejo el actor resuelve bien y recién acá aparece la
