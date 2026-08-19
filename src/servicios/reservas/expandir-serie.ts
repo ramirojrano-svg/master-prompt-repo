@@ -5,14 +5,14 @@
 // decirlo es un inquilino que llega a la puerta cerrada.
 
 import { randomUUID } from "node:crypto";
-import { EstadoOcupacion, type PrismaClient, TipoOcupacion } from "@prisma/client";
+import { CuentaTipo, EstadoOcupacion, type PrismaClient, TipoOcupacion } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { clavesDeLock } from "../../dominio/locks.ts";
 import { evaluarReserva, type CodigoReserva } from "../../dominio/motor/reserva.ts";
+import { alcanzadasPor } from "../../dominio/motor/intervalos.ts";
 import { LOOKBACK_MIN, DURACION_MAX_MIN, DURACION_MIN_MIN } from "../../dominio/motor/limites.ts";
 import { instanteDeHoraLocal, periodoDeInstante } from "../../dominio/motor/zona.ts";
 import { cotizar, resolverTarifa } from "../../dominio/tarifa.ts";
-import { asentarIdempotente } from "../plata/ledger.ts";
 import { fechasDeSerie, OCURRENCIAS_MAX, type Repeticion } from "../../dominio/repeticion.ts";
 import type { CtxReserva } from "./crear.ts";
 import { aMotor, OCUPAN } from "./comun.ts";
@@ -79,7 +79,17 @@ export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaC
 
   try {
     return await db.$transaction(async (tx) => {
-      for (const c of claves) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${c}))`;
+      // TODOS los locks en UNA consulta. Antes era un `await` por clave, y con una serie semanal de
+      // un año son más de cien idas y vueltas — ver la nota de arriba sobre por qué eso mata la
+      // transacción contra una base remota.
+      //
+      // `WITH ORDINALITY` + `ORDER BY` NO es decorativo: el orden de toma es lo único que evita
+      // que dos series concurrentes se deadlockeen, y sin el ORDER BY el motor puede evaluar el
+      // unnest en cualquier orden.
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(hashtext(k))
+        FROM unnest(${claves}::text[]) WITH ORDINALITY AS t(k, n)
+        ORDER BY t.n`;
 
       // La tarifa vigente se resuelve UNA vez para toda la serie: no cambia entre ocurrencias
       // dentro de la misma transacción, y consultarla N veces sería N consultas para el mismo dato.
@@ -93,15 +103,47 @@ export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaC
       const creadas: string[] = [];
       const conflictos: Conflicto[] = [];
 
+      // La foto de lo que ya está ocupado se trae UNA vez para todo el rango de la serie, y
+      // después se filtra en memoria ocurrencia por ocurrencia. Antes eran DOS consultas por
+      // fecha: con 57 miércoles, 114 idas y vueltas que no aportaban nada que no estuviera en
+      // estas dos.
+      //
+      // El rango va desde el lookback de la PRIMERA hasta el fin de la ÚLTIMA, así que contiene
+      // todo lo que cualquier ocurrencia podría llegar a mirar.
+      const primera = ocurrencias[0]!;
+      const ultima = ocurrencias[ocurrencias.length - 1]!;
+      const desdeTodo = new Date(primera.inicio.getTime() - LOOKBACK_MIN * 60_000);
+      const hastaTodo = ultima.fin;
+
+      const [ocupSalaTodas, ocupInqTodas] = await Promise.all([
+        // Sin sala no hay eje de sala que chocar; el del profesional sigue valiendo.
+        sala
+          ? tx.ocupacion.findMany({
+              where: { operadorId: ctx.operadorId, salaId: sala.id, estado: { in: OCUPAN }, inicio: { gte: desdeTodo, lt: hastaTodo }, fin: { gt: primera.inicio } },
+            })
+          : Promise.resolve([]),
+        tx.ocupacion.findMany({
+          where: { operadorId: ctx.operadorId, inquilinoId: ctx.inquilinoId, tipo: TipoOcupacion.reserva, estado: { in: OCUPAN }, inicio: { gte: desdeTodo, lt: hastaTodo }, fin: { gt: primera.inicio } },
+        }),
+      ]);
+
+      /** El mismo recorte que hacía la consulta por ocurrencia, ahora en memoria. La comparación
+       *  vive en intervalos.ts, que es donde §4.2 manda que viva. */
+      const solapanCon = <T extends { inicio: Date; fin: Date }>(filas: T[], o: { inicio: Date; fin: Date }): T[] =>
+        alcanzadasPor(filas, o, LOOKBACK_MIN);
+
+      /** Lo que la propia serie va creando. Una ocurrencia tiene que ver a las anteriores: antes lo
+       *  lograba porque cada consulta corría después del create previo, y ahora la foto es una
+       *  sola. Con series de una hora en días distintos nunca se tocan, pero la regla no puede
+       *  depender de eso — el día que alguien cargue una diaria de doce horas, se tocan. */
+      const propias: { salaId: string | null; inquilinoId: string; inicio: Date; fin: Date; tipo: TipoOcupacion; bufferMin: number; id: string }[] = [];
+
+      // Las filas a escribir se juntan y se insertan de una sola vez al final.
+      const aCrear: { id: string; o: (typeof ocurrencias)[number] }[] = [];
+
       for (const o of ocurrencias) {
-        const desdeLookback = new Date(o.inicio.getTime() - LOOKBACK_MIN * 60_000);
-        const [ocupSala, ocupInq] = await Promise.all([
-          // Sin sala no hay eje de sala que chocar; el del profesional sigue valiendo.
-          sala
-            ? tx.ocupacion.findMany({ where: { operadorId: ctx.operadorId, salaId: sala.id, estado: { in: OCUPAN }, inicio: { gte: desdeLookback, lt: o.fin }, fin: { gt: o.inicio } } })
-            : Promise.resolve([]),
-          tx.ocupacion.findMany({ where: { operadorId: ctx.operadorId, inquilinoId: ctx.inquilinoId, tipo: TipoOcupacion.reserva, estado: { in: OCUPAN }, inicio: { gte: desdeLookback, lt: o.fin }, fin: { gt: o.inicio } } }),
-        ]);
+        const ocupSala = [...solapanCon(ocupSalaTodas, o), ...(sala ? solapanCon(propias.filter((x) => x.salaId === sala.id), o) : [])];
+        const ocupInq = [...solapanCon(ocupInqTodas, o), ...solapanCon(propias, o)];
 
         const veredicto = evaluarReserva({
           fecha: o.fecha,
@@ -120,8 +162,29 @@ export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaC
           continue;
         }
 
-        const creada = await tx.ocupacion.create({
-          data: {
+        // El id se genera ACÁ y no lo pone la base: hace falta para armar la clave del asiento
+        // (`cargo_uso:<id>`) sin tener que preguntarle a Postgres qué id le tocó a cada fila.
+        const id = randomUUID();
+        aCrear.push({ id, o });
+        propias.push({
+          id,
+          salaId: sala?.id ?? null,
+          inquilinoId: ctx.inquilinoId,
+          inicio: o.inicio,
+          fin: o.fin,
+          tipo: TipoOcupacion.reserva,
+          bufferMin: ctx.politica.bufferMin,
+        });
+        creadas.push(id);
+      }
+
+      // ── Las escrituras, en dos consultas ────────────────────────────────
+      // Antes era un INSERT por ocurrencia más otro por cargo: con 57 miércoles, 114 escrituras
+      // de a una. Ahora son dos, y el tiempo deja de crecer con el largo de la serie.
+      if (aCrear.length > 0) {
+        await tx.ocupacion.createMany({
+          data: aCrear.map(({ id, o }) => ({
+            id,
             operadorId: ctx.operadorId,
             sedeId: sede.id,
             salaId: sala?.id ?? null,
@@ -141,26 +204,32 @@ export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaC
             tarifaId: cot?.tarifaId ?? null,
             precioHoraCent: cot?.precioHoraCent ?? null,
             importeCent: cot?.importeCent ?? null,
-          },
-          select: { id: true },
+          })),
         });
 
-        // El cargo va en la MISMA transacción que la fila, con el período de SU ocurrencia: una
-        // serie cruza meses, y todas las cuotas no pueden caer en el mes de la primera.
+        // Los cargos van en la MISMA transacción que las filas, cada uno con el período de SU
+        // ocurrencia: una serie cruza meses, y todas las cuotas no pueden caer en el mes de la
+        // primera.
+        //
+        // `skipDuplicates` hace el mismo trabajo que hacía `asentarIdempotente` fila por fila: la
+        // clave es única, así que si un cargo ya existiera no se duplica. Nadie se cobra dos veces.
         if (cot && cot.importeCent > 0n) {
-          await asentarIdempotente(tx, {
-            operadorId: ctx.operadorId,
-            inquilinoId: ctx.inquilinoId,
-            concepto: "cargo_uso",
-            montoCent: cot.importeCent,
-            moneda: ctx.moneda ?? "ARS",
-            periodo: periodoDeInstante(o.inicio, tz),
-            fechaHecho: o.inicio,
-            clave: `cargo_uso:${creada.id}`,
-            reservaId: creada.id,
+          await tx.asiento.createMany({
+            data: aCrear.map(({ id, o }) => ({
+              operadorId: ctx.operadorId,
+              inquilinoId: ctx.inquilinoId,
+              cuenta: CuentaTipo.corriente,
+              concepto: "cargo_uso" as const,
+              montoCent: cot.importeCent,
+              moneda: ctx.moneda ?? "ARS",
+              periodo: periodoDeInstante(o.inicio, tz),
+              fechaHecho: o.inicio,
+              clave: `cargo_uso:${id}`,
+              reservaId: id,
+            })),
+            skipDuplicates: true,
           });
         }
-        creadas.push(creada.id);
       }
 
       // todo_o_nada: una sola ocurrencia que choque aborta la serie entera (rollback => 0 filas).

@@ -55,3 +55,23 @@ export function contiene(cont: Intervalo, dentro: Intervalo): boolean {
 export function yaEmpezo(inicio: Date, ahora: Date = new Date()): boolean {
   return inicio.getTime() <= ahora.getTime();
 }
+
+/**
+ * De una lista de ocupaciones ya traídas de la base, las que le pegan a `objetivo`.
+ *
+ * Es el MISMO recorte que hace la consulta SQL cuando se pregunta por una sola fecha, movido a
+ * memoria: al crear una serie no se le puede preguntar a la base una vez por ocurrencia —con 57
+ * miércoles son 114 idas y vueltas y la transacción se pasa de tiempo—, así que se trae el rango
+ * entero de una y se filtra acá.
+ *
+ * `lookbackMin` acota hacia atrás igual que la consulta: una ocupación que arrancó mucho antes no
+ * puede alcanzar a `objetivo`, y sin el corte habría que mirar la historia completa.
+ *
+ * Vive en este módulo y no en el servicio porque §4.2 lo pide, y la regla está bien puesta: una
+ * comparación de rangos escrita a mano en la capa de servicios es exactamente donde se cuela el
+ * `<=` de más que hace desaparecer un turno.
+ */
+export function alcanzadasPor<T extends Intervalo>(filas: T[], objetivo: Intervalo, lookbackMin: number): T[] {
+  const piso = new Date(objetivo.inicio.getTime() - lookbackMin * 60_000);
+  return filas.filter((f) => f.inicio >= piso && seSolapan(f, objetivo));
+}
