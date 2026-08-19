@@ -59,12 +59,20 @@ export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaCl
 
   // 2. Pertenencia + tz de la sede. El id vino del cliente: findFirst({id, operadorId}), nunca
   //    findUnique({id}). Sin match => SALA_INEXISTENTE, jamás caída silenciosa a otra sala.
-  const sala = await db.sala.findFirst({
-    where: { id: p.data.salaId, operadorId: ctx.operadorId },
-    include: { sede: true },
-  });
-  if (!sala || !sala.activa) return { ok: false, error: "SALA_INEXISTENTE" };
-  const tz = sala.sede.zonaHoraria;
+  //
+  //    SIN CONSULTORIO (salaId null): son horas que se consumen y se facturan pero no usan el
+  //    espacio. No hay sala de la que sacar la zona ni el horario, así que salen de la SEDE. Un
+  //    hold siempre reserva una sala concreta —es una lista de espera POR consultorio—, así que
+  //    ahí la sala sigue siendo obligatoria.
+  const sala = p.data.salaId
+    ? await db.sala.findFirst({ where: { id: p.data.salaId, operadorId: ctx.operadorId }, include: { sede: true } })
+    : null;
+  if (p.data.salaId && (!sala || !sala.activa)) return { ok: false, error: "SALA_INEXISTENTE" };
+  if (!sala && esHold) return { ok: false, error: "SALA_INEXISTENTE" };
+
+  const sede = sala?.sede ?? (await db.sede.findFirst({ where: { operadorId: ctx.operadorId, activa: true } }));
+  if (!sede) return { ok: false, error: "SALA_INEXISTENTE" };
+  const tz = sede.zonaHoraria;
 
   // 3. Ventana: el POST se puede forjar (fecha ≠ día de inicioISO) y el horizonte.
   const v = validarVentanaReserva(p.data, tz, ahora);
@@ -73,7 +81,7 @@ export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaCl
   if (!vent.ok) return { ok: false, error: vent.motivo };
 
   // 4. Claves de lock (ordenadas, una fábrica única) y ventana de lookback para la foto.
-  const claves = clavesDeLock({ salaId: sala.id, inquilinoId: ctx.inquilinoId, inicio: v.inicio, fin: v.fin, tz });
+  const claves = clavesDeLock({ salaId: sala?.id ?? null, inquilinoId: ctx.inquilinoId, inicio: v.inicio, fin: v.fin, tz });
   const desdeLookback = new Date(v.inicio.getTime() - LOOKBACK_MIN * 60_000);
 
   try {
@@ -87,16 +95,22 @@ export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaCl
       // 4a-bis. Limpieza PEREZOSA de holds vencidos que pisan esta sala (§4.11): se marcan
       //         expirada adentro del lock y dejan de ocupar. Depender solo del cron dejaría
       //         slots muertos si una corrida se cae.
-      await tx.ocupacion.updateMany({
-        where: { operadorId: ctx.operadorId, salaId: sala.id, tipo: TipoOcupacion.hold, estado: EstadoOcupacion.confirmada, expiraAt: { lt: ahora } },
-        data: { estado: EstadoOcupacion.expirada },
-      });
+      if (sala) {
+        await tx.ocupacion.updateMany({
+          where: { operadorId: ctx.operadorId, salaId: sala.id, tipo: TipoOcupacion.hold, estado: EstadoOcupacion.confirmada, expiraAt: { lt: ahora } },
+          data: { estado: EstadoOcupacion.expirada },
+        });
+      }
 
       // 4b. Foto DESDE la transacción (no una calculada antes del lock).
       const [ocupSala, ocupInq] = await Promise.all([
-        tx.ocupacion.findMany({
-          where: { operadorId: ctx.operadorId, salaId: sala.id, estado: { in: OCUPAN }, inicio: { gte: desdeLookback, lt: v.fin }, fin: { gt: v.inicio } },
-        }),
+        // Sin sala no hay eje de sala: nada que chocar. El eje del PROFESIONAL sigue valiendo —no
+        // se puede estar en dos lugares a la vez, y "afuera" también es un lugar.
+        sala
+          ? tx.ocupacion.findMany({
+              where: { operadorId: ctx.operadorId, salaId: sala.id, estado: { in: OCUPAN }, inicio: { gte: desdeLookback, lt: v.fin }, fin: { gt: v.inicio } },
+            })
+          : Promise.resolve([]),
         tx.ocupacion.findMany({
           where: { operadorId: ctx.operadorId, inquilinoId: ctx.inquilinoId, tipo: TipoOcupacion.reserva, estado: { in: OCUPAN }, inicio: { gte: desdeLookback, lt: v.fin }, fin: { gt: v.inicio } },
         }),
@@ -126,7 +140,9 @@ export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaCl
               where: { operadorId: ctx.operadorId, vigenteDesde: { lte: ahora }, OR: [{ vigenteHasta: null }, { vigenteHasta: { gt: ahora } }] },
               select: { id: true, salaId: true, inquilinoId: true, precioHoraCent: true, vigenteDesde: true, vigenteHasta: true },
             }),
-            { salaId: sala.id, inquilinoId: ctx.inquilinoId, ahora },
+            // Sin sala se resuelve igual: las tarifas por sala no aplican y gana la del
+            // profesional o la general, que es lo que se quiere — se cobra lo mismo.
+            { salaId: sala?.id ?? "", inquilinoId: ctx.inquilinoId, ahora },
           );
       // Sin tarifa se estampa NULL, no cero: "todavía no había precio" y "esta hora salió $0" son
       // dos cosas distintas, y meses después nadie va a poder distinguirlas si guardamos un 0.
@@ -136,8 +152,8 @@ export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaCl
       const creada = await tx.ocupacion.create({
         data: {
           operadorId: ctx.operadorId,
-          sedeId: sala.sedeId,
-          salaId: sala.id,
+          sedeId: sede.id,
+          salaId: sala?.id ?? null,
           inquilinoId: ctx.inquilinoId,
           tipo: tipoFila,
           estado: EstadoOcupacion.confirmada,

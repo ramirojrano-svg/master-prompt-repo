@@ -347,7 +347,9 @@ export async function detalleProfesional(
       diaSemana: diaSemanaDeFecha(fecha) ?? 0,
       horaTexto: `${minutosAHora(desdeMin)} – ${minutosAHora(hastaMin % (24 * 60))}`,
       salaId: f.salaId,
-      salaNombre: f.sala?.nombre ?? "—",
+      // Sin sala no es un dato que falta: es una reserva que no usa el espacio y se factura
+      // igual. Un guioncito se leería como "no se sabe".
+      salaNombre: f.sala?.nombre ?? (f.salaId === null ? "Sin consultorio" : "—"),
       minutos: Math.round((f.fin.getTime() - f.inicio.getTime()) / 60_000),
       importeCent: f.importeCent,
       precioHoraCent: f.precioHoraCent,

@@ -25,7 +25,8 @@ export function diasTocados(inicio: Instante, fin: Instante, tz: Tz): string[] {
  * Ordenadas: dos creaciones concurrentes que tocan las mismas dos salas/días no deadlockean.
  */
 export function clavesDeLock(p: {
-  salaId: string;
+  /** null = la reserva no usa ninguna sala. No hay eje de sala que serializar: solo el del profesional. */
+  salaId: string | null;
   inquilinoId: string | null;
   inicio: Instante;
   fin: Instante;
@@ -33,7 +34,7 @@ export function clavesDeLock(p: {
 }): string[] {
   const dias = diasTocados(p.inicio, p.fin, p.tz);
   const claves: string[] = [];
-  for (const f of dias) claves.push(claveLockSala(p.salaId, f));
+  if (p.salaId != null) for (const f of dias) claves.push(claveLockSala(p.salaId, f));
   if (p.inquilinoId != null) for (const f of dias) claves.push(claveLockInquilino(p.inquilinoId, f));
   return [...new Set(claves)].sort();
 }

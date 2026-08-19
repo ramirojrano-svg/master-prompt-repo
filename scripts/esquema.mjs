@@ -57,6 +57,11 @@ const sql = readFileSync(MIGRACION, "utf8");
 const PARCHES = [
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "titulo" TEXT',
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "foto" TEXT',
+  // Una RESERVA puede no tener sala (horas que se facturan sin usar el espacio). Se reemplaza el
+  // CHECK viejo: DROP + ADD porque Postgres no tiene "ALTER CONSTRAINT" para cambiar la condición.
+  // Sigue siendo idempotente — correrlo dos veces deja lo mismo.
+  'ALTER TABLE "Ocupacion" DROP CONSTRAINT IF EXISTS "ocupacion_sala_requerida"',
+  `ALTER TABLE "Ocupacion" ADD CONSTRAINT "ocupacion_sala_requerida" CHECK ("tipo" IN ('bloqueo', 'reserva') OR "salaId" IS NOT NULL)`,
 ];
 
 // Las tablas que el esquema DEBE crear se leen de la propia migración: si mañana se agrega una

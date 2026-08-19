@@ -442,7 +442,11 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;  -- para mezclar `text WITH =` y `ran
 ALTER TABLE "Ocupacion"
   ADD CONSTRAINT "ocupacion_rango_valido"   CHECK ("fin" > "inicio"),
   ADD CONSTRAINT "ocupacion_dur_max"        CHECK ("fin" <= "inicio" + interval '12 hours'),
-  ADD CONSTRAINT "ocupacion_sala_requerida" CHECK ("tipo" = 'bloqueo' OR "salaId" IS NOT NULL),
+  -- Una RESERVA puede no tener sala: son horas que se consumen y se facturan sin usar el espacio
+  -- fisico (el profesional que ese dia atiende afuera). No ocupan consultorio, asi que el
+  -- consultorio queda libre para alquilarlo. El hold y el mantenimiento SI la exigen: los dos son
+  -- sobre una sala concreta.
+  ADD CONSTRAINT "ocupacion_sala_requerida" CHECK ("tipo" IN ('bloqueo', 'reserva') OR "salaId" IS NOT NULL),
   -- sala Y inquilino juntos solo valen para reserva/hold (ambos atan inquilino+sala). Un
   -- bloqueo/mantenimiento con ambos sería "mixto" y no existe (§4.7.3). El hold SÍ tiene los dos.
   ADD CONSTRAINT "ocupacion_bloqueo_no_mixto"

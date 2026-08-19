@@ -16,6 +16,9 @@ import { proyectarReserva, type ReservaDTO } from "../../dominio/proyeccion.ts";
 import { LOOKBACK_MIN } from "../../dominio/motor/limites.ts";
 import type { Actor } from "../../lib/actor.ts";
 
+/** Id de la columna sintética donde caen las reservas que no usan consultorio. */
+export const SIN_SALA = "sin-sala";
+
 export type SalaVista = { id: string; nombre: string; color: string; activa: boolean };
 
 /**
@@ -109,9 +112,18 @@ export async function cargarAgenda(
   });
 
   const conActividad = new Set(filasOcup.map((f) => f.salaId).filter((s): s is string => s !== null));
-  const salas: SalaVista[] = salasTodas
-    .filter((s) => s.activa || conActividad.has(s.id))
-    .map((s) => ({ id: s.id, nombre: s.nombre, color: s.color, activa: s.activa }));
+
+  // Las reservas SIN CONSULTORIO se facturan pero no usan el espacio (el profesional que ese día
+  // atiende afuera). Necesitan una columna igual: sin ella serían invisibles en la agenda y
+  // "no aparece" es indistinguible de "no se creó". La columna es SINTÉTICA —no hay una fila
+  // `Sala` detrás— y solo se dibuja los días en que hay algo, para no ocupar ancho por las dudas.
+  const haySinSala = filasOcup.some((f) => f.salaId === null && f.tipo === "reserva");
+  const salas: SalaVista[] = [
+    ...salasTodas
+      .filter((s) => s.activa || conActividad.has(s.id))
+      .map((s) => ({ id: s.id, nombre: s.nombre, color: s.color, activa: s.activa })),
+    ...(haySinSala ? [{ id: SIN_SALA, nombre: "Sin consultorio", color: "#5c7382", activa: true }] : []),
+  ];
 
   // Filtro del lateral (las casillas de "calendarios"). Un id que no existe se ignora en vez de
   // dejar la pantalla vacía; sin filtro, se ven todas.
@@ -157,7 +169,7 @@ export async function cargarAgenda(
     return {
       ...dto,
       fechaLocal: fechaEnZona(f.inicio, tz),
-      salaNombre: f.salaId ? (nombreDe.get(f.salaId) ?? "") : "Todo el centro",
+      salaNombre: f.salaId ? (nombreDe.get(f.salaId) ?? "") : f.tipo === "reserva" ? "Sin consultorio" : "Todo el centro",
       color: f.salaId ? (colorDe.get(f.salaId) ?? "#1a8fc1") : "#5c7382",
       desdeMin,
       hastaMin,
@@ -172,10 +184,12 @@ export async function cargarAgenda(
 
   // En día las columnas son las SALAS; en semana, los DÍAS. El mes no usa grilla de tiempo.
   const bloques: BloqueEntrada[] = enVista
-    .filter((f) => f.salaId !== null)
+    // Un bloqueo GLOBAL (sin sala) no tiene columna propia: le pega a todo el centro y se dibuja
+    // como cierre. Una reserva sin sala sí, en la columna sintética.
+    .filter((f) => f.salaId !== null || f.tipo === "reserva")
     .map((f) => ({
       id: f.id,
-      columnaId: vista === "semana" ? fechaEnZona(f.inicio, tz) : f.salaId!,
+      columnaId: vista === "semana" ? fechaEnZona(f.inicio, tz) : (f.salaId ?? SIN_SALA),
       inicio: f.inicio,
       fin: f.fin,
     }));

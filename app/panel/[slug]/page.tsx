@@ -37,6 +37,7 @@ import { AvisoAlta } from "./AvisoAlta.tsx";
 import { CerrarBurbujas } from "./CerrarBurbujas.tsx";
 import { ocupacionMensualPorSala } from "../../../src/servicios/reportes/mensual.ts";
 import { describirConflictos, parsearConflictos, resumirConflictos, serializarConflictos } from "../../../src/dominio/conflictos.ts";
+import { SIN_SALA } from "../../../src/servicios/agenda/dia.ts";
 import { Grilla } from "./Grilla.tsx";
 import { VistaMes } from "./VistaMes.tsx";
 import { MiniCalendario } from "./MiniCalendario.tsx";
@@ -523,7 +524,9 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
               // Lo que dijo la celda que se tocó. Se valida contra las salas visibles: un `sala=`
               // escrito a mano en la URL no tiene por qué existir, y un select con un valor que no
               // está entre sus opciones queda mostrando el primero sin avisar.
-              salaInicial={sp.sala && agenda.salas.some((s) => s.id === sp.sala && s.activa) ? sp.sala : undefined}
+              // La columna "Sin consultorio" es sintética: tocarla significa "sin sala", que en el
+              // formulario es la opción de valor vacío, no un id.
+              salaInicial={sp.sala === SIN_SALA ? "" : sp.sala && agenda.salas.some((s) => s.id === sp.sala && s.activa) ? sp.sala : undefined}
               horaInicial={sp.hora && /^\d{2}:\d{2}$/.test(sp.hora) ? sp.hora : undefined}
               // El mismo horario con el que se dibuja la grilla: las horas que se ofrecen para
               // empezar son exactamente las filas que se ven.

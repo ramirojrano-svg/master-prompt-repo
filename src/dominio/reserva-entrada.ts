@@ -9,7 +9,11 @@ import { esFechaCalendarioValida, fechaEnZona } from "./motor/zona.ts";
 import type { FechaLocal, Instante, Tz } from "./motor/tipos.ts";
 
 export const ReservaInput = z.object({
-  salaId: z.string().min(1),
+  // Vacío o ausente = SIN CONSULTORIO: horas que se consumen y se facturan pero no usan el
+  // espacio físico (un profesional que ese día atiende afuera). No bloquean ninguna sala, así que
+  // el consultorio queda libre para alquilarlo — que es todo el punto. Quién puede pedirlo se
+  // decide arriba, en la acción: el profesional no elige esto para sí mismo.
+  salaId: z.string().trim().transform((v) => v || null).nullable().default(null),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // día local del CENTRO
   inicioISO: z.string().datetime(), // instante absoluto
   duracionMin: z.coerce.number().int().min(DURACION_MIN_MIN).max(DURACION_MAX_MIN),

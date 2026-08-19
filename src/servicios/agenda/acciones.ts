@@ -25,7 +25,9 @@ const REPETICIONES_TUPLA = REPETICIONES as unknown as [string, ...string[]];
 import type { Actor } from "../../lib/actor.ts";
 
 export const NuevaReservaInput = z.object({
-  salaId: z.string().min(1),
+  // Vacío = SIN CONSULTORIO: la hora se factura pero no ocupa el espacio físico. Solo lo puede
+  // pedir la administración (ver `NuevaReservaPropiaInput`, que exige sala).
+  salaId: z.string().trim().transform((v) => v || null).nullable().default(null),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   hora: z.string().regex(/^\d{2}:\d{2}$/),
   duracionMin: z.coerce.number().int().min(DURACION_MIN_MIN).max(DURACION_MAX_MIN),
@@ -74,22 +76,47 @@ export type ResultadoAlta =
   | { ok: true; creadas: number; conflictos: { fecha: string; codigo: string }[] }
   | { ok: false; error: string };
 
-async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClient = prisma): Promise<ResultadoAlta> {
-  const sala = await db.sala.findFirst({
-    where: { id: input.salaId, operadorId: actor.operadorId },
-    select: { id: true, bufferMin: true, horarioJson: true, activa: true, sede: { select: { zonaHoraria: true } } },
-  });
-  if (!sala || !sala.activa) return { ok: false, error: "SALA_INEXISTENTE" };
+/**
+ * Horario "siempre abierto", para las reservas SIN CONSULTORIO.
+ *
+ * El horario de apertura dice cuándo se puede entrar AL CENTRO. Una hora que no usa el centro no
+ * tiene por qué caer adentro de esa ventana: el profesional que ese día atiende afuera consume su
+ * hora igual, y rechazársela porque el consultorio estaba cerrado no protegería nada. Lo que sí se
+ * sigue chequeando es el eje del profesional: no puede estar en dos lugares a la vez.
+ */
+const SIEMPRE_ABIERTO = ((): CtxReserva["horario"] => {
+  const todo = [{ desde: "00:00", hasta: "24:00" }];
+  return { 0: todo, 1: todo, 2: todo, 3: todo, 4: todo, 5: todo, 6: todo };
+})();
 
-  const tz = sala.sede.zonaHoraria;
+async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClient = prisma): Promise<ResultadoAlta> {
+  // Sin consultorio: se factura igual pero no ocupa el espacio, así que el consultorio queda libre
+  // para alquilárselo a otro. Es lo que faltaba para el profesional que ciertos días atiende
+  // afuera y hasta ahora bloqueaba una sala vacía.
+  const sinSala = !input.salaId;
+
+  const sala = sinSala
+    ? null
+    : await db.sala.findFirst({
+        where: { id: input.salaId!, operadorId: actor.operadorId },
+        select: { id: true, bufferMin: true, horarioJson: true, activa: true, sede: { select: { zonaHoraria: true } } },
+      });
+  if (!sinSala && (!sala || !sala.activa)) return { ok: false, error: "SALA_INEXISTENTE" };
+
+  const sede = sala?.sede ?? (await db.sede.findFirst({ where: { operadorId: actor.operadorId, activa: true }, select: { zonaHoraria: true } }));
+  if (!sede) return { ok: false, error: "SALA_INEXISTENTE" };
+
+  const tz = sede.zonaHoraria;
   const inicio = instanteDeHoraLocal(input.fecha, input.hora, tz);
   if (!inicio) return { ok: false, error: "FECHA_INVALIDA" };
 
   const ctx: CtxReserva = {
     operadorId: actor.operadorId,
     inquilinoId: input.inquilinoId,
-    horario: parseHorarios(sala.horarioJson),
-    politica: politicaDelPanel(sala.bufferMin),
+    horario: sala ? parseHorarios(sala.horarioJson) : SIEMPRE_ABIERTO,
+    // Sin sala no hay limpieza entre profesionales que respetar: el buffer existe para el tiempo
+    // de dejar el consultorio listo para el que sigue.
+    politica: politicaDelPanel(sala?.bufferMin ?? 0),
     bloqueaProfesional: true,
   };
 
@@ -98,7 +125,7 @@ async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClie
   // N veces en un for se deadlockearía contra otra serie que empiece por el otro extremo.
   if (input.repeticion === "no") {
     const r = await crearOcupacion(
-      { salaId: sala.id, fecha: input.fecha, inicioISO: inicio.toISOString(), duracionMin: input.duracionMin },
+      { salaId: sala?.id ?? null, fecha: input.fecha, inicioISO: inicio.toISOString(), duracionMin: input.duracionMin },
       ctx,
       db,
     );
@@ -110,7 +137,7 @@ async function crearDesdePanel(actor: Actor, input: NuevaReserva, db: PrismaClie
   // cerrada. La pantalla muestra cuántas quedaron afuera.
   const serie = await expandirSerie(
     {
-      salaId: sala.id,
+      salaId: sala?.id ?? null,
       hora: input.hora,
       duracionMin: input.duracionMin,
       fechaInicio: input.fecha,
@@ -294,8 +321,18 @@ export function mensajeDeTurno(codigo: string): string {
 // cualquiera agende (o cancele) a nombre de otro cambiando un campo oculto — y el permiso
 // `reserva.crear.propia` no lo frenaría, porque desde su punto de vista la acción es legítima.
 
-/** Igual que NuevaReservaInput pero SIN inquilinoId: no se pregunta, se sabe. */
-export const NuevaReservaPropiaInput = NuevaReservaInput.omit({ inquilinoId: true });
+/**
+ * Igual que NuevaReservaInput pero SIN inquilinoId: no se pregunta, se sabe.
+ *
+ * Y con la sala OBLIGATORIA. "Sin consultorio" significa que la hora se cobra sin ocupar el
+ * espacio, y esa es una decisión comercial del centro —a quién se le permite y por cuánto—, no
+ * algo que cada profesional resuelva por su cuenta: si pudiera elegirlo, cualquiera se agendaría
+ * sin sala y el centro perdería el control de lo que alquila. Acá se cierra en el ESQUEMA, no
+ * escondiendo la opción en la pantalla: a la acción se le puede hacer POST directo.
+ */
+export const NuevaReservaPropiaInput = NuevaReservaInput.omit({ inquilinoId: true, salaId: true }).extend({
+  salaId: z.string().min(1),
+});
 export type NuevaReservaPropia = z.infer<typeof NuevaReservaPropiaInput>;
 
 /** El vínculo del actor con su ficha de profesional. Sin él no hay turno propio posible. */

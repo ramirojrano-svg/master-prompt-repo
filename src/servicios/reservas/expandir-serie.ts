@@ -20,7 +20,8 @@ import { aMotor, OCUPAN } from "./comun.ts";
 export type ModoSerie = "parcial" | "todo_o_nada";
 
 export type ParamsSerie = {
-  salaId: string;
+  /** null = la serie no usa consultorio: factura pero no ocupa el espacio. */
+  salaId: string | null;
   hora: string; // 'HH:MM'
   duracionMin: number;
   fechaInicio: string; // 'YYYY-MM-DD'
@@ -51,9 +52,13 @@ export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaC
   if (p.cantidad < 1 || p.cantidad > OCURRENCIAS_MAX) return { ok: false, error: "DATOS_INVALIDOS" };
   if (p.duracionMin < DURACION_MIN_MIN || p.duracionMin > DURACION_MAX_MIN) return { ok: false, error: "DATOS_INVALIDOS" };
 
-  const sala = await db.sala.findFirst({ where: { id: p.salaId, operadorId: ctx.operadorId }, include: { sede: true } });
-  if (!sala || !sala.activa) return { ok: false, error: "SALA_INEXISTENTE" };
-  const tz = sala.sede.zonaHoraria;
+  // Sin consultorio la zona sale de la SEDE: no hay sala de la que sacarla. Ver la nota de
+  // crear.ts — son horas que se consumen y se facturan sin usar el espacio.
+  const sala = p.salaId ? await db.sala.findFirst({ where: { id: p.salaId, operadorId: ctx.operadorId }, include: { sede: true } }) : null;
+  if (p.salaId && (!sala || !sala.activa)) return { ok: false, error: "SALA_INEXISTENTE" };
+  const sede = sala?.sede ?? (await db.sede.findFirst({ where: { operadorId: ctx.operadorId, activa: true } }));
+  if (!sede) return { ok: false, error: "SALA_INEXISTENTE" };
+  const tz = sede.zonaHoraria;
 
   // Las FECHAS las decide el módulo puro de repetición (calendario, sin horas ni zonas). Acá
   // solo se les pone la hora, cada una en la zona de SU sede: nunca +7*24h sobre un instante.
@@ -67,7 +72,7 @@ export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaC
 
   // Todos los locks, ordenados ascendentemente y deduplicados.
   const claves = [
-    ...new Set(ocurrencias.flatMap((o) => clavesDeLock({ salaId: sala.id, inquilinoId: ctx.inquilinoId, inicio: o.inicio, fin: o.fin, tz }))),
+    ...new Set(ocurrencias.flatMap((o) => clavesDeLock({ salaId: sala?.id ?? null, inquilinoId: ctx.inquilinoId, inicio: o.inicio, fin: o.fin, tz }))),
   ].sort();
 
   const serieId = randomUUID();
@@ -82,7 +87,7 @@ export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaC
         where: { operadorId: ctx.operadorId, vigenteDesde: { lte: ahora }, OR: [{ vigenteHasta: null }, { vigenteHasta: { gt: ahora } }] },
         select: { id: true, salaId: true, inquilinoId: true, precioHoraCent: true, vigenteDesde: true, vigenteHasta: true },
       });
-      const tarifa = resolverTarifa(tarifas, { salaId: sala.id, inquilinoId: ctx.inquilinoId, ahora });
+      const tarifa = resolverTarifa(tarifas, { salaId: sala?.id ?? "", inquilinoId: ctx.inquilinoId, ahora });
       const cot = tarifa ? cotizar(tarifa, p.duracionMin) : null;
 
       const creadas: string[] = [];
@@ -91,7 +96,10 @@ export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaC
       for (const o of ocurrencias) {
         const desdeLookback = new Date(o.inicio.getTime() - LOOKBACK_MIN * 60_000);
         const [ocupSala, ocupInq] = await Promise.all([
-          tx.ocupacion.findMany({ where: { operadorId: ctx.operadorId, salaId: sala.id, estado: { in: OCUPAN }, inicio: { gte: desdeLookback, lt: o.fin }, fin: { gt: o.inicio } } }),
+          // Sin sala no hay eje de sala que chocar; el del profesional sigue valiendo.
+          sala
+            ? tx.ocupacion.findMany({ where: { operadorId: ctx.operadorId, salaId: sala.id, estado: { in: OCUPAN }, inicio: { gte: desdeLookback, lt: o.fin }, fin: { gt: o.inicio } } })
+            : Promise.resolve([]),
           tx.ocupacion.findMany({ where: { operadorId: ctx.operadorId, inquilinoId: ctx.inquilinoId, tipo: TipoOcupacion.reserva, estado: { in: OCUPAN }, inicio: { gte: desdeLookback, lt: o.fin }, fin: { gt: o.inicio } } }),
         ]);
 
@@ -115,8 +123,8 @@ export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaC
         const creada = await tx.ocupacion.create({
           data: {
             operadorId: ctx.operadorId,
-            sedeId: sala.sedeId,
-            salaId: sala.id,
+            sedeId: sede.id,
+            salaId: sala?.id ?? null,
             inquilinoId: ctx.inquilinoId,
             tipo: TipoOcupacion.reserva,
             estado: EstadoOcupacion.confirmada,

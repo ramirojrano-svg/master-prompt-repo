@@ -250,7 +250,9 @@ model Ocupacion {
   id                 String          @id @default(cuid())
   operadorId         String
   sedeId             String? // NULL = bloqueo global (todo el operador)
-  salaId             String? // NULL solo si tipo='bloqueo'
+  // NULL en bloqueo, y en la RESERVA sin consultorio: horas que se facturan sin usar el espacio
+  // fisico. No ocupan sala, asi que el consultorio queda libre para alquilarlo.
+  salaId             String?
   inquilinoId        String? // NULL en bloqueo y mantenimiento
   tipo               TipoOcupacion
   estado             EstadoOcupacion @default(confirmada)
