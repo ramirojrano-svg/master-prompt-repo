@@ -150,3 +150,15 @@ export function IconoGoogle({ tam = 18 }: Props) {
     </svg>
   );
 }
+
+/** Huecos libres: un calendario con un espacio vacío marcado. Es lo que la pantalla busca. */
+export function IconoHueco({ tam = 16 }: Props) {
+  return (
+    <svg width={tam} height={tam} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
+      <rect x="7" y="13" width="5" height="4" rx="1" fill="currentColor" stroke="none" opacity="0.35" />
+      <path d="M15 15h3" />
+    </svg>
+  );
+}

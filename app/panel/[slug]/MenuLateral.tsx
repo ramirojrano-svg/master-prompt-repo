@@ -26,6 +26,7 @@ import {
   IconoGasto,
   IconoLista,
   IconoMetrica,
+  IconoHueco,
   IconoPrecio,
   IconoProfesional,
 } from "../../Iconos.tsx";
@@ -96,6 +97,9 @@ export function MenuLateral({
     { id: "salas", href: `${raiz}/salas`, texto: "Consultorios", icono: <IconoConsultorio />, mostrar: puede(rol, "sala.administrar") },
     { id: "inquilinos", href: `${raiz}/inquilinos`, texto: "Profesionales", icono: <IconoProfesional />, mostrar: puede(rol, "inquilino.administrar") },
     { id: "tarifas", href: `${raiz}/tarifas`, texto: "Precios", icono: <IconoPrecio />, mostrar: puede(rol, "tarifa.administrar") },
+    // "Qué ofrezco" va pegado a Consultorios y Profesionales: las tres son la administración
+    // del espacio, y esta contesta la pregunta que llega de afuera ("¿tenés lugar?").
+    { id: "disponibilidad", href: `${raiz}/disponibilidad`, texto: "Qué ofrezco", icono: <IconoHueco />, mostrar: puede(rol, "sala.administrar") },
     // Gastos va ANTES de Negocio: se carga durante el mes, y Negocio es la lectura que lo usa.
     { id: "gastos", href: `${raiz}/gastos`, texto: "Gastos", icono: <IconoGasto />, mostrar: puede(rol, "finanzas.ver.agregada") },
     { id: "reportes", href: `${raiz}/reportes`, texto: "Negocio", icono: <IconoMetrica />, mostrar: puede(rol, "finanzas.ver.agregada") },
