@@ -90,11 +90,17 @@ try {
   process.exit(1);
 }
 
+/** Qué tablas hay ahora mismo. Se vuelve a preguntar después de los parches: una tabla nueva la
+ *  puede haber creado un parche, y contestar con la foto vieja sería declarar que falta algo que
+ *  se acaba de crear. */
+async function tablasPresentes() {
+  const r = await cliente.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public'");
+  return r.rows.map((x) => x.table_name);
+}
+
 try {
-  const presentes = (
-    await cliente.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public'")
-  ).rows.map((r) => r.table_name);
-  const faltan = esperadas.filter((t) => !presentes.includes(t));
+  const antes = await tablasPresentes();
+  const faltanAntes = esperadas.filter((t) => !antes.includes(t));
 
   if (reset) {
     // Destructivo a propósito y solo con la bandera puesta: es la salida para una base a medias.
@@ -103,27 +109,36 @@ try {
     await cliente.query(sql);
     ok(`Esquema recreado (${esperadas.length} tablas, constraints de exclusión y btree_gist)`);
     info("Ahora cargá los datos:  npm run seed");
-  } else if (faltan.length === 0) {
-    ok(`El esquema ya estaba aplicado (${esperadas.length} tablas)`);
-  } else if (faltan.length === esperadas.length) {
+  } else if (faltanAntes.length === esperadas.length) {
+    // Base vacía: la migración entera. Tiene que ir ANTES de los parches, que agregan columnas y
+    // referencias sobre tablas que todavía no existirían.
     await cliente.query(sql);
     ok(`Esquema aplicado (${esperadas.length} tablas, constraints de exclusión y btree_gist)`);
     info("Ahora cargá los datos:  npm run seed");
-  } else {
-    // Ni vacía ni completa: la base quedó de una versión anterior del código. Aplicar la
-    // migración de nuevo fallaría en la primera tabla que ya existe, así que no lo intentamos:
-    // se dice qué falta y cuál es el comando que lo arregla.
+  }
+
+  // Los parches van SIEMPRE y ANTES de juzgar si la base está completa. El orden importa y se
+  // pagó caro: los parches también crean TABLAS nuevas, no solo columnas. Cuando se agregó
+  // TokenClave, una base de producción sana pasó a tener "15 de 16 tablas", el chequeo la declaró
+  // a medias y abortó con exit 1 — tirando abajo el deploy y recomendando un `db:reset` que
+  // habría borrado los turnos cargados. La tabla que "faltaba" la creaba el parche de tres líneas
+  // más abajo, que nunca llegaba a correr.
+  for (const parche of PARCHES) await cliente.query(parche);
+
+  // Recién ahora se juzga, con la foto de DESPUÉS de los parches.
+  const despues = await tablasPresentes();
+  const faltan = esperadas.filter((t) => !despues.includes(t));
+  if (faltan.length > 0) {
     err(`La base quedó a medias: le falta${faltan.length === 1 ? "" : "n"} ${faltan.length} de ${esperadas.length} tablas.`);
     err(`Falta${faltan.length === 1 ? "" : "n"}: ${faltan.join(", ")}`);
-    err("Es una base de una versión anterior. Para rehacerla (se pierden los datos de prueba):");
+    err("Es una base de una versión anterior, y ningún parche la cubre.");
+    // El aviso va ANTES del comando: `db:reset` borra la base entera, y en producción eso son los
+    // turnos y la facturación de verdad. Ofrecerlo a secas es ofrecer un desastre.
+    err("Para rehacerla en DESARROLLO (borra TODOS los datos, nunca en producción):");
     err("    npm run db:reset && npm run seed");
     process.exit(1);
   }
-
-  // Después de crear (o de encontrar) las tablas, las columnas agregadas más tarde. Va afuera del
-  // if/else a propósito: hace falta tanto en la base recién creada como en la que ya existía.
-  for (const parche of PARCHES) await cliente.query(parche);
-  ok(`Columnas al día (${PARCHES.length} parches idempotentes)`);
+  ok(`Esquema al día (${esperadas.length} tablas, ${PARCHES.length} parches idempotentes)`);
 } catch (e) {
   err(`Falló al aplicar el esquema: ${e.message}`);
   process.exit(1);
