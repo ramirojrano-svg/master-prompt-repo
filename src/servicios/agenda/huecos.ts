@@ -56,7 +56,7 @@ export const DIAS_VENTANA = 14;
 export const HUECO_MIN_MIN = 60;
 
 export async function huecosLibres(
-  a: { actor: Actor; desdeFecha?: string | null; dias?: number; salaId?: string | null; diaSemana?: number | null },
+  a: { actor: Actor; desdeFecha?: string | null; dias?: number; hastaFecha?: string | null; salaId?: string | null; diaSemana?: number | null },
   db: PrismaClient = prisma,
 ): Promise<Disponibilidad | null> {
   const op = a.actor.operadorId;
@@ -77,7 +77,7 @@ export async function huecosLibres(
     return { tz, desde: "", hasta: "", dias: [], minutosLibres: 0, salas: [] };
   }
 
-  const cuantos = Math.min(Math.max(1, Math.floor(a.dias ?? DIAS_VENTANA)), 60);
+  const cuantos = Math.min(Math.max(1, Math.floor(a.dias ?? DIAS_VENTANA)), 62);
   // Desde HOY en la zona de la SEDE, nunca del navegador: ofrecer el hueco de ayer sería ofrecer
   // algo que no existe, y en un centro que abre a las 7 la diferencia de zona lo hace fácil.
   const hoy = fechaEnZona(new Date(), tz);
@@ -88,10 +88,17 @@ export async function huecosLibres(
   const pedida = a.desdeFecha;
   const arranque = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) && pedida >= hoy ? pedida : hoy;
 
+  // El tope opcional cierra la ventana en una fecha concreta. Lo usa la navegación por mes: el
+  // mes corriente arranca HOY (ofrecer el hueco de ayer no sirve) pero termina el último día del
+  // mes, no 30 días después — si no, "agosto" mostraría también la primera semana de septiembre.
+  const tope = a.hastaFecha && /^\d{4}-\d{2}-\d{2}$/.test(a.hastaFecha) ? a.hastaFecha : null;
+
   const fechas: string[] = [];
   for (let n = 0; n < cuantos; n++) {
     const f = sumarDiasLocal(arranque, n);
-    if (f) fechas.push(f);
+    if (!f) continue;
+    if (tope && f > tope) break;
+    fechas.push(f);
   }
   if (fechas.length === 0) return null;
 

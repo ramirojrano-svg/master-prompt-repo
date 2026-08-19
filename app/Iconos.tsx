@@ -56,14 +56,19 @@ export function IconoPrecio({ tam = 16 }: Props) {
   );
 }
 
-/** Métricas: barras. Es el dibujo del panel al que lleva. */
+/** Negocio: barras con una flecha que sube. Las barras solas decían "hay números"; la flecha
+ *  dice de qué se trata la pantalla — si el centro está yendo para arriba o para abajo. */
 export function IconoMetrica({ tam = 16 }: Props) {
   return (
     <svg {...base(tam)}>
-      <path d="M3 21h18" />
-      <rect x="4.5" y="12" width="4" height="6" rx="1" />
-      <rect x="10" y="7.5" width="4" height="10.5" rx="1" />
-      <rect x="15.5" y="3.5" width="4" height="14.5" rx="1" />
+      {/* Las barras, llenas: a 16 px un contorno de 4 px de ancho se lee como una mancha hueca. */}
+      <rect x="2.5" y="13" width="3.4" height="8" rx="0.8" fill="currentColor" stroke="none" />
+      <rect x="7.4" y="9.5" width="3.4" height="11.5" rx="0.8" fill="currentColor" stroke="none" />
+      <rect x="12.3" y="14.5" width="3.4" height="6.5" rx="0.8" fill="currentColor" stroke="none" />
+      <rect x="17.2" y="11" width="3.4" height="10" rx="0.8" fill="currentColor" stroke="none" />
+      {/* La quebrada que sube, por encima de las barras, con su punta de flecha. */}
+      <path d="M3 8.5 L8 3.8 L12 7.2 L20 2.5" />
+      <path d="M15.5 2.2 L20.5 2.2 L20.5 7" />
     </svg>
   );
 }

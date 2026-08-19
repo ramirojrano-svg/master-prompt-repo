@@ -1,4 +1,4 @@
-// app/panel/[slug]/disponibilidad/page.tsx — "qué tengo para ofrecer".
+// app/panel/[slug]/disponibilidad/page.tsx — "Disponibilidad": qué horas quedan para ofrecer.
 //
 // Es la pantalla del otro lado del mostrador. La agenda contesta "qué hay el martes"; acá la
 // pregunta es la de quien llega preguntando si queda lugar, y hay que poder contestarla sin
@@ -14,9 +14,11 @@ import Link from "next/link";
 import { Cabecera } from "../Cabecera.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
-import { huecosLibres, DIAS_VENTANA, HUECO_MIN_MIN } from "../../../../src/servicios/agenda/huecos.ts";
-import { horasYMinutos } from "../../../../src/dominio/reporte.ts";
+import { huecosLibres, HUECO_MIN_MIN } from "../../../../src/servicios/agenda/huecos.ts";
+import { diasDelPeriodo, esPeriodoValido, horasYMinutos, nombreDePeriodo, periodoAnterior, periodoSiguiente } from "../../../../src/dominio/reporte.ts";
 import { nombrarFecha } from "../../../../src/dominio/conflictos.ts";
+import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
+import { prisma } from "../../../../src/db/prisma.ts";
 
 const DIA_LARGO = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
@@ -25,7 +27,7 @@ export default async function DisponibilidadPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ dias?: string; sala?: string; dow?: string }>;
+  searchParams: Promise<{ mes?: string; sala?: string; dow?: string }>;
 }) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -36,16 +38,30 @@ export default async function DisponibilidadPage({
   // queda sin alquilar.
   if (!puede(actor.rol, "sala.administrar")) redirect(`/panel/${slug}`);
 
-  const dias = sp.dias === "30" ? 30 : sp.dias === "7" ? 7 : DIAS_VENTANA;
   const dow = sp.dow != null && /^[0-6]$/.test(sp.dow) ? Number(sp.dow) : null;
 
-  const d = await huecosLibres({ actor, dias, salaId: sp.sala ?? null, diaSemana: dow });
+  // La ventana es un MES de calendario y no "los próximos N días": quien va a ofrecer un lugar
+  // piensa en meses ("¿tenés algo en septiembre?"), y una ventana móvil hace que la misma pantalla
+  // muestre algo distinto cada día sin que nadie haya cambiado nada.
+  const sede = await prisma.sede.findFirst({ where: { operadorId: actor.operadorId, activa: true }, select: { zonaHoraria: true } });
+  if (!sede) redirect(`/panel/${slug}`);
+  const hoy = fechaEnZona(new Date(), sede.zonaHoraria);
+  const mesActual = hoy.slice(0, 7);
+  const mes = sp.mes && esPeriodoValido(sp.mes) && sp.mes >= mesActual ? sp.mes : mesActual;
+
+  const delMes = diasDelPeriodo(mes);
+  // En el mes corriente se arranca HOY: los huecos de ayer no se le ofrecen a nadie. En los
+  // meses siguientes, desde el día 1.
+  const arranque = mes === mesActual ? hoy : delMes[0]!;
+  const ultimo = delMes.at(-1)!;
+
+  const d = await huecosLibres({ actor, desdeFecha: arranque, hastaFecha: ultimo, dias: 62, salaId: sp.sala ?? null, diaSemana: dow });
   if (!d) redirect(`/panel/${slug}`);
 
   /** Un link de esta pantalla conservando los filtros que no cambian. */
   function href(extra: Record<string, string | null>): string {
     const q = new URLSearchParams();
-    const base: Record<string, string | null> = { dias: String(dias), sala: sp.sala ?? null, dow: dow == null ? null : String(dow), ...extra };
+    const base: Record<string, string | null> = { mes, sala: sp.sala ?? null, dow: dow == null ? null : String(dow), ...extra };
     for (const [k, v] of Object.entries(base)) if (v) q.set(k, v);
     return `/panel/${slug}/disponibilidad${q.size ? `?${q.toString()}` : ""}`;
   }
@@ -54,13 +70,14 @@ export default async function DisponibilidadPage({
 
   return (
     <>
-      <Cabecera slug={slug} titulo="Qué tengo para ofrecer" />
+      <Cabecera slug={slug} titulo="Disponibilidad" />
 
       <main style={{ padding: 20, maxWidth: 960, margin: "0 auto" }}>
         {/* El total arriba: es la respuesta corta a "cuánto me sobra". El detalle de abajo la explica. */}
         <section className="panel" style={{ padding: 22 }}>
           <p className="tenue" style={{ margin: 0, fontSize: 13 }}>
-            Libre {dias === 7 ? "esta semana" : dias === 30 ? "en 30 días" : "en 14 días"}
+            Libre en {nombreDePeriodo(mes)}
+            {mes === mesActual ? " (de hoy en adelante)" : ""}
             {sp.sala && d.salas[0] ? ` · ${d.salas[0].nombre}` : ""}
             {dow != null ? ` · solo ${DIA_LARGO[dow]?.toLowerCase()}s` : ""}
           </p>
@@ -76,12 +93,17 @@ export default async function DisponibilidadPage({
 
         {/* ── Filtros ─────────────────────────────────────────────────────── */}
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", margin: "18px 0 6px", alignItems: "center" }}>
-          <nav className="segmentado">
-            {[7, 14, 30].map((n) => (
-              <Link key={n} href={href({ dias: String(n) })} aria-current={dias === n ? "page" : undefined}>
-                {n} días
-              </Link>
-            ))}
+          {/* Una flecha de cada lado del mes. Hacia atrás solo hasta el mes corriente: los huecos
+              de un mes que ya pasó no se le pueden ofrecer a nadie, y dejar la flecha llevaría a
+              una pantalla siempre vacía. */}
+          <nav style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            {mes > mesActual ? (
+              <Link className="nav-circ" href={href({ mes: periodoAnterior(mes) })} aria-label="Mes anterior">‹</Link>
+            ) : (
+              <span className="nav-circ" aria-hidden style={{ opacity: 0.25 }}>‹</span>
+            )}
+            <strong style={{ minWidth: 150, textAlign: "center", fontSize: 15 }}>{nombreDePeriodo(mes)}</strong>
+            <Link className="nav-circ" href={href({ mes: periodoSiguiente(mes) })} aria-label="Mes siguiente">›</Link>
           </nav>
 
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -116,16 +138,16 @@ export default async function DisponibilidadPage({
         {conAlgo.length === 0 ? (
           <p className="tenue" style={{ marginTop: 20 }}>
             No queda ningún bloque de {HUECO_MIN_MIN / 60} hora o más con estos filtros. Probá con
-            más días, otro consultorio, o sacando el filtro de día.
+            otro mes, otro consultorio, o sacando el filtro de día.
           </p>
         ) : (
           <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
             {conAlgo.map((x) => (
               <section key={x.fecha} className="panel" style={{ padding: 16 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-                  <h2 style={{ margin: 0, fontSize: 15 }}>
-                    {DIA_LARGO[x.diaSemana]} {nombrarFecha(x.fecha)}
-                  </h2>
+                  {/* `nombrarFecha` YA devuelve "lunes 24/8": anteponerle DIA_LARGO daba
+                      "Lunes lunes 24/8". */}
+                  <h2 style={{ margin: 0, fontSize: 15, textTransform: "capitalize" }}>{nombrarFecha(x.fecha)}</h2>
                   <span className="tenue" style={{ fontSize: 13 }}>{horasYMinutos(x.minutosLibres)} libres</span>
                 </div>
 
