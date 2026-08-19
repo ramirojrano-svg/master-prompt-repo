@@ -13,7 +13,9 @@ import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { cerrarTarifa, ponerTarifa, ponerTarifasEnLote, tarifasVigentes } from "../../../../src/servicios/config/tarifas.ts";
+import { recotizarPendientes, reservasSinPrecio } from "../../../../src/servicios/plata/recotizar.ts";
 import { FormPrecio } from "./FormPrecio.tsx";
+import { BotonEnviar } from "../BotonEnviar.tsx";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
 
 export default async function TarifasPage({
@@ -21,7 +23,7 @@ export default async function TarifasPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string; ok?: string; cobrados?: string; repetidos?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; cobrados?: string; repetidos?: string; cotizadas?: string }>;
 }) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -60,6 +62,9 @@ export default async function TarifasPage({
   const conAbono = new Set(abonos.map((a) => a.inquilino.id));
 
   const activos = inquilinos.filter((i) => i.estado === "activo");
+  // Reservas que nacieron antes de que hubiera precios y quedaron sin importe. Es plata que no
+  // se está cobrando, y sin este número nadie se entera: en la agenda se ven normales.
+  const sinPrecio = await reservasSinPrecio(actor.operadorId);
   const plata = (c: bigint) => formatearPesos(c, operador.moneda);
 
 
@@ -96,6 +101,15 @@ export default async function TarifasPage({
     revalidatePath(`/panel/${slug}/tarifas`);
     const qs = !r.ok ? `?error=${r.error}` : !r.data.ok ? `?error=${r.data.error}` : "?ok=1";
     redirect(`/panel/${slug}/tarifas${qs}`);
+  }
+
+  async function ponerPrecioAPendientes() {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+    const r = await recotizarPendientes(a, {});
+    revalidatePath(`/panel/${slug}/tarifas`);
+    redirect(`/panel/${slug}/tarifas${r.ok ? `?cotizadas=${r.data.cotizadas}` : `?error=${r.error}`}`);
   }
 
   async function guardarAbono(formData: FormData) {
@@ -190,6 +204,37 @@ export default async function TarifasPage({
             ))}
           </tbody>
         </table>
+      )}
+
+      {/* ── Reservas que quedaron sin precio ────────────────────────────── */}
+      {/* Aparece SOLO si hay: es un arreglo puntual, no una función permanente de la pantalla.
+          Pasa siempre igual — se carga la agenda antes que los precios, que es el orden natural —
+          y sin este aviso esas horas no se cobran nunca: en la agenda se ven normales, y el
+          guioncito de la columna Importe no grita nada. */}
+      {sinPrecio > 0 && (
+        <form action={ponerPrecioAPendientes} className="panel" style={{ marginTop: 20, borderLeft: "4px solid var(--alerta)" }}>
+          <h2 style={{ marginTop: 0, fontSize: 16 }}>
+            {sinPrecio === 1 ? "Hay 1 reserva sin precio" : `Hay ${sinPrecio} reservas sin precio`}
+          </h2>
+          <p className="tenue" style={{ margin: "6px 0 0", fontSize: 13 }}>
+            Se crearon antes de que cargaras los precios, así que no generaron deuda: ocupan la
+            agenda pero no aparecen en ninguna suma. Poniéndoles el precio vigente de cada
+            profesional pasan a facturarse.
+          </p>
+          <p className="tenue" style={{ margin: "6px 0 0", fontSize: 13 }}>
+            No toca las que ya tienen importe: un precio estampado no se reescribe.
+          </p>
+          <p style={{ marginTop: 14, marginBottom: 0 }}>
+            <BotonEnviar enviando="Poniendo precios…">Ponerles el precio vigente</BotonEnviar>
+          </p>
+        </form>
+      )}
+      {sp.cotizadas && (
+        <p className="aviso-ok" style={{ marginTop: 20 }}>
+          {sp.cotizadas === "0"
+            ? "No se pudo poner precio a ninguna: falta cargar la tarifa que les corresponde."
+            : `${sp.cotizadas} ${Number(sp.cotizadas) === 1 ? "reserva quedó facturada" : "reservas quedaron facturadas"}.`}
+        </p>
       )}
 
       {/* ── Poner un precio ─────────────────────────────────────────────── */}
