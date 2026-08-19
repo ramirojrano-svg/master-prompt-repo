@@ -20,7 +20,7 @@
     "predev": "node scripts/entorno-limpio.mjs",
     "seed": "node prisma/seed.ts",
     "vaciar-agenda": "node scripts/vaciar-agenda.mjs",
-  "test": "node --test \"src/**/*.test.ts\"",
+    "test": "node --test \"src/**/*.test.ts\"",
     "test:db": "node --test --test-concurrency=1 \"tests/integracion/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.json",
     "vercel-build": "node scripts/esquema.mjs && next build",
@@ -29,6 +29,7 @@
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22",
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.21.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
@@ -42,6 +43,7 @@
     "bcryptjs": "^3.0.3",
     "next": "^16.2.9",
     "next-auth": "^5.0.0-beta.32",
+    "nodemailer": "^8.0.11",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "zod": "^4.4.3"
