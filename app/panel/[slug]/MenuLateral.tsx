@@ -106,6 +106,8 @@ export function MenuLateral({
     // Cierre va DESPUÉS de Negocio: primero se mira cómo vino el mes, después se lo cierra. Es el
     // orden en que se hace, una vez por mes.
     { id: "cierre", href: `${raiz}/cierre`, texto: "Cierre de mes", icono: <IconoLista />, mostrar: puede(rol, "periodo.cerrar") },
+    // Y después de cerrar, cobrar: es el orden real del trabajo del mes.
+    { id: "cobranza", href: `${raiz}/cobranza`, texto: "Cobranza", icono: <IconoGasto />, mostrar: puede(rol, "finanzas.ver.agregada") },
     { id: "mis-reservas", href: `${raiz}/mis-reservas`, texto: "Mis reservas", icono: <IconoLista />, mostrar: esProfesional },
   ];
 
