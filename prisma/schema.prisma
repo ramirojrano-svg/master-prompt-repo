@@ -38,6 +38,7 @@ model Operador {
   usuarios      UsuarioOperador[]
   asientos      Asiento[]
   liquidaciones Liquidacion[]
+  auditoria     Auditoria[]
   membresias    Membresia[]
   tarifas       Tarifa[]
   gastos        Gasto[]
@@ -477,6 +478,36 @@ model Asiento {
   @@index([operadorId, inquilinoId, cuenta, fechaHecho])
   @@index([operadorId, periodo])
   @@index([operadorId, liquidacionId])
+}
+
+/// Quién hizo qué. Una fila por acción de escritura que ejecutó una persona.
+///
+/// Existe para el día de la discusión: "yo no cancelé ese turno", "ese precio no lo puse yo".
+/// Con 29 profesionales y plata de por medio, la memoria de nadie alcanza — y sin registro, la
+/// versión que gana es la del que habla más fuerte.
+///
+/// NO guarda el contenido de lo que se mandó, solo con qué acción y sobre qué. La razón es dura:
+/// varias acciones reciben contraseñas (crear un acceso, restablecer una clave), y un registro de
+/// auditoría que las guarde es una filtración con fecha y hora. Lo que sí guarda es el `resumen`,
+/// que arma cada acción a mano con los datos que sí se pueden escribir.
+model Auditoria {
+  id         String   @id @default(cuid())
+  operadorId String
+  /// Quién. Se guarda el id y no una relación: si el usuario se borra, el registro tiene que quedar.
+  usuarioId  String
+  rol        Rol
+  /// El permiso que habilitó la acción. Dice qué se hizo mejor que cualquier nombre de función.
+  permiso    String
+  /// Qué salió: 'ok', 'SIN_PERMISO', 'ENTRADA_INVALIDA', o el error de negocio que devolvió.
+  resultado  String
+  /// Descripción corta y SIN secretos, armada por la acción. Puede ser null.
+  resumen    String?
+  creadoEl   DateTime @default(now()) @db.Timestamptz(6)
+
+  operador Operador @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+
+  @@index([operadorId, creadoEl])
+  @@index([operadorId, usuarioId, creadoEl])
 }
 
 model Liquidacion {

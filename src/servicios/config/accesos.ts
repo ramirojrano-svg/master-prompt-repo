@@ -146,11 +146,28 @@ async function restablecer(
   return { ok: true, email: uo.usuario.email };
 }
 
-export const crearAcceso = definirAccion({ permiso: "usuarios.administrar", schema: CrearAccesoInput }, (a, i) => crear(a, i));
-export const restablecerClave = definirAccion({ permiso: "usuarios.administrar", schema: RestablecerInput }, (a, i) => restablecer(a, i));
+// La configuración se define UNA vez y la comparten la acción de producción y la inyectable. Con
+// dos literales separados, el resumen de auditoría se agregaba en una y se olvidaba en la otra —
+// que es exactamente lo que pasó la primera vez que se escribió esto.
+//
+// El resumen lleva el EMAIL y nunca la contraseña, que viaja en el mismo input.
+const CFG_CREAR_ACCESO = {
+  permiso: "usuarios.administrar",
+  schema: CrearAccesoInput,
+  resumen: (i: z.infer<typeof CrearAccesoInput>) => `alta de acceso para ${i.email}`,
+} as const;
+
+const CFG_RESTABLECER = {
+  permiso: "usuarios.administrar",
+  schema: RestablecerInput,
+  resumen: (i: z.infer<typeof RestablecerInput>) => `clave nueva puesta a mano al profesional ${i.inquilinoId}`,
+} as const;
+
+export const crearAcceso = definirAccion(CFG_CREAR_ACCESO, (a, i) => crear(a, i));
+export const restablecerClave = definirAccion(CFG_RESTABLECER, (a, i) => restablecer(a, i));
 
 /** Versiones inyectables, para los tests. */
 export const accesosCon = (db: PrismaClient) => ({
-  crear: definirAccion({ permiso: "usuarios.administrar", schema: CrearAccesoInput }, (a, i) => crear(a, i, db)),
-  restablecer: definirAccion({ permiso: "usuarios.administrar", schema: RestablecerInput }, (a, i) => restablecer(a, i, db)),
+  crear: definirAccion({ ...CFG_CREAR_ACCESO, db }, (a, i) => crear(a, i, db)),
+  restablecer: definirAccion({ ...CFG_RESTABLECER, db }, (a, i) => restablecer(a, i, db)),
 });

@@ -172,7 +172,7 @@ export const moverReservaAjena = definirAccion(
 
 /** Misma lógica, para tests: permite inyectar el cliente de base. */
 export const moverReservaAjenaCon = (db: PrismaClient) =>
-  definirAccion({ permiso: "reserva.editar.ajena", schema: MoverReservaInput }, (actor, input) => moverDesdePanel(actor, input, db));
+  definirAccion({ permiso: "reserva.editar.ajena", schema: MoverReservaInput, db }, (actor, input) => moverDesdePanel(actor, input, db));
 
 // ── Acciones sobre un turno ya existente ───────────────────────────────────
 // Las tres piden `reserva.editar.ajena`: cambiarle la hora, marcarle una falta o darlo de baja
@@ -204,7 +204,7 @@ export const noShowReservaAjena = definirAccion(
 
 /** Las mismas, para tests: permiten inyectar el cliente de base. */
 export const cancelarReservaAjenaCon = (db: PrismaClient) =>
-  definirAccion({ permiso: "reserva.editar.ajena", schema: TurnoInput }, (actor, input) =>
+  definirAccion({ permiso: "reserva.editar.ajena", schema: TurnoInput, db }, (actor, input) =>
     cancelarOcupacion(input, { operadorId: actor.operadorId }, db),
   );
 
@@ -216,7 +216,7 @@ export const crearReservaAjena = definirAccion(
 
 /** Misma lógica, para tests: permite inyectar el cliente de base. */
 export const crearReservaAjenaCon = (db: PrismaClient) =>
-  definirAccion({ permiso: "reserva.crear.ajena", schema: NuevaReservaInput }, (actor, input) => crearDesdePanel(actor, input, db));
+  definirAccion({ permiso: "reserva.crear.ajena", schema: NuevaReservaInput, db }, (actor, input) => crearDesdePanel(actor, input, db));
 
 /** Mensaje honesto por código de error (§13): nunca "no hay disponibilidad" si la causa es otra. */
 export function mensajeDeError(codigo: string): string {
@@ -350,7 +350,7 @@ export const crearReservaPropia = definirAccion(
 );
 
 export const crearReservaPropiaCon = (db: PrismaClient) =>
-  definirAccion({ permiso: "reserva.crear.propia", schema: NuevaReservaPropiaInput }, (actor, input) => crearPropia(actor, input, db));
+  definirAccion({ permiso: "reserva.crear.propia", schema: NuevaReservaPropiaInput, db }, (actor, input) => crearPropia(actor, input, db));
 
 /**
  * Cancela un turno PROPIO. El chequeo de que la fila sea suya se hace acá, contra la base: el id
@@ -386,7 +386,7 @@ export const cancelarReservaPropia = definirAccion(
 );
 
 export const cancelarReservaPropiaCon = (db: PrismaClient) =>
-  definirAccion({ permiso: "reserva.editar.propia", schema: TurnoInput }, (actor, input) => cancelarPropia(actor, input, db));
+  definirAccion({ permiso: "reserva.editar.propia", schema: TurnoInput, db }, (actor, input) => cancelarPropia(actor, input, db));
 
 /** Mueve un turno PROPIO arrastrándolo. Mismo chequeo de dueño que al cancelar. */
 async function moverPropia(actor: Actor, input: z.infer<typeof MoverReservaInput>, db: PrismaClient = prisma) {
@@ -410,4 +410,4 @@ export const moverReservaPropia = definirAccion(
 );
 
 export const moverReservaPropiaCon = (db: PrismaClient) =>
-  definirAccion({ permiso: "reserva.editar.propia", schema: MoverReservaInput }, (actor, input) => moverPropia(actor, input, db));
+  definirAccion({ permiso: "reserva.editar.propia", schema: MoverReservaInput, db }, (actor, input) => moverPropia(actor, input, db));

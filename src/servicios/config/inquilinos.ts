@@ -79,9 +79,9 @@ export const cambiarEstadoInquilino = definirAccion({ permiso: "inquilino.admini
 
 /** Versiones inyectables, para los tests. */
 export const inquilinosCon = (db: PrismaClient) => ({
-  crear: definirAccion({ permiso: "inquilino.administrar", schema: InquilinoInput }, (a, i) => crear(a, i, db)),
-  editar: definirAccion({ permiso: "inquilino.administrar", schema: InquilinoInput.extend({ inquilinoId: z.string().min(1) }) }, (a, i) => editar(a, i, db)),
-  cambiarEstado: definirAccion({ permiso: "inquilino.administrar", schema: EstadoInput }, (a, i) =>
+  crear: definirAccion({ permiso: "inquilino.administrar", schema: InquilinoInput, db }, (a, i) => crear(a, i, db)),
+  editar: definirAccion({ permiso: "inquilino.administrar", schema: InquilinoInput.extend({ inquilinoId: z.string().min(1) }), db }, (a, i) => editar(a, i, db)),
+  cambiarEstado: definirAccion({ permiso: "inquilino.administrar", schema: EstadoInput, db }, (a, i) =>
     cambiarEstado(a, { inquilinoId: i.inquilinoId, estado: i.estado as EstadoInquilino }, db),
   ),
 });

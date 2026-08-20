@@ -234,4 +234,4 @@ export const recotizarPendientes = definirAccion(
 
 /** Versión inyectable, para los tests. */
 export const recotizarCon = (db: PrismaClient) =>
-  definirAccion({ permiso: "tarifa.administrar", schema: z.object({}) }, (a, i) => recotizar(a, i, db));
+  definirAccion({ permiso: "tarifa.administrar", schema: z.object({}), db }, (a, i) => recotizar(a, i, db));

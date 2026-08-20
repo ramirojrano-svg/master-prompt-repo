@@ -120,8 +120,8 @@ export const cobrarAbonosDelMes = definirAccion({ permiso: "tarifa.administrar",
 
 /** Versiones inyectables, para los tests: sin esto la acción escribe por el cliente global. */
 export const abonosCon = (db: PrismaClient) => ({
-  poner: definirAccion({ permiso: "tarifa.administrar", schema: AbonoInput }, (a, i) => ponerAbono(a, i, db)),
-  cobrar: definirAccion({ permiso: "tarifa.administrar", schema: PeriodoInput }, (a, i) => cobrarDelMes(a, i, db)),
+  poner: definirAccion({ permiso: "tarifa.administrar", schema: AbonoInput, db }, (a, i) => ponerAbono(a, i, db)),
+  cobrar: definirAccion({ permiso: "tarifa.administrar", schema: PeriodoInput, db }, (a, i) => cobrarDelMes(a, i, db)),
 });
 
 /** Los abonos vigentes, para la pantalla. */

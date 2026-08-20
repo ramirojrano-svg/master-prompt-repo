@@ -94,10 +94,13 @@ async function registrar(
   return { ok: true, duplicado: !r.creado };
 }
 
-export const registrarCobro = definirAccion(
-  { permiso: "cobro.registrar", schema: CobroInput },
-  (a, i) => registrar(a, i),
-);
+const CFG_COBRO = {
+  permiso: "cobro.registrar",
+  schema: CobroInput,
+  resumen: (i: z.infer<typeof CobroInput>) => `cobro de ${i.monto} a ${i.inquilinoId} por ${i.medio}`,
+} as const;
+
+export const registrarCobro = definirAccion(CFG_COBRO, (a, i) => registrar(a, i));
 
 export const AnularInput = z.object({
   asientoId: z.string().min(1),
@@ -144,15 +147,19 @@ async function anular(
   return r.creado ? { ok: true } : { ok: false, error: "YA_ANULADO" };
 }
 
-export const anularCobro = definirAccion(
-  { permiso: "cobro.registrar", schema: AnularInput },
-  (a, i) => anular(a, i),
-);
+// Anular un cobro es de las cosas que más se discuten después: queda registrado cuál.
+const CFG_ANULAR = {
+  permiso: "cobro.registrar",
+  schema: AnularInput,
+  resumen: (i: z.infer<typeof AnularInput>) => `anulación del cobro ${i.asientoId}`,
+} as const;
+
+export const anularCobro = definirAccion(CFG_ANULAR, (a, i) => anular(a, i));
 
 /** Versiones inyectables, para los tests: sin esto las acciones escriben por el cliente global. */
 export const cobrosCon = (db: PrismaClient) => ({
-  registrar: definirAccion({ permiso: "cobro.registrar", schema: CobroInput }, (a, i) => registrar(a, i, db)),
-  anular: definirAccion({ permiso: "cobro.registrar", schema: AnularInput }, (a, i) => anular(a, i, db)),
+  registrar: definirAccion({ ...CFG_COBRO, db }, (a, i) => registrar(a, i, db)),
+  anular: definirAccion({ ...CFG_ANULAR, db }, (a, i) => anular(a, i, db)),
 });
 
 export type CobroListado = {

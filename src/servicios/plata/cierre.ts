@@ -159,11 +159,25 @@ async function cerrarTodos(actor: Actor, input: z.infer<typeof CierreTodosInput>
   return { ok: true, cerradas, sinNada, totalCent };
 }
 
-export const cerrarMesDe = definirAccion({ permiso: "periodo.cerrar", schema: CierreInput }, (a, i) => cerrarUno(a, i, prisma));
-export const cerrarMesTodos = definirAccion({ permiso: "periodo.cerrar", schema: CierreTodosInput }, (a, i) => cerrarTodos(a, i, prisma));
+// Una sola configuración para la acción de producción y la inyectable: si fueran dos literales,
+// el resumen de auditoría se agregaría en una y se olvidaría en la otra.
+const CFG_CIERRE_UNO = {
+  permiso: "periodo.cerrar",
+  schema: CierreInput,
+  resumen: (i: z.infer<typeof CierreInput>) => `cierre de ${i.periodo} para ${i.inquilinoId}`,
+} as const;
+
+const CFG_CIERRE_TODOS = {
+  permiso: "periodo.cerrar",
+  schema: CierreTodosInput,
+  resumen: (i: z.infer<typeof CierreTodosInput>) => `cierre de ${i.periodo} para todos`,
+} as const;
+
+export const cerrarMesDe = definirAccion(CFG_CIERRE_UNO, (a, i) => cerrarUno(a, i, prisma));
+export const cerrarMesTodos = definirAccion(CFG_CIERRE_TODOS, (a, i) => cerrarTodos(a, i, prisma));
 
 /** Versiones inyectables, para los tests. */
 export const cierreCon = (db: PrismaClient) => ({
-  uno: definirAccion({ permiso: "periodo.cerrar", schema: CierreInput }, (a, i) => cerrarUno(a, i, db)),
-  todos: definirAccion({ permiso: "periodo.cerrar", schema: CierreTodosInput }, (a, i) => cerrarTodos(a, i, db)),
+  uno: definirAccion({ ...CFG_CIERRE_UNO, db }, (a, i) => cerrarUno(a, i, db)),
+  todos: definirAccion({ ...CFG_CIERRE_TODOS, db }, (a, i) => cerrarTodos(a, i, db)),
 });

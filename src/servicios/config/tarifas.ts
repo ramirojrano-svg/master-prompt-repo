@@ -188,8 +188,20 @@ async function cerrar(actor: Actor, input: { tarifaId: string }, db: PrismaClien
   return r.count === 1 ? { ok: true, id: input.tarifaId } : { ok: false, error: "NO_ENCONTRADA" };
 }
 
-export const ponerTarifa = definirAccion({ permiso: "tarifa.administrar", schema: TarifaInput }, (a, i) => poner(a, i, prisma));
-export const ponerTarifasEnLote = definirAccion({ permiso: "tarifa.administrar", schema: TarifasLoteInput }, (a, i) => ponerLote(a, i, prisma));
+const CFG_TARIFA = {
+  permiso: "tarifa.administrar",
+  schema: TarifaInput,
+  resumen: (i: z.infer<typeof TarifaInput>) => `precio ${i.precioHora} la hora para ${i.inquilinoId ?? "todos"}`,
+} as const;
+
+const CFG_TARIFA_LOTE = {
+  permiso: "tarifa.administrar",
+  schema: TarifasLoteInput,
+  resumen: (i: z.infer<typeof TarifasLoteInput>) => `general ${i.precioHora} con ${i.excepciones.length} excepciones`,
+} as const;
+
+export const ponerTarifa = definirAccion(CFG_TARIFA, (a, i) => poner(a, i, prisma));
+export const ponerTarifasEnLote = definirAccion(CFG_TARIFA_LOTE, (a, i) => ponerLote(a, i, prisma));
 export const cerrarTarifa = definirAccion(
   { permiso: "tarifa.administrar", schema: z.object({ tarifaId: z.string().min(1) }) },
   (a, i) => cerrar(a, i, prisma),
@@ -197,9 +209,9 @@ export const cerrarTarifa = definirAccion(
 
 /** Versiones inyectables, para los tests. */
 export const tarifasCon = (db: PrismaClient) => ({
-  poner: definirAccion({ permiso: "tarifa.administrar", schema: TarifaInput }, (a, i) => poner(a, i, db)),
-  ponerLote: definirAccion({ permiso: "tarifa.administrar", schema: TarifasLoteInput }, (a, i) => ponerLote(a, i, db)),
-  cerrar: definirAccion({ permiso: "tarifa.administrar", schema: z.object({ tarifaId: z.string().min(1) }) }, (a, i) => cerrar(a, i, db)),
+  poner: definirAccion({ ...CFG_TARIFA, db }, (a, i) => poner(a, i, db)),
+  ponerLote: definirAccion({ ...CFG_TARIFA_LOTE, db }, (a, i) => ponerLote(a, i, db)),
+  cerrar: definirAccion({ permiso: "tarifa.administrar", schema: z.object({ tarifaId: z.string().min(1) }), db }, (a, i) => cerrar(a, i, db)),
 });
 
 /** Las tarifas vigentes del operador, ordenadas de la más específica a la general. */

@@ -71,6 +71,19 @@ const PARCHES = [
      "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
    )`,
   'CREATE INDEX IF NOT EXISTS "TokenClave_usuarioId_expiraEl_idx" ON "TokenClave"("usuarioId", "expiraEl")',
+  // Quién hizo qué. Tabla nueva: IF NOT EXISTS, así una base con datos la suma sin perder nada.
+  `CREATE TABLE IF NOT EXISTS "Auditoria" (
+     "id" TEXT NOT NULL PRIMARY KEY,
+     "operadorId" TEXT NOT NULL REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+     "usuarioId" TEXT NOT NULL,
+     "rol" "Rol" NOT NULL,
+     "permiso" TEXT NOT NULL,
+     "resultado" TEXT NOT NULL,
+     "resumen" TEXT,
+     "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
+  'CREATE INDEX IF NOT EXISTS "Auditoria_operadorId_creadoEl_idx" ON "Auditoria"("operadorId", "creadoEl")',
+  'CREATE INDEX IF NOT EXISTS "Auditoria_operadorId_usuarioId_creadoEl_idx" ON "Auditoria"("operadorId", "usuarioId", "creadoEl")',
   // Una RESERVA puede no tener sala (horas que se facturan sin usar el espacio). Se reemplaza el
   // CHECK viejo: DROP + ADD porque Postgres no tiene "ALTER CONSTRAINT" para cambiar la condición.
   // Sigue siendo idempotente — correrlo dos veces deja lo mismo.

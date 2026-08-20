@@ -136,6 +136,26 @@ CREATE TABLE "Inquilino" (
 );
 
 -- CreateTable
+CREATE TABLE "Auditoria" (
+    "id" TEXT NOT NULL,
+    "operadorId" TEXT NOT NULL,
+    -- El id y no una relación: si el usuario se borra, el registro tiene que quedar.
+    "usuarioId" TEXT NOT NULL,
+    "rol" "Rol" NOT NULL,
+    "permiso" TEXT NOT NULL,
+    "resultado" TEXT NOT NULL,
+    -- Corto y SIN secretos: varias acciones reciben contraseñas y acá no entran nunca.
+    "resumen" TEXT,
+    "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Auditoria_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX "Auditoria_operadorId_creadoEl_idx" ON "Auditoria"("operadorId", "creadoEl");
+CREATE INDEX "Auditoria_operadorId_usuarioId_creadoEl_idx" ON "Auditoria"("operadorId", "usuarioId", "creadoEl");
+ALTER TABLE "Auditoria" ADD CONSTRAINT "Auditoria_operadorId_fkey"
+  FOREIGN KEY ("operadorId") REFERENCES "Operador"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- CreateTable
 CREATE TABLE "TokenClave" (
     "id" TEXT NOT NULL,
     "usuarioId" TEXT NOT NULL,

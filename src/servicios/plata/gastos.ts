@@ -122,8 +122,8 @@ export const anularGasto = definirAccion({ permiso: "finanzas.ver.agregada", sch
 
 /** Versiones inyectables, para los tests. */
 export const gastosCon = (db: PrismaClient) => ({
-  cargar: definirAccion({ permiso: "finanzas.ver.agregada", schema: GastoInput }, (a, i) => cargar(a, i, db)),
-  anular: definirAccion({ permiso: "finanzas.ver.agregada", schema: AnularGastoInput }, (a, i) => anular(a, i, db)),
+  cargar: definirAccion({ permiso: "finanzas.ver.agregada", schema: GastoInput, db }, (a, i) => cargar(a, i, db)),
+  anular: definirAccion({ permiso: "finanzas.ver.agregada", schema: AnularGastoInput, db }, (a, i) => anular(a, i, db)),
 });
 
 export type GastoDelMes = {

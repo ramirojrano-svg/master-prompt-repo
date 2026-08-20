@@ -72,5 +72,5 @@ export const guardarPerfil = definirAccion({ permiso: "perfil.propio.editar", sc
 
 /** Versión inyectable, para los tests. */
 export const perfilCon = (db: PrismaClient) => ({
-  guardar: definirAccion({ permiso: "perfil.propio.editar", schema: PerfilInput }, (a, i) => guardar(a, i, db)),
+  guardar: definirAccion({ permiso: "perfil.propio.editar", schema: PerfilInput, db }, (a, i) => guardar(a, i, db)),
 });

@@ -99,9 +99,9 @@ export const archivarSala = definirAccion(
 
 /** Versiones inyectables, para los tests. */
 export const salasCon = (db: PrismaClient) => ({
-  crear: definirAccion({ permiso: "sala.administrar", schema: SalaInput }, (a, i) => crear(a, i, db)),
-  editar: definirAccion({ permiso: "sala.administrar", schema: SalaInput.extend({ salaId: z.string().min(1) }) }, (a, i) => editar(a, i, db)),
-  archivar: definirAccion({ permiso: "sala.administrar", schema: z.object({ salaId: z.string().min(1), activa: z.coerce.boolean() }) }, (a, i) => archivar(a, i, db)),
+  crear: definirAccion({ permiso: "sala.administrar", schema: SalaInput, db }, (a, i) => crear(a, i, db)),
+  editar: definirAccion({ permiso: "sala.administrar", schema: SalaInput.extend({ salaId: z.string().min(1) }), db }, (a, i) => editar(a, i, db)),
+  archivar: definirAccion({ permiso: "sala.administrar", schema: z.object({ salaId: z.string().min(1), activa: z.coerce.boolean() }), db }, (a, i) => archivar(a, i, db)),
 });
 
 /** Días marcados de un horario, para pintar el formulario de edición. */
