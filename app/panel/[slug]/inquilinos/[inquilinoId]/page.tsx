@@ -240,7 +240,21 @@ export default async function DetalleProfesionalPage({
             </p>
           )}
 
-          {puedeCobrar && (
+          {/* A quien no se le factura y NO tiene movimientos no hay nada que cobrarle: registrarle
+              un pago le crearía un saldo a favor, que es justo lo que no tiene que tener.
+              Pero la condición mira los movimientos y no solo la casilla, a propósito: alguien
+              puede tener deuda de ANTES de que se lo marcara sin facturar, y ahí el pago hay que
+              poder registrarlo. Esconder el formulario en ese caso dejaría plata real sin forma de
+              cobrarse — peor que un formulario de más. */}
+          {puedeCobrar && !d.inquilino.facturable && d.totales.facturadoCent === 0n && cobros.length === 0 && (
+            <p className="tenue panel" style={{ padding: "12px 14px", margin: "0 0 12px", fontSize: 13, lineHeight: 1.5 }}>
+              A este profesional no se le factura y no tiene movimientos en {nombreDePeriodo(periodo)},
+              así que no hay nada que cobrarle. Si alguna vez le queda deuda de antes, el formulario
+              vuelve a aparecer solo.
+            </p>
+          )}
+
+          {puedeCobrar && (d.inquilino.facturable || d.totales.facturadoCent !== 0n || cobros.length > 0) && (
             <form action={registrarPago} className="panel" style={{ padding: 16, marginBottom: 12, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
               <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
                 <span className="tenue">Importe</span>
