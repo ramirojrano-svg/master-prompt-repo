@@ -14,7 +14,8 @@ import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { cobranzaDelMes } from "../../../../src/servicios/plata/cobranza.ts";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
-import { esPeriodoValido, nombreDePeriodo, periodoAnterior, periodoSiguiente } from "../../../../src/dominio/reporte.ts";
+import { nombreDePeriodo, periodoAnterior, periodoSiguiente } from "../../../../src/dominio/reporte.ts";
+import { periodoDeTrabajo } from "../../../../src/servicios/plata/periodo-trabajo.ts";
 import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
 
 export default async function CobranzaPage({
@@ -37,8 +38,9 @@ export default async function CobranzaPage({
 
   const hoy = fechaEnZona(new Date(), sede.zonaHoraria);
   // El mes ANTERIOR por default, igual que el cierre: es el que ya se emitió y el que se está
-  // cobrando. El mes en curso todavía se está armando.
-  const periodo = sp.periodo && esPeriodoValido(sp.periodo) ? sp.periodo : periodoAnterior(hoy.slice(0, 7));
+  // cobrando. Si ese mes no tuvo movimientos se abre el mes en curso — arrancar en una pantalla
+  // vacía se lee como que la app está rota, no como que no hay nada que cobrar.
+  const periodo = await periodoDeTrabajo({ operadorId: actor.operadorId, hoy: hoy.slice(0, 7), pedido: sp.periodo });
   const c = await cobranzaDelMes({ operadorId: actor.operadorId, periodo });
   if (!c) redirect(`/panel/${slug}/cobranza`);
 

@@ -19,7 +19,8 @@ import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { pendientesDeCierre, cerrarMesDe, cerrarMesTodos } from "../../../../src/servicios/plata/cierre.ts";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
-import { esPeriodoValido, nombreDePeriodo, periodoAnterior, periodoSiguiente } from "../../../../src/dominio/reporte.ts";
+import { nombreDePeriodo, periodoAnterior, periodoSiguiente } from "../../../../src/dominio/reporte.ts";
+import { periodoDeTrabajo } from "../../../../src/servicios/plata/periodo-trabajo.ts";
 import { fechaEnZona, sumarDiasLocal } from "../../../../src/dominio/motor/zona.ts";
 import { BotonEnviar } from "../BotonEnviar.tsx";
 
@@ -44,9 +45,9 @@ export default async function CierrePage({
   if (!sede) redirect(`/panel/${slug}`);
 
   const hoy = fechaEnZona(new Date(), sede.zonaHoraria);
-  // Por default se trabaja el mes ANTERIOR: el mes en curso todavía está sumando horas, y cerrarlo
-  // a mitad de camino deja la mitad de los turnos afuera del papel.
-  const periodo = sp.periodo && esPeriodoValido(sp.periodo) ? sp.periodo : periodoAnterior(hoy.slice(0, 7));
+  // Por default se trabaja el mes ANTERIOR —el mes en curso todavía está sumando horas—, salvo que
+  // ese mes esté vacío: ahí se abre el mes en curso, que es el único que tiene algo para mostrar.
+  const periodo = await periodoDeTrabajo({ operadorId: actor.operadorId, hoy: hoy.slice(0, 7), pedido: sp.periodo });
   const filas = await pendientesDeCierre({ operadorId: actor.operadorId, periodo });
 
   const plata = (c: bigint) => formatearPesos(c, operador.moneda);
@@ -132,9 +133,14 @@ export default async function CierrePage({
           <p className="tenue" style={{ margin: 0, fontSize: 13 }}>Pendiente de cerrar</p>
           <p style={{ fontSize: 34, margin: "4px 0 2px", fontWeight: 600, letterSpacing: "-0.02em" }}>{plata(totalPendiente)}</p>
           <p className="tenue" style={{ margin: 0, fontSize: 13 }}>
-            {conPendiente.length === 0
-              ? "Nada: todos los cargos de este mes ya están en una liquidación."
-              : `en ${conPendiente.length} ${conPendiente.length === 1 ? "profesional" : "profesionales"}`}
+            {/* Cero pendiente tiene DOS causas que no significan lo mismo: que se cerró todo, o
+                que nunca hubo nada. Decir "ya están en una liquidación" cuando el mes está vacío
+                es afirmar un trabajo que nadie hizo. */}
+            {conPendiente.length > 0
+              ? `en ${conPendiente.length} ${conPendiente.length === 1 ? "profesional" : "profesionales"}`
+              : filas.length === 0
+                ? `No hubo movimientos en ${nombreDePeriodo(periodo)}: no hay nada para cerrar.`
+                : "Nada: todos los cargos de este mes ya están en una liquidación."}
           </p>
 
           {conPendiente.length > 0 && (
