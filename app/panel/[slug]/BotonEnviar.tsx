@@ -16,11 +16,13 @@
 
 import { useFormStatus } from "react-dom";
 
-export function BotonEnviar({ children, enviando }: { children: React.ReactNode; enviando: string }) {
+// `className` es opcional y no cambia nada de lo de arriba: existe para el único botón que no
+// puede verse igual que los demás, el de borrar definitivamente.
+export function BotonEnviar({ children, enviando, className }: { children: React.ReactNode; enviando: string; className?: string }) {
   const { pending } = useFormStatus();
 
   return (
-    <button type="submit" disabled={pending} style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9 }}>
+    <button type="submit" disabled={pending} className={className} style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9 }}>
       {pending && <span className="girito" aria-hidden="true" />}
       {pending ? enviando : children}
     </button>

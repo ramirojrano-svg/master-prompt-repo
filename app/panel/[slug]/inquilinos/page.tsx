@@ -18,10 +18,12 @@ export default async function InquilinosPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string; ok?: string; editar?: string; ver?: string; q?: string; sin?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; editar?: string; ver?: string; q?: string; sin?: string; n?: string }>;
 }) {
   const { slug } = await params;
-  const { error, ok, editar, ver, q, sin } = await searchParams;
+  const { error, ok, editar, ver, q, sin, n } = await searchParams;
+  // El nombre viaja por la URL porque la ficha ya no existe: no hay de dónde volver a leerlo.
+  const nombreBorrado = (n ?? "").trim();
   // El texto buscado, normalizado una vez: se usa para filtrar y para repintar el campo.
   const busca = (q ?? "").trim();
 
@@ -217,6 +219,21 @@ export default async function InquilinosPage({
                     {i.estado === "activo" ? "Dar de baja" : "Reactivar"}
                   </button>
                 </form>
+                {/* Eliminar SOLO aparece en las fichas de baja, y lleva a una pantalla aparte que
+                    dice qué se va a destruir. Es para las duplicadas —las que se crearon por error
+                    y nunca debieron existir—; para sacar a alguien de la operación alcanza la baja. */}
+                {i.estado === "baja" && (
+                  <>
+                    {" "}
+                    <Link
+                      href={`/panel/${slug}/inquilinos/${i.id}/eliminar`}
+                      className="pastilla"
+                      style={{ padding: "5px 12px", fontSize: 12, color: "var(--error)", borderColor: "var(--error)" }}
+                    >
+                      Eliminar
+                    </Link>
+                  </>
+                )}
               </td>
             </tr>
           ))}
@@ -258,7 +275,13 @@ export default async function InquilinosPage({
         </p>
 
         {mensaje && <p className="error" style={{ marginTop: 12 }}>{mensaje}</p>}
-        {ok && <p style={{ marginTop: 12, color: "#157f4a" }}>Guardado.</p>}
+        {ok === "eliminado" ? (
+          // Se nombra a quien se borró: es lo único que queda de esa ficha en pantalla, y confirma
+          // que se fue la que se quería y no la de al lado.
+          <p className="aviso-ok" style={{ marginTop: 12 }}>Se eliminó la ficha de {nombreBorrado || "ese profesional"}.</p>
+        ) : (
+          ok && <p style={{ marginTop: 12, color: "#157f4a" }}>Guardado.</p>
+        )}
 
         <p style={{ marginTop: 14 }}>
           <button type="submit">{enEdicion ? "Guardar" : "Agregar"}</button>{" "}
