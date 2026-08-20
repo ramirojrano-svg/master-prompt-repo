@@ -64,7 +64,7 @@ export type PendientePorProfesional = {
 /** Cuántas reservas están esperando un precio. Para poder ofrecerlo solo cuando hace falta. */
 export async function reservasSinPrecio(operadorId: string, db: PrismaClient = prisma): Promise<number> {
   return db.ocupacion.count({
-    where: { operadorId, tipo: TipoOcupacion.reserva, estado: { in: VIVOS }, importeCent: null, inquilinoId: { not: null } },
+    where: { operadorId, tipo: TipoOcupacion.reserva, estado: { in: VIVOS }, importeCent: null, inquilinoId: { not: null }, inquilino: { facturable: true } },
   });
 }
 
@@ -80,8 +80,13 @@ export async function pendientesPorProfesional(
   operadorId: string,
   db: PrismaClient = prisma,
 ): Promise<PendientePorProfesional[]> {
+  // `facturable: true` no es un detalle: sin ese filtro, el botón "ponerles el precio vigente" le
+  // resolvía la tarifa GENERAL a quien no factura —no tiene tarifa propia, así que hereda la de
+  // todos— y le asentaba el cargo. Apretarlo era la forma más rápida de facturarle a alguien a
+  // quien se decidió no facturarle. Sus reservas quedan sin precio, que es lo correcto: no es que
+  // falte el dato, es que no se le cobra.
   const filas = await db.ocupacion.findMany({
-    where: { operadorId, tipo: TipoOcupacion.reserva, estado: { in: VIVOS }, importeCent: null, inquilinoId: { not: null } },
+    where: { operadorId, tipo: TipoOcupacion.reserva, estado: { in: VIVOS }, importeCent: null, inquilinoId: { not: null }, inquilino: { facturable: true } },
     select: { salaId: true, inquilinoId: true, inicio: true, fin: true, inquilino: { select: { nombre: true } } },
   });
   if (filas.length === 0) return [];
@@ -127,7 +132,7 @@ async function recotizar(actor: Actor, _input: unknown, db: PrismaClient): Promi
   const op = actor.operadorId;
 
   const pendientes = await db.ocupacion.findMany({
-    where: { operadorId: op, tipo: TipoOcupacion.reserva, estado: { in: VIVOS }, importeCent: null, inquilinoId: { not: null } },
+    where: { operadorId: op, tipo: TipoOcupacion.reserva, estado: { in: VIVOS }, importeCent: null, inquilinoId: { not: null }, inquilino: { facturable: true } },
     select: { id: true, salaId: true, inquilinoId: true, inicio: true, fin: true, tzSede: true },
     orderBy: { inicio: "asc" },
   });

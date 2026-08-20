@@ -23,6 +23,7 @@ import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { esPeriodoValido } from "../../dominio/reporte.ts";
 import { FACTURABLES } from "./liquidacion.ts";
+import { idsQueNoFacturan } from "./facturable.ts";
 
 export type FilaCobranza = {
   inquilinoId: string;
@@ -55,7 +56,7 @@ export async function cobranzaDelMes(
   if (!esPeriodoValido(a.periodo)) return null;
 
   const ahora = new Date();
-  const [operador, liquidaciones, cargos, pagos, inquilinos] = await Promise.all([
+  const [operador, liquidaciones, cargos, pagos, inquilinos, noFacturan] = await Promise.all([
     db.operador.findUniqueOrThrow({ where: { id: a.operadorId }, select: { moneda: true } }),
     db.liquidacion.findMany({
       where: { operadorId: a.operadorId, periodo: a.periodo },
@@ -75,6 +76,7 @@ export async function cobranzaDelMes(
       _sum: { montoCent: true },
     }),
     db.inquilino.findMany({ where: { operadorId: a.operadorId }, select: { id: true, nombre: true, pagador: true } }),
+    idsQueNoFacturan(db, a.operadorId),
   ]);
 
   const ficha = new Map(inquilinos.map((i) => [i.id, i]));
@@ -82,7 +84,12 @@ export async function cobranzaDelMes(
   const cargoDe = new Map(cargos.map((r) => [r.inquilinoId, r._sum.montoCent ?? 0n]));
   const pagoDe = new Map(pagos.map((r) => [r.inquilinoId, -(r._sum.montoCent ?? 0n)]));
 
-  const ids = new Set<string>([...liqDe.keys(), ...cargoDe.keys(), ...pagoDe.keys()]);
+  // A quien no se le factura no se le reclama: queda afuera igual que en Cierre y en Negocio. La
+  // casilla "factura" tiene que significar lo mismo en las tres pantallas de plata — si acá
+  // apareciera igual, destildarla no serviría para nada.
+  const ids = new Set<string>(
+    [...liqDe.keys(), ...cargoDe.keys(), ...pagoDe.keys()].filter((id) => !noFacturan.has(id)),
+  );
 
   const filas: FilaCobranza[] = [...ids]
     .map((id) => {

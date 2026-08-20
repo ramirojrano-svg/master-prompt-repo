@@ -17,7 +17,7 @@ import { Cabecera } from "../Cabecera.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
-import { pendientesDeCierre, cerrarMesDe, cerrarMesTodos } from "../../../../src/servicios/plata/cierre.ts";
+import { pendientesDeCierre, liquidacionesDeNoFacturables, cerrarMesDe, cerrarMesTodos } from "../../../../src/servicios/plata/cierre.ts";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
 import { nombreDePeriodo, periodoAnterior, periodoSiguiente } from "../../../../src/dominio/reporte.ts";
 import { periodoDeTrabajo } from "../../../../src/servicios/plata/periodo-trabajo.ts";
@@ -48,7 +48,10 @@ export default async function CierrePage({
   // Por default se trabaja el mes ANTERIOR —el mes en curso todavía está sumando horas—, salvo que
   // ese mes esté vacío: ahí se abre el mes en curso, que es el único que tiene algo para mostrar.
   const periodo = await periodoDeTrabajo({ operadorId: actor.operadorId, hoy: hoy.slice(0, 7), pedido: sp.periodo });
-  const filas = await pendientesDeCierre({ operadorId: actor.operadorId, periodo });
+  const [filas, huerfanas] = await Promise.all([
+    pendientesDeCierre({ operadorId: actor.operadorId, periodo }),
+    liquidacionesDeNoFacturables({ operadorId: actor.operadorId, periodo }),
+  ]);
 
   const plata = (c: bigint) => formatearPesos(c, operador.moneda);
   // Los que tienen pendiente y NO están cerrados: son los que el botón puede resolver.
@@ -109,6 +112,28 @@ export default async function CierrePage({
         {sp.error === "NADA_QUE_LIQUIDAR" && <p className="aviso-error">Ese profesional no tiene cargos sin liquidar en {nombreDePeriodo(periodo)}.</p>}
         {sp.error === "YA_LIQUIDADO" && <p className="aviso-error">Ese mes ya estaba cerrado para ese profesional. No se emitió nada nuevo.</p>}
         {sp.error === "SIN_PERMISO" && <p className="aviso-error">Tu rol no puede cerrar meses.</p>}
+
+        {/* Un papel numerado no puede desaparecer sin que nadie se entere. */}
+        {huerfanas.length > 0 && (
+          <div className="panel" style={{ padding: 18, marginBottom: 16, borderLeft: "4px solid var(--alerta)" }}>
+            <h2 style={{ marginTop: 0, fontSize: 16 }}>
+              {huerfanas.length === 1 ? "Hay una liquidación emitida" : `Hay ${huerfanas.length} liquidaciones emitidas`} a nombre de quien no factura
+            </h2>
+            <p className="tenue" style={{ margin: "6px 0 10px", fontSize: 13, lineHeight: 1.5 }}>
+              Se emitieron antes de destildarle <b>factura</b> en la ficha. Ya no se reclaman —por
+              eso no están en Cobranza— pero el número existe, así que se muestran acá para que no
+              desaparezcan sin dejar rastro. Casi siempre es una ficha duplicada que se cerró por
+              error.
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, lineHeight: 1.7 }}>
+              {huerfanas.map((h) => (
+                <li key={h.id}>
+                  <Link href={`/panel/${slug}/liquidaciones/${h.id}`}>N° {h.numero}</Link> · {h.nombre} · {plata(h.totalCent)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {tardios.length > 0 && (
           <div className="panel" style={{ padding: 18, marginBottom: 16, borderLeft: "4px solid var(--alerta)" }}>

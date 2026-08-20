@@ -13,6 +13,7 @@ import { alcanzadasPor } from "../../dominio/motor/intervalos.ts";
 import { LOOKBACK_MIN, DURACION_MAX_MIN, DURACION_MIN_MIN } from "../../dominio/motor/limites.ts";
 import { instanteDeHoraLocal, periodoDeInstante } from "../../dominio/motor/zona.ts";
 import { cotizar, resolverTarifa } from "../../dominio/tarifa.ts";
+import { seLeFactura } from "../plata/facturable.ts";
 import { fechasDeSerie, OCURRENCIAS_MAX, type Repeticion } from "../../dominio/repeticion.ts";
 import type { CtxReserva } from "./crear.ts";
 import { aMotor, OCUPAN } from "./comun.ts";
@@ -97,7 +98,10 @@ export async function expandirSerie(p: ParamsSerie, ctx: CtxReserva, db: PrismaC
         where: { operadorId: ctx.operadorId, vigenteDesde: { lte: ahora }, OR: [{ vigenteHasta: null }, { vigenteHasta: { gt: ahora } }] },
         select: { id: true, salaId: true, inquilinoId: true, precioHoraCent: true, vigenteDesde: true, vigenteHasta: true },
       });
-      const tarifa = resolverTarifa(tarifas, { salaId: sala?.id ?? "", inquilinoId: ctx.inquilinoId, ahora });
+      // A quien no se le factura no se le resuelve tarifa: ni precio estampado ni cargo. Una
+      // serie son decenas de ocurrencias, así que acá el error se multiplica por cincuenta.
+      const factura = await seLeFactura(tx, ctx.operadorId, ctx.inquilinoId);
+      const tarifa = factura ? resolverTarifa(tarifas, { salaId: sala?.id ?? "", inquilinoId: ctx.inquilinoId, ahora }) : null;
       const cot = tarifa ? cotizar(tarifa, p.duracionMin) : null;
 
       const creadas: string[] = [];

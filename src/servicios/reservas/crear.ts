@@ -15,6 +15,7 @@ import { evaluarVentana } from "../../dominio/motor/disponibilidad.ts";
 import { LOOKBACK_MIN } from "../../dominio/motor/limites.ts";
 import { evaluarReserva } from "../../dominio/motor/reserva.ts";
 import { cotizar, resolverTarifa } from "../../dominio/tarifa.ts";
+import { seLeFactura } from "../plata/facturable.ts";
 import { periodoDeInstante } from "../../dominio/motor/zona.ts";
 import { asentarIdempotente } from "../plata/ledger.ts";
 import type { HorarioSemanal, PoliticaCentro } from "../../dominio/motor/tipos.ts";
@@ -135,7 +136,11 @@ export async function crearOcupacion(raw: unknown, ctx: CtxReserva, db: PrismaCl
       // 4d. Cotización: se resuelve la tarifa vigente y se ESTAMPA (§8.8). Un hold todavía no
       //     cobra nada (no es una reserva); el precio se fija cuando se confirma.
       const minutos = Math.round((v.fin.getTime() - v.inicio.getTime()) / 60_000);
-      const tarifa = esHold
+      // A quien no se le factura no se le resuelve tarifa: sin tarifa no hay precio estampado ni
+      // cargo. Preguntarlo ACÁ y no al final es lo que evita que la reserva quede con un valor
+      // por hora que después nadie va a cobrar.
+      const factura = await seLeFactura(tx, ctx.operadorId, ctx.inquilinoId);
+      const tarifa = esHold || !factura
         ? null
         : resolverTarifa(
             await tx.tarifa.findMany({

@@ -20,6 +20,7 @@ import { definirAccion } from "../../lib/accion.ts";
 import type { Actor } from "../../lib/actor.ts";
 import { esPeriodoValido } from "../../dominio/reporte.ts";
 import { cerrarPeriodo, FACTURABLES, type ResultadoCierre } from "./liquidacion.ts";
+import { idsQueNoFacturan } from "./facturable.ts";
 
 /** Una fila de la pantalla: un profesional en un mes. */
 export type FilaCierre = {
@@ -47,7 +48,7 @@ export async function pendientesDeCierre(
 ): Promise<FilaCierre[]> {
   if (!esPeriodoValido(a.periodo)) return [];
 
-  const [porInquilino, liquidaciones, inquilinos] = await Promise.all([
+  const [porInquilino, liquidaciones, inquilinos, noFacturan] = await Promise.all([
     // Solo lo NO liquidado: es exactamente lo que el cierre va a reclamar. Si acá se contara todo,
     // el número de la pantalla no sería el que después va a salir.
     db.asiento.groupBy({
@@ -61,11 +62,18 @@ export async function pendientesDeCierre(
       select: { id: true, inquilinoId: true, numero: true, totalCent: true, estado: true, emitidaAt: true },
     }),
     db.inquilino.findMany({ where: { operadorId: a.operadorId }, select: { id: true, nombre: true, pagador: true } }),
+    idsQueNoFacturan(db, a.operadorId),
   ]);
 
   const nombre = new Map(inquilinos.map((i) => [i.id, i]));
   const liqDe = new Map(liquidaciones.map((l) => [l.inquilinoId, l]));
-  const ids = new Set<string>([...porInquilino.map((r) => r.inquilinoId), ...liqDe.keys()]);
+  // Quien no factura queda AFUERA del cierre. Puede tener cargos asentados de antes de que se lo
+  // marcara —o de un turno cargado por error—, pero emitirle una liquidación sería fabricar una
+  // deuda que nadie va a reclamar. Los asientos siguen en el libro; lo que no pasa es que se
+  // conviertan en un papel.
+  const ids = new Set<string>(
+    [...porInquilino.map((r) => r.inquilinoId), ...liqDe.keys()].filter((id) => !noFacturan.has(id)),
+  );
 
   return [...ids]
     .map((id) => {
@@ -84,6 +92,41 @@ export async function pendientesDeCierre(
     })
     // Primero lo que falta cerrar, y dentro de eso lo más grande: es el orden en que se trabaja.
     .sort((x, y) => Number(y.pendienteCent - x.pendienteCent) || x.nombre.localeCompare(y.nombre, "es"));
+}
+
+/**
+ * Liquidaciones emitidas a nombre de alguien que HOY no factura.
+ *
+ * Existe por una consecuencia incómoda de sacar del cierre a los que no facturan: si a alguien se
+ * le emitió una liquidación y después se lo marcó como no facturable, ese documento —que tiene un
+ * número correlativo— dejaba de aparecer en TODAS las pantallas. Un papel numerado que se
+ * desvanece en silencio es peor que uno molesto: al mes siguiente el correlativo salta de N° 1 a
+ * N° 3 y nadie sabe qué pasó con el del medio.
+ *
+ * Casi siempre es una ficha duplicada que se cerró por error. Se muestra para que se pueda
+ * decidir qué hacer con ella, no para reclamarla.
+ */
+export async function liquidacionesDeNoFacturables(
+  a: { operadorId: string; periodo: string },
+  db: PrismaClient = prisma,
+): Promise<{ id: string; numero: number; nombre: string; totalCent: bigint }[]> {
+  if (!esPeriodoValido(a.periodo)) return [];
+
+  const noFacturan = await idsQueNoFacturan(db, a.operadorId);
+  if (noFacturan.size === 0) return [];
+
+  const [liqs, fichas] = await Promise.all([
+    db.liquidacion.findMany({
+      where: { operadorId: a.operadorId, periodo: a.periodo, inquilinoId: { in: [...noFacturan] } },
+      select: { id: true, numero: true, inquilinoId: true, totalCent: true },
+    }),
+    db.inquilino.findMany({ where: { operadorId: a.operadorId }, select: { id: true, nombre: true } }),
+  ]);
+  const nombreDe = new Map(fichas.map((f) => [f.id, f.nombre]));
+
+  return liqs
+    .map((l) => ({ id: l.id, numero: l.numero, nombre: nombreDe.get(l.inquilinoId) ?? "—", totalCent: l.totalCent }))
+    .sort((x, y) => x.numero - y.numero);
 }
 
 export const CierreInput = z.object({
