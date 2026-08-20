@@ -56,6 +56,18 @@ export default async function CobranzaPage({
             <Link className="nav-circ" href={`?periodo=${periodoSiguiente(periodo)}`} aria-label="Mes siguiente">›</Link>
           </nav>
           <h2 style={{ margin: 0 }}>{nombreDePeriodo(periodo)}</h2>
+
+          {/* Los datos del mes, afuera. Son enlaces comunes y no botones porque lo que devuelven es
+              un archivo: el navegador lo baja solo y se abre en Excel. Van acá arriba, pegados al
+              mes, porque lo que se baja es SIEMPRE el mes que se está mirando. */}
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <a className="pastilla" style={{ padding: "6px 12px", fontSize: 12 }} href={`/panel/${slug}/exportar?que=movimientos&periodo=${periodo}`}>
+              ↓ Movimientos (CSV)
+            </a>
+            <a className="pastilla" style={{ padding: "6px 12px", fontSize: 12 }} href={`/panel/${slug}/exportar?que=turnos&periodo=${periodo}`}>
+              ↓ Turnos (CSV)
+            </a>
+          </div>
         </div>
 
         {/* ── Los tres números ────────────────────────────────────────────── */}
@@ -152,6 +164,11 @@ export default async function CobranzaPage({
           apareció un cargo tardío, lo que se reclama es lo que dice el papel que recibió.{" "}
           <b>Falta</b> no se netea con quien pagó de más — sumar los saldos a favor escondería a
           quien debe detrás de quien no.
+        </p>
+        <p className="tenue" style={{ marginTop: 8, fontSize: 12, lineHeight: 1.5 }}>
+          Los dos <b>CSV</b> de arriba bajan el mes entero: <b>Movimientos</b> son los cargos y los
+          cobros —lo que va al contador—, y <b>Turnos</b> es la agenda con horarios e importes. Se
+          abren en Excel y sirven para tener los datos afuera de la app.
         </p>
       </main>
     </>
