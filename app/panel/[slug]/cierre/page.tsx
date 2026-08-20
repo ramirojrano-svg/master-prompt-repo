@@ -188,7 +188,11 @@ export default async function CierrePage({
                     <td>
                       {f.liquidacion ? (
                         <span>
-                          <b>N° {f.liquidacion.numero}</b> · {plata(f.liquidacion.totalCent)}{" "}
+                          {/* El número abre el papel: recién cerrado es cuando se quiere mirar
+                              qué se emitió, antes de mandarlo. */}
+                          <Link href={`/panel/${slug}/liquidaciones/${f.liquidacion.id}`}><b>N° {f.liquidacion.numero}</b></Link>
+                          {" · "}
+                          {plata(f.liquidacion.totalCent)}{" "}
                           <span className="tenue" style={{ fontSize: 12 }}>({f.liquidacion.estado})</span>
                         </span>
                       ) : (

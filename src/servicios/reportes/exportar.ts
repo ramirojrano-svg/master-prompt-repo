@@ -14,6 +14,7 @@
 import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { armarCsv } from "../../dominio/csv.ts";
+import { nombreDeConcepto } from "../../dominio/conceptos.ts";
 import { diasDelPeriodo, esPeriodoValido } from "../../dominio/reporte.ts";
 import { fechaEnZona, minutosAHora, rangoDiaEnZona } from "../../dominio/motor/zona.ts";
 import { minutosDelDia } from "../../dominio/grilla.ts";
@@ -109,7 +110,9 @@ export async function exportarCsv(p: PedidoExportar, db: PrismaClient = prisma):
     filas.map((f) => [
       fechaEnZona(f.fechaHecho, tz),
       nombreDe.get(f.inquilinoId) ?? "",
-      f.concepto,
+      // En castellano: la planilla la lee el contador, no el código. Que diga "cargo_uso" no la
+      // hace más precisa, la hace ilegible.
+      nombreDeConcepto(f.concepto),
       pesos(f.montoCent),
       f.moneda,
       f.medio ?? "",

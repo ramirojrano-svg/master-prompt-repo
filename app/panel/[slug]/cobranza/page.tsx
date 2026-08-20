@@ -130,18 +130,22 @@ export default async function CobranzaPage({
                       <Link href={`/panel/${slug}/inquilinos/${f.inquilinoId}?periodo=${periodo}`}>{f.nombre}</Link>
                       {f.pagador && <span className="tenue" style={{ fontSize: 12 }}> · abona {f.pagador}</span>}
                     </td>
-                    <td className="tenue" style={{ fontSize: 13 }}>
+                    <td className="tenue" style={{ fontSize: 13 }} data-rotulo="Cuenta:">
                       {f.liquidacion ? (
                         <>
-                          N° {f.liquidacion.numero} · vence {fecha(f.liquidacion.venceEl)}
+                          {/* El número es el enlace al papel: es lo que se abre para contestar
+                              "¿de dónde sale este importe?" sin salir de la pantalla. */}
+                          <Link href={`/panel/${slug}/liquidaciones/${f.liquidacion.id}`}>N° {f.liquidacion.numero}</Link>
+                          {" · vence "}
+                          {fecha(f.liquidacion.venceEl)}
                         </>
                       ) : (
                         "sin emitir"
                       )}
                     </td>
-                    <td className="num">{plata(f.emitidoCent)}</td>
-                    <td className="num">{plata(f.pagadoCent)}</td>
-                    <td className="num" style={{ fontWeight: 600, color: f.vencida ? "var(--error)" : undefined }}>
+                    <td className="num" data-rotulo="Emitido:">{plata(f.emitidoCent)}</td>
+                    <td className="num" data-rotulo="Pagó:">{plata(f.pagadoCent)}</td>
+                    <td className="num" data-rotulo="Falta:" style={{ fontWeight: 600, color: f.vencida ? "var(--error)" : undefined }}>
                       {f.pendienteCent > 0n ? plata(f.pendienteCent) : "—"}
                     </td>
                     <td className="num" style={{ whiteSpace: "nowrap" }}>
