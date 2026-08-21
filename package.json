@@ -22,6 +22,7 @@
     "vaciar-agenda": "node scripts/vaciar-agenda.mjs",
     "test": "node --test \"src/**/*.test.ts\"",
     "test:db": "node --test --test-concurrency=1 \"tests/integracion/**/*.test.ts\"",
+    "test:navegador": "node --test \"tests/navegador/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.json",
     "vercel-build": "node scripts/esquema.mjs && next build",
     "verify": "npm run typecheck && npm test"

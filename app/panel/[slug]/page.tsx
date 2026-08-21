@@ -15,18 +15,7 @@ import { esMovil } from "../../../src/lib/movil.ts";
 import { intentar } from "../../../src/lib/db-salud.ts";
 import { BaseNoLista } from "../../BaseNoLista.tsx";
 import { cargarAgenda } from "../../../src/servicios/agenda/dia.ts";
-import {
-  cancelarReservaAjena,
-  crearReservaAjena,
-  cancelarReservaPropia,
-  crearReservaPropia,
-  mensajeDeError,
-  mensajeDeMovimiento,
-  mensajeDeTurno,
-  moverReservaAjena,
-  moverReservaPropia,
-  noShowReservaAjena,
-} from "../../../src/servicios/agenda/acciones.ts";
+import { mensajeDeError, mensajeDeTurno } from "../../../src/servicios/agenda/acciones.ts";
 import { prisma } from "../../../src/db/prisma.ts";
 import { puede } from "../../../src/lib/permisos.ts";
 import { fechaEnZona, formatHora } from "../../../src/dominio/motor/zona.ts";
@@ -37,9 +26,15 @@ import { Logo } from "../../Logo.tsx";
 import { IconoMas } from "../../Iconos.tsx";
 import { AvisoAlta } from "./AvisoAlta.tsx";
 import { ocupacionMensualPorSala } from "../../../src/servicios/reportes/mensual.ts";
-import { describirConflictos, parsearConflictos, resumirConflictos, serializarConflictos } from "../../../src/dominio/conflictos.ts";
 import { SIN_SALA } from "../../../src/servicios/agenda/dia.ts";
 import { Grilla } from "./Grilla.tsx";
+import {
+  crearTurno,
+  editarTurno as editarTurnoAccion,
+  moverArrastrando,
+  sobreTurno,
+} from "./acciones-agenda.ts";
+import { describirConflictos, parsearConflictos } from "../../../src/dominio/conflictos.ts";
 import { VistaMes } from "./VistaMes.tsx";
 import { Deslizar } from "./Deslizar.tsx";
 import { MiniCalendario } from "./MiniCalendario.tsx";
@@ -65,45 +60,6 @@ type Query = {
   hora?: string;
   sala?: string;
 };
-
-/**
- * El cuerpo compartido de las acciones sobre un turno. Vive FUERA del componente a propósito:
- * una server action serializa todo lo que captura de su entorno, y capturar una función definida
- * adentro de la página revienta con "Functions cannot be passed directly to Client Components".
- * Acá las actions solo capturan strings.
- */
-async function ejecutarSobreTurno(
-  cual: "cancelar" | "noShow",
-  fd: FormData,
-  ctx: { slug: string; vista: Vista; fecha: string; salas?: string },
-): Promise<void> {
-  const actor = await actorDeSesion(ctx.slug);
-  if (!actor) redirect(`/login?centro=${encodeURIComponent(ctx.slug)}`);
-
-  const ocupacionId = String(fd.get("ocupacionId") ?? "");
-  // Cancelar tiene dos caminos por el mismo motivo que crear: el del profesional verifica contra
-  // la base que la fila sea SUYA. Marcar no-show es del centro y no tiene versión propia — que
-  // alguien declare que no vino a su propio turno para no pagarlo no es una función, es un agujero.
-  const puedeAjena = puede(actor.rol, "reserva.editar.ajena");
-  const r =
-    cual === "cancelar"
-      ? puedeAjena
-        ? await cancelarReservaAjena(actor, { ocupacionId, alcance: fd.get("alcance") ?? "solo" })
-        : await cancelarReservaPropia(actor, { ocupacionId, alcance: fd.get("alcance") ?? "solo" })
-      : await noShowReservaAjena(actor, { ocupacionId, accion: fd.get("accion") });
-
-  const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
-  const q = new URLSearchParams({ fecha: ctx.fecha, vista: ctx.vista });
-  if (ctx.salas) q.set("salas", ctx.salas);
-  // Con error el detalle sigue abierto: el mensaje sin el turno adelante no se entiende.
-  if (codigo) {
-    q.set("turno", ocupacionId);
-    q.set("errorTurno", codigo);
-  }
-
-  revalidatePath(`/panel/${ctx.slug}`);
-  redirect(`/panel/${ctx.slug}?${q.toString()}`);
-}
 
 export default async function PanelPage({ params, searchParams }: { params: Promise<Params>; searchParams: Promise<Query> }) {
   // En Next 16 params y searchParams son Promise (§11.0).
@@ -228,93 +184,23 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
 
   // Server action delgada: resuelve la sesión y delega en la acción de dominio, que declara su
   // permiso. Nada de lógica de negocio acá.
+  // El contexto que cada acción necesita de esta pantalla. Lo demás vive en acciones-agenda.ts:
+  // son las reglas de permisos, y estaban intercaladas entre el marcado de seiscientas líneas.
+  const ctxAcciones = { slug, vista, fecha: agenda.fecha, salas: sp.salas };
+
   async function crear(formData: FormData) {
     "use server";
-    const actorAccion = await actorDeSesion(slug);
-    if (!actorAccion) redirect(`/login?centro=${encodeURIComponent(slug)}`);
-
-    const fechaForm = String(formData.get("fecha") ?? "");
-    // Dos caminos, no uno con un `if` adentro: el del profesional NO acepta inquilinoId. Si la
-    // acción propia lo tomara del formulario, un campo oculto cambiado en el navegador alcanzaría
-    // para agendar a nombre de otro, y el permiso no lo frenaría — la acción parecería legítima.
-    const comun = {
-      salaId: formData.get("salaId"),
-      fecha: fechaForm,
-      hora: formData.get("hora"),
-      duracionMin: formData.get("duracionMin"),
-      repeticion: formData.get("repeticion") ?? "no",
-    };
-    const r = puede(actorAccion.rol, "reserva.crear.ajena")
-      ? await crearReservaAjena(actorAccion, { ...comun, inquilinoId: formData.get("inquilinoId") })
-      : await crearReservaPropia(actorAccion, comun);
-
-    const q = new URLSearchParams({ fecha: fechaForm, vista });
-    if (!r.ok) q.set("error", r.error); // SIN_PERMISO / ENTRADA_INVALIDA (del envoltorio)
-    else if (!r.data.ok) q.set("error", r.data.error); // SLOT_OCUPADO, FUERA_DE_HORARIO, …
-    else {
-      q.set("creada", String(r.data.creadas));
-      // Las ocurrencias que no entraron viajan con FECHA Y MOTIVO, no como un número. "3 fechas
-      // quedaron afuera" obliga a recorrer la agenda a mano buscando cuáles; el motor ya sabe que
-      // fue el lunes 17 y que ese consultorio lo tenía otro profesional (§4.9).
-      if (r.data.conflictos.length > 0) {
-        q.set("chocaron", String(r.data.conflictos.length));
-        q.set("dias", serializarConflictos(resumirConflictos(r.data.conflictos)));
-      }
-    }
-
-    revalidatePath(`/panel/${slug}`);
-    redirect(`/panel/${slug}?${q.toString()}`);
+    await crearTurno(ctxAcciones, formData);
   }
 
-  // Mover un turno arrastrándolo. A diferencia de `crear`, NO redirige: la grilla ya movió el
-  // bloque en pantalla y un redirect volvería a montar todo. Devuelve el resultado y la grilla
-  // decide si avisa; el revalidate deja la agenda del servidor como fuente de verdad.
-  /**
-   * Editar un turno desde su detalle: cambiar día, hora o consultorio. Usa el MISMO servicio que
-   * arrastrar el bloque —no hay un segundo camino con otras reglas— pero viene de un formulario,
-   * así que redirige. Arrastrar no existe en el teléfono, que es justo donde se agenda apurado.
-   */
   async function editarTurno(formData: FormData): Promise<void> {
     "use server";
-    const a = await actorDeSesion(slug);
-    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
-
-    const ocupacionId = String(formData.get("ocupacionId") ?? "");
-    const entrada = {
-      ocupacionId,
-      salaDestinoId: formData.get("salaDestinoId"),
-      fecha: formData.get("fecha"),
-      hora: formData.get("hora"),
-    };
-    // Dos caminos según el rol, igual que crear y cancelar: el del profesional verifica contra la
-    // base que la fila sea suya antes de tocarla.
-    const r = puede(a.rol, "reserva.editar.ajena")
-      ? await moverReservaAjena(a, entrada)
-      : await moverReservaPropia(a, entrada);
-
-    const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
-    const q = new URLSearchParams({ fecha: String(formData.get("fecha") ?? ""), vista });
-    if (sp.salas) q.set("salas", sp.salas);
-    // Con error el detalle sigue abierto: el mensaje sin el turno adelante no se entiende.
-    if (codigo) {
-      q.set("turno", ocupacionId);
-      q.set("errorTurno", codigo);
-    }
-    revalidatePath(`/panel/${slug}`);
-    redirect(`/panel/${slug}?${q.toString()}`);
+    await editarTurnoAccion(ctxAcciones, formData);
   }
 
   async function mover(input: { ocupacionId: string; salaDestinoId: string; fecha: string; hora: string }) {
     "use server";
-    const actorAccion = await actorDeSesion(slug);
-    if (!actorAccion) return { ok: false, mensaje: mensajeDeMovimiento("SIN_PERMISO") };
-
-    const r = await moverReservaAjena(actorAccion, input);
-    const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
-    if (codigo) return { ok: false, mensaje: mensajeDeMovimiento(codigo) };
-
-    revalidatePath(`/panel/${slug}`);
-    return { ok: true, mensaje: "" };
+    return moverArrastrando(ctxAcciones, input);
   }
 
   // Acciones sobre un turno existente. Vuelven al mismo día y vista, con el detalle CERRADO si
@@ -326,7 +212,7 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
 
   async function cancelarTurno(fd: FormData) {
     "use server";
-    await ejecutarSobreTurno("cancelar", fd, { slug, vista, fecha: agenda!.fecha, salas: sp.salas });
+    await sobreTurno("cancelar", ctxAcciones, fd);
   }
 
   // El turno abierto sale de la agenda YA PROYECTADA: si el que mira no lo puede ver, no está en
