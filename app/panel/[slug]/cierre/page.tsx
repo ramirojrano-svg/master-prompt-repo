@@ -24,6 +24,7 @@ import { periodoDeTrabajo } from "../../../../src/servicios/plata/periodo-trabaj
 import { datosDeCobro } from "../../../../src/servicios/config/cobro.ts";
 import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
 import { BotonEnviar } from "../BotonEnviar.tsx";
+import { IconoDocumento } from "../../../Iconos.tsx";
 
 export default async function CierrePage({
   params,
@@ -235,14 +236,22 @@ export default async function CierrePage({
                     </td>
                     <td>
                       {f.liquidacion ? (
-                        <span>
-                          {/* El número abre el papel: recién cerrado es cuando se quiere mirar
-                              qué se emitió, antes de mandarlo. */}
-                          <Link href={`/panel/${slug}/liquidaciones/${f.liquidacion.id}`}><b>N° {f.liquidacion.numero}</b></Link>
-                          {" · "}
-                          {plata(f.liquidacion.totalCent)}{" "}
-                          <span className="tenue" style={{ fontSize: 12 }}>({f.liquidacion.estado})</span>
-                        </span>
+                        // Una hoja y no un "N° 14": recién cerrado, lo que uno quiere es ABRIR el
+                        // papel para mirarlo antes de mandarlo, y un ícono de documento dice eso
+                        // de un vistazo. El número queda al lado, que sigue siendo el dato con el
+                        // que se lo nombra por teléfono.
+                        <Link
+                          href={`/panel/${slug}/liquidaciones/${f.liquidacion.id}`}
+                          title={`Ver la liquidación N° ${f.liquidacion.numero} de ${f.nombre}`}
+                          style={{ display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}
+                        >
+                          {/* `flexShrink` en el ícono: sin eso, en una columna angosta el SVG se
+                              aplasta a un rectángulo antes de que el texto decida partirse. */}
+                          <span style={{ display: "flex", flexShrink: 0 }}><IconoDocumento tam={20} /></span>
+                          <span>
+                            <b>N° {f.liquidacion.numero}</b> · {plata(f.liquidacion.totalCent)}
+                          </span>
+                        </Link>
                       ) : (
                         <span className="tenue">sin cerrar</span>
                       )}

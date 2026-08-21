@@ -167,9 +167,10 @@ test("el detalle día por día viaja en el mail", async () => {
   const b = buzon();
   await enviarLiquidacionCon(db, b.mandar)(owner, { liquidacionId: id });
 
-  // El horario de la sesión, que es lo que el profesional contrasta con su agenda.
+  // El horario de la sesión, que es lo que el profesional contrasta con su agenda. El
+  // consultorio no va: se le cobra por hora, y en cuál estuvo no cambia el importe.
   assert.match(b.enviados[0]!.texto, /\d{2}:\d{2} a \d{2}:\d{2}/);
-  assert.ok(b.enviados[0]!.texto.includes("Sala 1"));
+  assert.equal(b.enviados[0]!.texto.includes("Sala 1"), false);
 });
 
 test("un nombre con < o & no rompe el HTML del mail", async () => {

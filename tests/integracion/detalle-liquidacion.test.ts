@@ -92,7 +92,7 @@ test("el total no se recalcula: es el congelado al emitir", async () => {
   assert.equal(d.totalCent, 20_000n, "el total sale de la liquidación, no de sumar los asientos de nuevo");
 });
 
-test("un cargo de uso se lee como la sesión: horario y consultorio", async () => {
+test("un cargo de uso se lee como la sesión que fue: el horario", async () => {
   await insertarOcupacion(pgPool, {
     id: "oc1", salaId: "sa1", inquilinoId: "in1",
     inicio: "2026-08-12T13:00:00Z", fin: "2026-08-12T16:00:00Z",
@@ -104,13 +104,16 @@ test("un cargo de uso se lee como la sesión: horario y consultorio", async () =
   assert.ok(d);
   const [l] = d.lineas;
   assert.ok(l);
-  assert.ok(l.detalle.includes("Sala 1"), `esperaba el consultorio en: ${l.detalle}`);
   assert.ok(/\d{2}:\d{2} a \d{2}:\d{2}/.test(l.detalle), `esperaba el horario en: ${l.detalle}`);
+  // El consultorio NO va en el papel: al profesional se le cobra por hora y el precio es suyo,
+  // no de la sala, así que en qué consultorio estuvo es ruido. Sigue guardado y viaja en la
+  // exportación de turnos, que es donde sirve.
+  assert.equal(l.detalle.includes("Sala 1"), false, "el consultorio no va en el papel");
   // La fecha del renglón es la de la SESIÓN, no la de cuando se asentó el cargo.
   assert.equal(l.fecha.toISOString(), "2026-08-12T13:00:00.000Z");
 });
 
-test("una reserva sin consultorio lo dice: no es un dato que falte", async () => {
+test("una reserva sin consultorio se lee igual que cualquier otra", async () => {
   await insertarOcupacion(pgPool, {
     id: "oc1", salaId: null, inquilinoId: "in1",
     inicio: "2026-08-12T13:00:00Z", fin: "2026-08-12T16:00:00Z",
@@ -120,7 +123,9 @@ test("una reserva sin consultorio lo dice: no es un dato que falte", async () =>
 
   const d = await detalleDeLiquidacion({ operadorId: "op1", liquidacionId: emitida.liquidacionId }, db);
   assert.ok(d);
-  assert.ok(d.lineas[0]!.detalle.includes("sin consultorio"));
+  // Ya no se distingue en el papel, y no hace falta: lo que se cobra es la hora, y la hora es
+  // la misma se use o no un consultorio.
+  assert.ok(/\d{2}:\d{2} a \d{2}:\d{2}/.test(d.lineas[0]!.detalle));
 });
 
 // ── Los pagos y el saldo ────────────────────────────────────────────────────

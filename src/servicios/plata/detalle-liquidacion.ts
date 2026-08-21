@@ -112,7 +112,7 @@ export async function detalleDeLiquidacion(
   const reservas = reservaIds.length
     ? await db.ocupacion.findMany({
         where: { operadorId: a.operadorId, id: { in: reservaIds } },
-        select: { id: true, inicio: true, fin: true, sala: { select: { nombre: true } } },
+        select: { id: true, inicio: true, fin: true },
       })
     : [];
   const porId = new Map(reservas.map((r) => [r.id, r]));
@@ -128,12 +128,14 @@ export async function detalleDeLiquidacion(
       const detalle = x.motivo ? `${concepto} · ${x.motivo}` : concepto;
       return { fecha: x.fechaHecho, concepto, detalle, montoCent: x.montoCent, minutos: 0 };
     }
-    // Sin sala no es un dato que falte: es una reserva que usa la recepción y no el consultorio.
-    const donde = r.sala?.nombre ?? "sin consultorio";
+    // El horario y nada más. El consultorio se sacó a pedido: al profesional se le cobra por hora
+    // y le da igual en cuál estuvo —el precio es del profesional, no de la sala—, así que en el
+    // papel era una columna de ruido. Adentro sigue guardado: la exportación de turnos lo lleva,
+    // que es donde sirve para mirar cómo rinde cada consultorio.
     return {
       fecha: r.inicio,
       concepto,
-      detalle: `${formatHora(r.inicio, tz)} a ${formatHora(r.fin, tz)} · ${donde}`,
+      detalle: `${formatHora(r.inicio, tz)} a ${formatHora(r.fin, tz)}`,
       montoCent: x.montoCent,
       minutos: Math.round((r.fin.getTime() - r.inicio.getTime()) / 60_000),
     };

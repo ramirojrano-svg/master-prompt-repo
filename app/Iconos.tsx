@@ -167,3 +167,21 @@ export function IconoHueco({ tam = 16 }: Props) {
     </svg>
   );
 }
+
+/**
+ * El documento de la liquidación: una hoja con la esquina doblada.
+ *
+ * Se usa donde antes había un número escrito. Una hoja se reconoce de un vistazo como "esto se
+ * abre y se imprime", que es exactamente lo que hay que hacer con una liquidación recién emitida;
+ * un "N° 14" hay que leerlo para entender que además es un link.
+ */
+export function IconoDocumento({ tam = 20 }: Props) {
+  return (
+    <svg {...base(tam)}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6" />
+      <path d="M9 17h4" />
+    </svg>
+  );
+}

@@ -113,7 +113,9 @@ test("un id de sala inventado en el filtro se ignora, no deja la pantalla vacía
   await insertarOcupacion(pgPool, { id: "a", salaId: "sa1", inquilinoId: "in1", inicio: "2026-08-12T13:00:00Z", fin: "2026-08-12T14:00:00Z" });
   const v = await cargarAgenda({ actor: owner, fecha: MIE, vista: "dia", salas: ["no-existe"] }, db);
   assert.ok(v);
-  assert.deepEqual(v.salasVisibles.sort(), ["sa1", "sa2"], "sin filtro válido se ven todas");
+  // El owner ve además la columna sintética "sin consultorio", que ahora está siempre para quien
+  // puede crear esas reservas: sin ella no habría forma de tocarla para crear la primera.
+  assert.deepEqual(v.salasVisibles.sort(), ["sa1", "sa2", "sin-sala"], "sin filtro válido se ven todas");
   assert.equal(v.reservas.length, 1);
 });
 

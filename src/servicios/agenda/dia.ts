@@ -133,9 +133,18 @@ export async function cargarAgenda(
   const conActividad = new Set(filasVisibles.map((f) => f.salaId).filter((s): s is string => s !== null));
 
   // La columna de las reservas sin consultorio. Sin ella serían invisibles en la agenda, y
-  // "no aparece" es indistinguible de "no se creó". Es SINTÉTICA —no hay una fila `Sala` detrás—
-  // y solo se dibuja los días en que hay algo, para no ocupar ancho por las dudas.
-  const haySinSala = filasVisibles.some((f) => f.salaId === null && f.tipo === "reserva");
+  // "no aparece" es indistinguible de "no se creó". Es SINTÉTICA: no hay una fila `Sala` detrás.
+  //
+  // Antes se dibujaba SOLO los días que ya tenían una, para no ocupar ancho por las dudas. El
+  // efecto era el contrario del buscado: en la vista de día y en la de semana la columna casi
+  // nunca estaba —hace falta que justo ese día haya una— así que no se podía ni tocar para crear
+  // la primera, ni prender el filtro. Aparecía en el mes de casualidad, porque el rango de
+  // cuarenta y dos días casi siempre pisa alguna. Una función que aparece y desaparece según el
+  // rango que uno esté mirando es peor que una columna de más.
+  //
+  // Ahora está siempre para quien puede usarla, y sigue sin existir para el resto: es la misma
+  // condición que habilita crearlas.
+  const haySinSala = verSinSala || filasVisibles.some((f) => f.salaId === null && f.tipo === "reserva");
   const salas: SalaVista[] = [
     ...salasTodas
       .filter((s) => s.activa || conActividad.has(s.id))
