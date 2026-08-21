@@ -12,6 +12,7 @@
 import { actorDeSesion } from "../../../src/lib/sesion.ts";
 import { miPerfil } from "../../../src/servicios/config/perfil.ts";
 import { MenuConfig } from "./MenuConfig.tsx";
+import { CerrarBurbujas } from "./CerrarBurbujas.tsx";
 import { MenuLateral } from "./MenuLateral.tsx";
 
 export default async function PanelLayout({
@@ -29,6 +30,11 @@ export default async function PanelLayout({
 
   return (
     <div className="panel-marco">
+      {/* Acá y no en cada pantalla: la tuerca de Configuración la pone ESTE layout, así que
+          aparece en todas. Montado solo en la agenda, el globo de "cerrar sesión" no se cerraba
+          tocando afuera en ninguna de las otras — y el listener es uno solo para todas las
+          burbujas, así que ponerlo donde vive la burbuja es donde corresponde. */}
+      <CerrarBurbujas />
       {actor && (
         <MenuLateral
           slug={slug}

@@ -112,6 +112,7 @@ export default async function DetalleProfesionalPage({
       inquilinoId,
       nombre: formData.get("nombre"),
       pagador: formData.get("pagador"),
+      email: formData.get("email"),
       // Una casilla destildada no viaja en el formulario: ausente significa "no se le factura".
       facturable: formData.get("facturable") === "true",
     });
@@ -549,6 +550,13 @@ export default async function DetalleProfesionalPage({
             <form action={guardarDatos} className="panel">
               <label htmlFor="nombre">Nombre y especialidad</label>
               <input id="nombre" name="nombre" required maxLength={120} defaultValue={d.inquilino.nombre} />
+
+              <label htmlFor="email">Email para mandarle la liquidación</label>
+              <input id="email" name="email" type="email" maxLength={160} defaultValue={d.inquilino.email ?? ""} placeholder="profesional@email.com" />
+              <p className="tenue" style={{ margin: "4px 0 0", fontSize: 12 }}>
+                Es aparte del email con el que entra a la app: la mayoría no tiene acceso creado y
+                no lo necesita, pero igual hay que poder mandarle la cuenta del mes.
+              </p>
 
               <label htmlFor="pagador">Quién abona (si no es el mismo profesional)</label>
               <input id="pagador" name="pagador" maxLength={120} defaultValue={d.inquilino.pagador ?? ""} placeholder="Federico Terrón" />

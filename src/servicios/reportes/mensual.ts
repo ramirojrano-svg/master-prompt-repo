@@ -288,7 +288,7 @@ export type DetalleProfesional = {
   periodo: string;
   tz: string;
   moneda: string;
-  inquilino: { id: string; nombre: string; activo: boolean; pagador: string | null; facturable: boolean };
+  inquilino: { id: string; nombre: string; activo: boolean; pagador: string | null; facturable: boolean; email: string | null };
   turnos: TurnoDelMes[];
   /** Cuántas horas por día de la semana: "siempre martes y jueves" se ve de una. */
   porDiaSemana: { dia: number; reservas: number; minutos: number }[];
@@ -323,7 +323,7 @@ export async function detalleProfesional(
   // Pertenencia: el id vino de la URL. findFirst({id, operadorId}), nunca findUnique({id}).
   const inq = await db.inquilino.findFirst({
     where: { id: a.inquilinoId, operadorId: op },
-    select: { id: true, nombre: true, estado: true, pagador: true, facturable: true },
+    select: { id: true, nombre: true, estado: true, pagador: true, facturable: true, email: true },
   });
   if (!inq) return null;
 
@@ -425,7 +425,7 @@ export async function detalleProfesional(
     periodo: a.periodo,
     tz,
     moneda: operador.moneda,
-    inquilino: { id: inq.id, nombre: inq.nombre, activo: inq.estado === "activo", pagador: inq.pagador, facturable: inq.facturable },
+    inquilino: { id: inq.id, nombre: inq.nombre, activo: inq.estado === "activo", pagador: inq.pagador, facturable: inq.facturable, email: inq.email },
     turnos,
     porDiaSemana,
     porFranja,

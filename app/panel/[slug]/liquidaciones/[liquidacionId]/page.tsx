@@ -19,17 +19,36 @@ import { detalleDeLiquidacion } from "../../../../../src/servicios/plata/detalle
 import { formatearPesos } from "../../../../../src/dominio/tarifa.ts";
 import { horasYMinutos, nombreDePeriodo } from "../../../../../src/dominio/reporte.ts";
 import { datosDeCobro, hayDatosDeCobro } from "../../../../../src/servicios/config/cobro.ts";
+import { enviarLiquidacion } from "../../../../../src/servicios/plata/mail-liquidacion.ts";
+import { revalidatePath } from "next/cache";
+import { prisma } from "../../../../../src/db/prisma.ts";
 
 const DIA_MES: Intl.DateTimeFormatOptions = { weekday: "short", day: "2-digit", month: "2-digit" };
 
-export default async function LiquidacionPage({ params }: { params: Promise<{ slug: string; liquidacionId: string }> }) {
+export default async function LiquidacionPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string; liquidacionId: string }>;
+  searchParams: Promise<{ ok?: string; error?: string }>;
+}) {
   const { slug, liquidacionId } = await params;
+  const sp = await searchParams;
 
   const actor = await actorDeSesion(slug);
   if (!actor) redirect(`/login?centro=${encodeURIComponent(slug)}`);
 
   const d = await detalleDeLiquidacion({ operadorId: actor.operadorId, liquidacionId });
-  const cobro = await datosDeCobro(actor.operadorId);
+
+  async function mandar() {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+    const r = await enviarLiquidacion(a, { liquidacionId });
+    revalidatePath(`/panel/${slug}/liquidaciones/${liquidacionId}`);
+    const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
+    redirect(`/panel/${slug}/liquidaciones/${liquidacionId}?${codigo ? `error=${codigo}` : "ok=enviado"}`);
+  }
   // Inexistente y ajena dan lo mismo a propósito: distinguirlas le confirmaría a quien prueba ids
   // cuáles existen (§6.11).
   if (!d) redirect(`/panel/${slug}`);
@@ -39,6 +58,16 @@ export default async function LiquidacionPage({ params }: { params: Promise<{ sl
   if (!puede(actor.rol, "cuenta.ver.todas") && !(propia && puede(actor.rol, "cuenta.ver.propia"))) {
     redirect(`/panel/${slug}`);
   }
+
+  const cobro = await datosDeCobro(actor.operadorId);
+  // A qué dirección iría el mail. Se lee para poder DECIRLO en el botón: mandar a ciegas y
+  // enterarse después de que fue a la casilla equivocada no tiene arreglo.
+  const inq = await prisma.inquilino.findFirst({
+    where: { id: d.inquilinoId, operadorId: actor.operadorId },
+    select: { email: true },
+  });
+  const emailDestino = inq?.email?.trim() || null;
+  const puedeEnviar = puede(actor.rol, "periodo.cerrar");
 
   const plata = (n: bigint) => formatearPesos(n, d.moneda);
   const dia = (x: Date) => x.toLocaleDateString("es-AR", DIA_MES);
@@ -61,10 +90,46 @@ export default async function LiquidacionPage({ params }: { params: Promise<{ sl
         `}</style>
 
         <div className="no-imprimir" style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-          <Link className="pastilla" href={`/panel/${slug}/cobranza?periodo=${d.periodo}`}>‹ Cobranza</Link>
+          <Link className="pastilla" href={`/panel/${slug}/cierre?periodo=${d.periodo}`}>‹ Cierre de mes</Link>
           <Link className="pastilla" href={`/panel/${slug}/inquilinos/${d.inquilinoId}?periodo=${d.periodo}`}>Ficha del profesional</Link>
           <BotonImprimir />
         </div>
+
+        {sp.ok === "enviado" && <p className="aviso-ok no-imprimir">Enviado a {emailDestino}.</p>}
+        {sp.error && (
+          <p className="aviso-error no-imprimir">
+            {sp.error === "SIN_EMAIL"
+              ? "Este profesional no tiene email cargado. Se carga en su ficha."
+              : sp.error === "SIN_CONFIGURAR"
+                ? "El envío de correo todavía no está configurado (Configuración → Envío de correo)."
+                : sp.error === "SIN_PERMISO"
+                  ? "Tu rol no puede mandar liquidaciones."
+                  : "No se pudo enviar. Probá de nuevo en un rato."}
+          </p>
+        )}
+
+        {/* Mandar el mail es de a UNO y a pedido, nunca al cerrar. Cerrar es un acto contable que
+            se puede repetir sin consecuencias; un mail no se deshace, y un cierre hecho por error
+            mandaría veintinueve. El botón dice a qué dirección va ANTES de tocarlo. */}
+        {puedeEnviar && (
+          <div className="panel no-imprimir" style={{ padding: 14, marginTop: 12 }}>
+            {emailDestino ? (
+              <form action={mandar} style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13 }}>
+                  Mandarle esta liquidación a <b>{emailDestino}</b>
+                </span>
+                <button type="submit" className="pastilla" style={{ padding: "7px 14px", fontSize: 13, marginLeft: "auto" }}>
+                  Enviar por mail
+                </button>
+              </form>
+            ) : (
+              <p className="tenue" style={{ margin: 0, fontSize: 13 }}>
+                Para mandársela por mail hace falta cargarle un email en{" "}
+                <Link href={`/panel/${slug}/inquilinos/${d.inquilinoId}`}>su ficha</Link>.
+              </p>
+            )}
+          </div>
+        )}
 
         <article className="panel" style={{ padding: 26 }}>
           {/* ── Encabezado ─────────────────────────────────────────────── */}

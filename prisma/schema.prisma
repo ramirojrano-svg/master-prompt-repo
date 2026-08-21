@@ -215,6 +215,12 @@ model Inquilino {
   titulo     String?
   foto       String?
 
+  // A dónde se le manda la liquidación. Es SEPARADO del email con el que entra a la app, y no una
+  // lectura de su cuenta: la mayoría del padrón no tiene acceso creado —y no lo necesita—, pero
+  // igual hay que poder mandarle la cuenta del mes. Si alguna vez se le da acceso, el email de
+  // esa cuenta puede ser otro sin que eso cambie a dónde llega la liquidación.
+  email      String?
+
   /// ¿Se le factura? Falso para quien usa el consultorio pero no es un cliente del centro — un
   /// socio, el propio dueño. No es lo mismo que una tarifa de $0: ese seguiría apareciendo en el
   /// tablero de negocio con una fila de ceros, sumando cero y ocupando un renglón. Con esto queda

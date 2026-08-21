@@ -14,7 +14,6 @@ import { PrismaClient } from "@prisma/client";
 import { crearOcupacion, type CtxReserva } from "../../src/servicios/reservas/crear.ts";
 import { expandirSerie } from "../../src/servicios/reservas/expandir-serie.ts";
 import { pendientesDeCierre } from "../../src/servicios/plata/cierre.ts";
-import { cobranzaDelMes } from "../../src/servicios/plata/cobranza.ts";
 import { recotizarCon, pendientesPorProfesional } from "../../src/servicios/plata/recotizar.ts";
 import { prisma } from "../../src/db/prisma.ts";
 import type { Actor } from "../../src/lib/actor.ts";
@@ -161,15 +160,15 @@ test("Cierre de mes no lo lista, aunque tenga cargos asentados de antes", async 
   assert.equal(filas.find((f) => f.inquilinoId === "in2"), undefined, "emitirle una liquidación sería fabricar una deuda");
 });
 
-test("Cobranza no lo lista ni lo suma a los totales", async () => {
+test("tampoco suma al pendiente del mes", async () => {
   await cargoViejo("in1", "c:1");
   await cargoViejo("in2", "c:2");
 
-  const c = await cobranzaDelMes({ operadorId: "op1", periodo: PERIODO }, db);
-  assert.ok(c);
-  assert.equal(c.filas.find((f) => f.inquilinoId === "in2"), undefined);
-  // El total tampoco puede arrastrarlo: si lo sumara, el número de arriba no cerraría con la lista.
-  assert.equal(c.totales.emitidoCent, PRECIO_HORA);
+  // Si lo sumara, el total de "pendiente de cerrar" no cerraría con la lista de abajo: habría
+  // plata en el número de arriba que no aparece en ninguna fila.
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: PERIODO }, db);
+  const total = filas.reduce((acc, f) => acc + f.pendienteCent, 0n);
+  assert.equal(total, PRECIO_HORA);
 });
 
 test("volver a tildar 'factura' lo devuelve al circuito", async () => {

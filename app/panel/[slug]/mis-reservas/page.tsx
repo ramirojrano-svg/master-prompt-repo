@@ -12,7 +12,6 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { Cabecera } from "../Cabecera.tsx";
-import { CerrarBurbujas } from "../CerrarBurbujas.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
@@ -99,7 +98,6 @@ export default async function MisReservasPage({
 
   return (
     <>
-      <CerrarBurbujas />
       <Cabecera slug={slug} titulo="Mis reservas" />
 
       <main style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>

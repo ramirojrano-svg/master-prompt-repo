@@ -18,11 +18,19 @@ export const InquilinoInput = z.object({
   // del formulario es "no facturable" solo cuando el campo no viaja: al crear a alguien nuevo se
   // manda tildada, que es el caso normal.
   facturable: z.coerce.boolean().optional(),
+  // A dónde se le manda la liquidación. Vacío se guarda como NULL: "" y null significarían lo
+  // mismo y habría que preguntar por los dos en cada lugar que lo use.
+  email: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+    z.string().trim().email().max(160).nullable().optional(),
+  ),
 });
 
 export type ResultadoInquilino = { ok: true; id: string } | { ok: false; error: "NO_ENCONTRADO" };
 
-async function crear(actor: Actor, input: { nombre: string; pagador?: string; facturable?: boolean }, db: PrismaClient): Promise<ResultadoInquilino> {
+type DatosInquilino = { nombre: string; pagador?: string; facturable?: boolean; email?: string | null };
+
+async function crear(actor: Actor, input: DatosInquilino, db: PrismaClient): Promise<ResultadoInquilino> {
   const i = await db.inquilino.create({
     data: {
       operadorId: actor.operadorId,
@@ -30,6 +38,7 @@ async function crear(actor: Actor, input: { nombre: string; pagador?: string; fa
       pagador: input.pagador || null,
       estado: EstadoInquilino.activo,
       facturable: input.facturable ?? true,
+      email: input.email ?? null,
     },
     select: { id: true },
   });
@@ -38,7 +47,7 @@ async function crear(actor: Actor, input: { nombre: string; pagador?: string; fa
 
 async function editar(
   actor: Actor,
-  input: { inquilinoId: string; nombre: string; pagador?: string; facturable?: boolean },
+  input: DatosInquilino & { inquilinoId: string },
   db: PrismaClient,
 ): Promise<ResultadoInquilino> {
   // Editar el nombre NO reescribe ninguna fila de plata ya emitida (§6.7): la liquidación
@@ -49,7 +58,7 @@ async function editar(
   // un pago o una nota de crédito, que son movimientos que quedan registrados.
   const r = await db.inquilino.updateMany({
     where: { id: input.inquilinoId, operadorId: actor.operadorId },
-    data: { nombre: input.nombre, pagador: input.pagador || null, facturable: input.facturable ?? false },
+    data: { nombre: input.nombre, pagador: input.pagador || null, facturable: input.facturable ?? false, email: input.email ?? null },
   });
   return r.count === 1 ? { ok: true, id: input.inquilinoId } : { ok: false, error: "NO_ENCONTRADO" };
 }

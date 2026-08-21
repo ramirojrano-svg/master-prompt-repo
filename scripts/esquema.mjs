@@ -60,6 +60,7 @@ const PARCHES = [
   // Quien usa el consultorio pero no es cliente del centro. Nace en TRUE: todos los que ya están
   // cargados facturan, que es lo que venía pasando hasta ahora.
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "facturable" BOOLEAN NOT NULL DEFAULT true',
+  'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "email" TEXT',
   // Datos de cobro del centro: van al pie de cada liquidación.
   'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroTitular" TEXT',
   'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroCuit" TEXT',

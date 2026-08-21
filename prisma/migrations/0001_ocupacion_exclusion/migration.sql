@@ -138,6 +138,7 @@ CREATE TABLE "Inquilino" (
     "foto" TEXT,
 
     "facturable" BOOLEAN NOT NULL DEFAULT true,
+    "email" TEXT,
 
     CONSTRAINT "Inquilino_pkey" PRIMARY KEY ("id")
 );

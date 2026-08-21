@@ -36,7 +36,6 @@ import { horasYMinutos, nombreDePeriodo } from "../../../src/dominio/reporte.ts"
 import { Logo } from "../../Logo.tsx";
 import { IconoMas } from "../../Iconos.tsx";
 import { AvisoAlta } from "./AvisoAlta.tsx";
-import { CerrarBurbujas } from "./CerrarBurbujas.tsx";
 import { ocupacionMensualPorSala } from "../../../src/servicios/reportes/mensual.ts";
 import { describirConflictos, parsearConflictos, resumirConflictos, serializarConflictos } from "../../../src/dominio/conflictos.ts";
 import { SIN_SALA } from "../../../src/servicios/agenda/dia.ts";
@@ -337,7 +336,6 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
   return (
     <>
       {/* Un solo listener para todas las burbujas de la pantalla (crear turno, tuerca). */}
-      <CerrarBurbujas />
 
       {/* ── Barra superior ──────────────────────────────────────────────── */}
       <header className="barra">
@@ -556,7 +554,25 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           tiene nada más que hacer y abierto tapa la agenda que se acaba de modificar. El aviso de
           "turno creado" aparece arriba, sobre la grilla. */}
       {(puedeCargar || puedeCargarPropia) && (
-        <details className="crear-flotante" data-burbuja open={Boolean(sp.error) || sp.nuevo === "1"}>
+        <details
+          className="crear-flotante"
+          data-burbuja
+          // La `key` cambia con la celda tocada y REMONTA el <details>. Sin esto, el segundo
+          // click sobre la grilla no hacía nada:
+          //
+          //   1. Se toca una celda → la URL trae `nuevo=1` y React abre el globo.
+          //   2. Se toca OTRA celda → el listener de CerrarBurbujas ve un toque afuera y hace
+          //      `d.open = false` directo sobre el DOM, que es la única forma de cerrar un
+          //      <details> desde afuera de React.
+          //   3. Llega la navegación y React vuelve a renderizar con `open` en true… que es el
+          //      MISMO valor que la vez anterior. Para React no cambió nada, así que no vuelve a
+          //      escribir el atributo, y el globo queda cerrado con el formulario adentro.
+          //
+          // Remontar lo arregla de raíz: cada celda es un <details> nuevo, que nace abierto. Es la
+          // misma razón por la que el formulario de adentro ya tenía su propia key.
+          key={`${sp.sala ?? ""}|${sp.hora ?? ""}|${sp.nuevo ?? ""}|${sp.error ?? ""}`}
+          open={Boolean(sp.error) || sp.nuevo === "1"}
+        >
           <summary aria-label="Crear turno" title="Crear turno">
             <IconoMas />
           </summary>
