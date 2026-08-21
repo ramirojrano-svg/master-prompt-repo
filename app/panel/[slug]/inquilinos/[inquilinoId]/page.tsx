@@ -9,19 +9,18 @@
 // detalle que lo forma no se puede defender. Y desde acá se registran sus cobros.
 
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { actorDeSesion } from "../../../../../src/lib/sesion.ts";
 import { puede } from "../../../../../src/lib/permisos.ts";
 import { detalleProfesional } from "../../../../../src/servicios/reportes/mensual.ts";
-import { editarInquilino } from "../../../../../src/servicios/config/inquilinos.ts";
-import { despreciarInquilino, plataPendienteDe } from "../../../../../src/servicios/plata/despreciar.ts";
-import { accesoDeInquilino, crearAcceso, LARGO_MIN_CLAVE, restablecerClave } from "../../../../../src/servicios/config/accesos.ts";
-import { anularCobro, cobrosDelMes, ETIQUETA_MEDIO, MEDIOS, registrarCobro } from "../../../../../src/servicios/plata/cobros.ts";
+import { plataPendienteDe } from "../../../../../src/servicios/plata/despreciar.ts";
+import { accesoDeInquilino, LARGO_MIN_CLAVE } from "../../../../../src/servicios/config/accesos.ts";
+import { cobrosDelMes, ETIQUETA_MEDIO, MEDIOS } from "../../../../../src/servicios/plata/cobros.ts";
 import { formatearPesos } from "../../../../../src/dominio/tarifa.ts";
 import { esPeriodoValido, horasYMinutos, nombreDePeriodo, periodoAnterior, periodoSiguiente } from "../../../../../src/dominio/reporte.ts";
 import { fechaEnZona } from "../../../../../src/dominio/motor/zona.ts";
 import { prisma } from "../../../../../src/db/prisma.ts";
+import * as acciones from "./acciones-ficha.ts";
 import { Logo } from "../../../../Logo.tsx";
 import { AnilloVolumen, BarrasVolumen } from "../../reportes/Graficos.tsx";
 
@@ -66,92 +65,16 @@ export default async function DetalleProfesionalPage({
   // plata pegada a las reservas es un resto a limpiar y no la operación normal.
   const pegada = d.inquilino.facturable ? null : await plataPendienteDe({ operadorId: actor.operadorId, inquilinoId });
   const hoy = fechaEnZona(new Date(), sede.zonaHoraria);
-  const volverA = `/panel/${slug}/inquilinos/${inquilinoId}?periodo=${periodo}`;
-  // Sin la query: `revalidatePath` toma un path, y con "?periodo=..." no invalida nada — se
-  // registra un cobro, la acción contesta "ok", y la lista sigue mostrando lo de antes.
-  const rutaDetalle = `/panel/${slug}/inquilinos/${inquilinoId}`;
-
-  async function registrarPago(formData: FormData) {
-    "use server";
-    const a = await actorDeSesion(slug);
-    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
-
-    const r = await registrarCobro(a, {
-      inquilinoId,
-      monto: formData.get("monto"),
-      medio: formData.get("medio"),
-      referencia: formData.get("referencia") ?? undefined,
-      fecha: formData.get("fecha") ?? undefined,
-    });
-
-    revalidatePath(rutaDetalle);
-    // El duplicado se avisa distinto que el alta: para el operador "ya estaba cargado" y "listo"
-    // son dos cosas muy diferentes, y confundirlas hace que busque un pago que nunca se asentó.
-    const q = !r.ok ? `&error=${r.error}` : !r.data.ok ? `&error=${r.data.error}` : r.data.duplicado ? "&ok=repetido" : "&ok=1";
-    redirect(`${volverA}${q}`);
-  }
-
-  async function anularPago(formData: FormData) {
-    "use server";
-    const a = await actorDeSesion(slug);
-    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
-
-    const r = await anularCobro(a, { asientoId: formData.get("asientoId"), motivo: formData.get("motivo") });
-    revalidatePath(rutaDetalle);
-    const q = !r.ok ? `&error=${r.error}` : !r.data.ok ? `&error=${r.data.error}` : "&ok=anulado";
-    redirect(`${volverA}${q}`);
-  }
-
-  // Editar los datos del profesional vive ACÁ y ya no en la lista: es donde uno está mirando a esa
-  // persona. En la lista quedaron solo las dos acciones que se hacen sin abrir a nadie.
-  async function guardarDatos(formData: FormData) {
-    "use server";
-    const a = await actorDeSesion(slug);
-    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
-    const r = await editarInquilino(a, {
-      inquilinoId,
-      nombre: formData.get("nombre"),
-      pagador: formData.get("pagador"),
-      email: formData.get("email"),
-      whatsapp: formData.get("whatsapp"),
-      // Una casilla destildada no viaja en el formulario: ausente significa "no se le factura".
-      facturable: formData.get("facturable") === "true",
-    });
-    revalidatePath(rutaDetalle);
-    redirect(`${volverA}${r.ok && r.data.ok ? "&ok=datos" : "&error=DATOS"}`);
-  }
-
-  // Sacarle el precio a lo ya cargado. Es EXPLÍCITO y aparte de la casilla: cambiar una marca de
-  // la ficha no puede borrar plata de meses anteriores sin que nadie lo pida.
-  async function sacarPrecios() {
-    "use server";
-    const a = await actorDeSesion(slug);
-    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
-    const r = await despreciarInquilino(a, { inquilinoId });
-    revalidatePath(rutaDetalle);
-    const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
-    redirect(`${volverA}${codigo ? `&error=${codigo}` : `&ok=despreciado&n=${r.ok && r.data.ok ? r.data.reservas : 0}`}`);
-  }
-
-  async function darAcceso(formData: FormData) {
-    "use server";
-    const a = await actorDeSesion(slug);
-    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
-    const r = await crearAcceso(a, { inquilinoId, email: formData.get("email"), password: formData.get("password") });
-    revalidatePath(rutaDetalle);
-    const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
-    redirect(`${volverA}${codigo ? `&error=${codigo}` : "&ok=acceso"}`);
-  }
-
-  async function resetearClave(formData: FormData) {
-    "use server";
-    const a = await actorDeSesion(slug);
-    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
-    const r = await restablecerClave(a, { inquilinoId, password: formData.get("password") });
-    revalidatePath(rutaDetalle);
-    const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
-    redirect(`${volverA}${codigo ? `&error=${codigo}` : "&ok=clave"}`);
-  }
+  // Las seis acciones viven en `acciones-ficha.ts`: son las que tocan plata, datos personales y
+  // contraseñas, y merecen leerse juntas y no salteadas entre el marcado. Acá quedan solo los
+  // envoltorios de una línea, que es lo único que el formulario necesita.
+  const ctxAcciones = { slug, inquilinoId, periodo };
+  async function registrarPago(formData: FormData) { "use server"; await acciones.registrarPago(ctxAcciones, formData); }
+  async function anularPago(formData: FormData) { "use server"; await acciones.anularPago(ctxAcciones, formData); }
+  async function guardarDatos(formData: FormData) { "use server"; await acciones.guardarDatos(ctxAcciones, formData); }
+  async function sacarPrecios() { "use server"; await acciones.sacarPrecios(ctxAcciones); }
+  async function darAcceso(formData: FormData) { "use server"; await acciones.darAcceso(ctxAcciones, formData); }
+  async function resetearClave(formData: FormData) { "use server"; await acciones.resetearClave(ctxAcciones, formData); }
 
   const AVISO: Record<string, string> = {
     "1": "Cobro registrado.",
