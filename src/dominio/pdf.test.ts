@@ -90,3 +90,51 @@ test("anchoTexto crece con el largo y con el tamaño", () => {
   assert.ok(anchoTexto("aa", 20) > anchoTexto("aa", 10));
   assert.ok(anchoTexto("aa", 10, "Helvetica-Bold") > anchoTexto("aa", 10));
 });
+
+test("con una imagen, el xref sigue apuntando a cada objeto", () => {
+  // Una imagen suma DOS objetos —la imagen y su máscara de transparencia— y con eso se recorre
+  // toda la aritmética de offsets. Es donde más fácil se rompe un PDF armado a mano.
+  const bytes = armarPdf([
+    { tipo: "texto", x: 10, y: 10, texto: "con logo", tam: 10 },
+    {
+      tipo: "imagen", x: 10, y: 20, ancho: 40, alto: 40,
+      // Dos píxeles: uno opaco, uno transparente.
+      rgba: Uint8Array.from([255, 0, 0, 255, 0, 0, 255, 0]),
+      pxAncho: 2, pxAlto: 1,
+    },
+  ]);
+  const s = Buffer.from(bytes).toString("latin1");
+
+  const filas = s.slice(s.indexOf("xref\n")).split("\n").filter((l) => /^\d{10} 00000 n $/.test(l));
+  assert.equal(filas.length, 8, "seis fijos + la imagen + su máscara");
+  filas.forEach((fila, i) => {
+    const offset = Number(fila.slice(0, 10));
+    assert.equal(s.slice(offset, offset + 20).startsWith(`${i + 1} 0 obj`), true, `el objeto ${i + 1} no está en su offset`);
+  });
+});
+
+test("la imagen se declara en los recursos de la página y se dibuja", () => {
+  const s = Buffer.from(
+    armarPdf([{ tipo: "imagen", x: 0, y: 0, ancho: 10, alto: 10, rgba: Uint8Array.from([1, 2, 3, 255]), pxAncho: 1, pxAlto: 1 }]),
+  ).toString("latin1");
+  assert.ok(s.includes("/XObject << /Im0 7 0 R >>"), "sin declararla en /Resources, el visor la ignora");
+  assert.ok(s.includes("/Im0 Do"), "y sin el Do no se dibuja");
+  assert.ok(s.includes("/SMask 8 0 R"), "la máscara es lo que hace respetar la transparencia");
+});
+
+test("una página sin imágenes no declara /XObject", () => {
+  const s = Buffer.from(armarPdf([{ tipo: "texto", x: 1, y: 1, texto: "a", tam: 8 }])).toString("latin1");
+  assert.equal(s.includes("/XObject"), false);
+});
+
+test("el tinte pinta la silueta de un color plano", () => {
+  // Es lo que hace que el logo azul se vea blanco sobre la banda oscura.
+  const s = Buffer.from(
+    armarPdf([{
+      tipo: "imagen", x: 0, y: 0, ancho: 10, alto: 10,
+      rgba: Uint8Array.from([0, 0, 200, 255]), pxAncho: 1, pxAlto: 1,
+      tinte: { r: 255, g: 255, b: 255 },
+    }]),
+  ).toString("latin1");
+  assert.ok(/1\.000 1\.000 1\.000 rg/.test(s), "el color del tinte tiene que quedar puesto antes del Do");
+});

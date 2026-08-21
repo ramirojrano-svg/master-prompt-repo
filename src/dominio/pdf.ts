@@ -16,6 +16,8 @@
 //    trae de fábrica. Cubre acentos y la eñe —que es todo lo que hace falta en castellano— sin
 //    tener que empotrar un archivo de fuente de 300 KB.
 
+import { deflateSync } from "node:zlib";
+
 /** Milímetros a puntos PostScript, que es la unidad del PDF (72 por pulgada). */
 export const mm = (v: number): number => (v * 72) / 25.4;
 
@@ -25,11 +27,31 @@ export const A4 = { ancho: mm(210), alto: mm(297) };
 export type Fuente = "Helvetica" | "Helvetica-Bold";
 export type Color = { r: number; g: number; b: number };
 
+/**
+ * Una imagen para dibujar. `rgba` viene de `leerPng`.
+ *
+ * `tinte` pinta la silueta de un color plano usando el alfa como recorte, en vez de los colores
+ * originales. Es lo que hace falta para el logo: el archivo es azul sobre transparente y sobre la
+ * banda oscura tiene que verse blanco — lo mismo que en pantalla hace un filtro de CSS.
+ */
+export type ImagenOrden = {
+  tipo: "imagen";
+  x: number;
+  y: number;
+  ancho: number;
+  alto: number;
+  rgba: Uint8Array;
+  pxAncho: number;
+  pxAlto: number;
+  tinte?: Color;
+};
+
 export type Orden =
   | { tipo: "texto"; x: number; y: number; texto: string; tam: number; fuente?: Fuente; color?: Color }
   | { tipo: "texto-der"; x: number; y: number; texto: string; tam: number; fuente?: Fuente; color?: Color }
   | { tipo: "linea"; x1: number; y1: number; x2: number; y2: number; grosor?: number; color?: Color }
-  | { tipo: "caja"; x: number; y: number; ancho: number; alto: number; color: Color };
+  | { tipo: "caja"; x: number; y: number; ancho: number; alto: number; color: Color }
+  | ImagenOrden;
 
 const NEGRO: Color = { r: 0, g: 0, b: 0 };
 
@@ -76,8 +98,20 @@ const col = (c: Color) => `${(c.r / 255).toFixed(3)} ${(c.g / 255).toFixed(3)} $
 function armarContenido(ordenes: Orden[]): number[] {
   const partes: number[] = [];
   const escribir = (s: string) => partes.push(...aWinAnsi(s));
+  let nImagen = 0;
 
   for (const o of ordenes) {
+    if (o.tipo === "imagen") {
+      // `cm` deja la matriz de transformación puesta para que la imagen —que en PDF siempre mide
+      // 1×1 en su propio espacio— caiga escalada y en su lugar. Va entre q/Q para no arrastrar
+      // esa transformación al resto del dibujo.
+      const yPdf = A4.alto - o.y - o.alto;
+      escribir(`q\n`);
+      if (o.tinte) escribir(`${col(o.tinte)} rg\n`);
+      escribir(`${o.ancho.toFixed(2)} 0 0 ${o.alto.toFixed(2)} ${o.x.toFixed(2)} ${yPdf.toFixed(2)} cm\n`);
+      escribir(`/Im${nImagen++} Do\nQ\n`);
+      continue;
+    }
     if (o.tipo === "caja") {
       escribir(`${col(o.color)} rg\n${o.x.toFixed(2)} ${(A4.alto - o.y - o.alto).toFixed(2)} ${o.ancho.toFixed(2)} ${o.alto.toFixed(2)} re f\n`);
       continue;
@@ -109,18 +143,80 @@ function armarContenido(ordenes: Orden[]): number[] {
  */
 export function armarPdf(ordenes: Orden[]): Uint8Array {
   const contenido = armarContenido(ordenes);
+  const imagenes = ordenes.filter((o): o is ImagenOrden => o.tipo === "imagen");
+
+  // Los seis objetos fijos van primero; las imágenes se numeran a continuación, cada una con su
+  // máscara de transparencia al lado. El orden importa porque las referencias son por número.
+  const BASE = 6;
+  const recursoImagenes = imagenes
+    .map((_, i) => `/Im${i} ${BASE + 1 + i * 2} 0 R`)
+    .join(" ");
 
   const objetos: number[][] = [
     aWinAnsi("<< /Type /Catalog /Pages 2 0 R >>"),
     aWinAnsi("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
     aWinAnsi(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4.ancho.toFixed(2)} ${A4.alto.toFixed(2)}] ` +
-        `/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>`,
+        `/Resources << /Font << /F1 5 0 R /F2 6 0 R >>` +
+        (imagenes.length ? ` /XObject << ${recursoImagenes} >>` : "") +
+        ` >> /Contents 4 0 R >>`,
     ),
     [...aWinAnsi(`<< /Length ${contenido.length} >>\nstream\n`), ...contenido, ...aWinAnsi("\nendstream")],
     aWinAnsi("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"),
     aWinAnsi("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"),
   ];
+
+  imagenes.forEach((img, i) => {
+    const pixeles = img.pxAncho * img.pxAlto;
+    const alfa = new Uint8Array(pixeles);
+    for (let k = 0; k < pixeles; k++) alfa[k] = img.rgba[k * 4 + 3]!;
+
+    const idMascara = BASE + 2 + i * 2;
+
+    if (img.tinte) {
+      // Silueta: el color lo pone el `rg` del contenido y esto solo dice DÓNDE pintar. Un stencil
+      // pesa un bit por píxel, pero pierde los bordes suavizados — y el logo tiene texto chico
+      // abajo. Así que va como imagen de un color plano con el alfa de máscara, que los conserva.
+      const plano = new Uint8Array(pixeles * 3).fill(255);
+      const datos = deflateSync(Buffer.from(plano));
+      objetos.push([
+        ...aWinAnsi(
+          `<< /Type /XObject /Subtype /Image /Width ${img.pxAncho} /Height ${img.pxAlto} ` +
+            `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode ` +
+            `/SMask ${idMascara} 0 R /Length ${datos.length} >>\nstream\n`,
+        ),
+        ...datos,
+        ...aWinAnsi("\nendstream"),
+      ]);
+    } else {
+      const rgb = new Uint8Array(pixeles * 3);
+      for (let k = 0; k < pixeles; k++) {
+        rgb[k * 3] = img.rgba[k * 4]!;
+        rgb[k * 3 + 1] = img.rgba[k * 4 + 1]!;
+        rgb[k * 3 + 2] = img.rgba[k * 4 + 2]!;
+      }
+      const datos = deflateSync(Buffer.from(rgb));
+      objetos.push([
+        ...aWinAnsi(
+          `<< /Type /XObject /Subtype /Image /Width ${img.pxAncho} /Height ${img.pxAlto} ` +
+            `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode ` +
+            `/SMask ${idMascara} 0 R /Length ${datos.length} >>\nstream\n`,
+        ),
+        ...datos,
+        ...aWinAnsi("\nendstream"),
+      ]);
+    }
+
+    const mascara = deflateSync(Buffer.from(alfa));
+    objetos.push([
+      ...aWinAnsi(
+        `<< /Type /XObject /Subtype /Image /Width ${img.pxAncho} /Height ${img.pxAlto} ` +
+          `/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length ${mascara.length} >>\nstream\n`,
+      ),
+      ...mascara,
+      ...aWinAnsi("\nendstream"),
+    ]);
+  });
 
   const bytes: number[] = [...aWinAnsi("%PDF-1.4\n")];
   const offsets: number[] = [];

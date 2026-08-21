@@ -9,7 +9,10 @@
 // al ancho y el otro es una hoja A4 con coordenadas fijas. Intentar unificarlos daría una
 // abstracción que no le sirve bien a ninguno de los dos.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { armarPdf, mm, A4, type Orden } from "../../dominio/pdf.ts";
+import { achicar, leerPng, type Imagen } from "../../dominio/png.ts";
 import { formatearPesos } from "../../dominio/tarifa.ts";
 import { horasYMinutos, nombreDePeriodo } from "../../dominio/reporte.ts";
 import { hayDatosDeCobro, type DatosDeCobro } from "../config/cobro.ts";
@@ -25,6 +28,29 @@ const SUAVE = { r: 244, g: 249, b: 251 };
 const IZQ = mm(18);
 const DER = A4.ancho - mm(18);
 
+/**
+ * El logo, leído una sola vez.
+ *
+ * Se cachea en el módulo porque decodificar el PNG cuesta —hay que inflar y desfiltrar 794×647— y
+ * el archivo no cambia entre una liquidación y otra. Se achica a un cuarto: en la hoja entra a
+ * menos de 200 px de ancho, y mandar el original serían cientos de kilobytes para dibujar algo del
+ * tamaño de una estampilla.
+ *
+ * Si el archivo no está o el PNG no es de los que sabemos leer, queda en null y el membrete sale
+ * sin logo. Una liquidación sin logo sirve igual; una que no se puede descargar, no.
+ */
+let logoCache: Imagen | null | undefined;
+function logo(): Imagen | null {
+  if (logoCache !== undefined) return logoCache;
+  try {
+    const png = leerPng(readFileSync(join(process.cwd(), "public", "logo.png")));
+    logoCache = png ? achicar(png, 4) : null;
+  } catch {
+    logoCache = null;
+  }
+  return logoCache;
+}
+
 const dia = (d: Date) => d.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "2-digit" });
 const fechaLarga = (d: Date) => d.toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" });
 
@@ -39,11 +65,27 @@ export function pdfDeLiquidacion(d: DetalleLiquidacion, cobro: DatosDeCobro): Ui
   let y = 0;
 
   // ── Membrete ──────────────────────────────────────────────────────────────
-  // El logo es un PNG y empotrarlo pediría decodificarlo; el nombre del centro en grande sobre la
-  // banda cumple la misma función —decir de quién viene— sin sumar un decodificador de imágenes.
+  // Igual que en pantalla: banda azul, el logo en blanco a la izquierda y el nombre al lado.
   o.push({ tipo: "caja", x: 0, y: 0, ancho: A4.ancho, alto: mm(26), color: MARCA });
-  o.push({ tipo: "texto", x: IZQ, y: mm(15), texto: d.centro.nombre, tam: 16, fuente: "Helvetica-Bold", color: { r: 255, g: 255, b: 255 } });
-  o.push({ tipo: "texto", x: IZQ, y: mm(21), texto: `Liquidación de ${nombreDePeriodo(d.periodo)}`, tam: 10, color: { r: 200, g: 218, b: 233 } });
+
+  const img = logo();
+  let xTexto = IZQ;
+  if (img) {
+    // Alto fijo y ancho proporcional: el logo no se deforma aunque cambie el archivo.
+    const alto = mm(14);
+    const ancho = (alto * img.ancho) / img.alto;
+    o.push({
+      tipo: "imagen", x: IZQ, y: mm(6), ancho, alto,
+      rgba: img.rgba, pxAncho: img.ancho, pxAlto: img.alto,
+      // El PNG es azul sobre transparente y la banda es azul oscuro: sin el tinte, el logo
+      // desaparecería contra el fondo. Es lo mismo que en pantalla hace un filtro de CSS.
+      tinte: { r: 255, g: 255, b: 255 },
+    });
+    xTexto = IZQ + ancho + mm(5);
+  }
+
+  o.push({ tipo: "texto", x: xTexto, y: mm(13), texto: d.centro.nombre, tam: 15, fuente: "Helvetica-Bold", color: { r: 255, g: 255, b: 255 } });
+  o.push({ tipo: "texto", x: xTexto, y: mm(19), texto: `Liquidación de ${nombreDePeriodo(d.periodo)}`, tam: 10, color: { r: 200, g: 218, b: 233 } });
 
   // ── Las dos fechas y el destinatario ──────────────────────────────────────
   y = mm(38);
@@ -76,22 +118,27 @@ export function pdfDeLiquidacion(d: DetalleLiquidacion, cobro: DatosDeCobro): Ui
   // Lo que entra en una hoja. Si un mes tuviera más renglones, se corta el DETALLE y no el total:
   // el importe a pagar no puede quedar afuera de la hoja por culpa de una lista larga.
   const CABEN = 26;
-  for (const l of d.lineas.slice(0, CABEN)) {
+  d.lineas.slice(0, CABEN).forEach((l, i) => {
     y += mm(6);
+    // Rayado alterno, como en pantalla: con veinte renglones de importes parecidos, la banda es
+    // lo que evita leer el de la fila de al lado.
+    if (i % 2 === 1) o.push({ tipo: "caja", x: IZQ, y: y - mm(4), ancho: DER - IZQ, alto: mm(6), color: SUAVE });
     o.push({ tipo: "texto", x: IZQ, y, texto: dia(l.fecha), tam: 9, color: TEXTO });
     o.push({ tipo: "texto", x: IZQ + mm(28), y, texto: recortar(l.detalle, 46), tam: 9, color: TEXTO });
     o.push({ tipo: "texto-der", x: DER, y, texto: plata(l.montoCent), tam: 9, color: TEXTO });
     o.push({ tipo: "linea", x1: IZQ, y1: y + mm(2), x2: DER, y2: y + mm(2), color: BORDE });
-  }
+  });
   if (d.lineas.length > CABEN) {
     y += mm(6);
     o.push({ tipo: "texto", x: IZQ, y, texto: `y ${d.lineas.length - CABEN} más — el detalle completo está en la app`, tam: 8, color: TENUE });
   }
 
   // ── El total ──────────────────────────────────────────────────────────────
-  y += mm(12);
-  o.push({ tipo: "texto", x: IZQ, y, texto: "Total", tam: 12, fuente: "Helvetica-Bold", color: TEXTO });
-  o.push({ tipo: "texto-der", x: DER, y, texto: plata(d.totalCent), tam: 15, fuente: "Helvetica-Bold", color: TEXTO });
+  y += mm(11);
+  o.push({ tipo: "caja", x: IZQ, y: y - mm(6), ancho: DER - IZQ, alto: mm(11), color: SUAVE });
+  y += mm(1);
+  o.push({ tipo: "texto", x: IZQ + mm(3), y, texto: "Total", tam: 12, fuente: "Helvetica-Bold", color: TEXTO });
+  o.push({ tipo: "texto-der", x: DER - mm(3), y, texto: plata(d.totalCent), tam: 15, fuente: "Helvetica-Bold", color: TEXTO });
 
   // ── A dónde transferir ────────────────────────────────────────────────────
   if (d.totalCent > 0n && hayDatosDeCobro(cobro)) {
