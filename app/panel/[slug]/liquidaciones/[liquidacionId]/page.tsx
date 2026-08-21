@@ -12,6 +12,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Cabecera } from "../../Cabecera.tsx";
+import { Logo } from "../../../../Logo.tsx";
 import { BotonImprimir } from "./BotonImprimir.tsx";
 import { actorDeSesion } from "../../../../../src/lib/sesion.ts";
 import { puede } from "../../../../../src/lib/permisos.ts";
@@ -132,33 +133,69 @@ export default async function LiquidacionPage({
         )}
 
         <article className="panel" style={{ padding: 26 }}>
-          {/* ── Encabezado ─────────────────────────────────────────────── */}
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
-            <div>
-              <p style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>{d.centro.nombre}</p>
-              <p className="tenue" style={{ margin: "2px 0 0", fontSize: 13 }}>
-                Liquidación de {nombreDePeriodo(d.periodo)}
-              </p>
+          {/* ── Encabezado ─────────────────────────────────────────────────
+              Membrete de verdad: el logo a la izquierda y el número a la derecha, sobre una
+              banda del azul de la marca. Un documento que va a llegar a veintinueve casillas
+              tiene que verse emitido por alguien, no como el volcado de una tabla. */}
+          <header
+            style={{
+              display: "flex", justifyContent: "space-between", gap: 20, flexWrap: "wrap",
+              alignItems: "center", padding: "18px 22px", margin: "-26px -26px 0",
+              background: "var(--marca-900)", color: "#fff",
+              borderRadius: "var(--radio) var(--radio) 0 0",
+              // Los fondos se descartan al imprimir salvo que el navegador tenga permitido
+              // pintarlos. Sin esto el membrete sale en blanco y el texto claro, ilegible.
+              WebkitPrintColorAdjust: "exact", printColorAdjust: "exact",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+              {/* El PNG es azul sobre transparente; sobre la banda oscura se pasa a blanco con
+                  un filtro, en vez de sumarle un segundo archivo al proyecto. */}
+              <span style={{ display: "flex", filter: "brightness(0) invert(1)", flexShrink: 0 }}>
+                <Logo alto={46} />
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>{d.centro.nombre}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 13, opacity: 0.85 }}>
+                  Liquidación de {nombreDePeriodo(d.periodo)}
+                </p>
+              </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <p style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>N° {d.numero}</p>
-              <p className="tenue" style={{ margin: "2px 0 0", fontSize: 13 }}>
-                {d.emitidaAt ? `Emitida el ${fecha(d.emitidaAt)}` : "Sin emitir"}
+              <p style={{ margin: 0, fontSize: 12, opacity: 0.75, letterSpacing: "0.06em" }}>LIQUIDACIÓN</p>
+              <p style={{ margin: "2px 0 0", fontSize: 24, fontWeight: 600, letterSpacing: "-0.02em" }}>N° {d.numero}</p>
+            </div>
+          </header>
+
+          {/* Las dos fechas, una al lado de la otra y del mismo tamaño: son la pregunta que se
+              hace cualquiera al abrir esto. El vencimiento en rojo porque es el que tiene
+              consecuencias — la de emisión es un dato, esta es una obligación. */}
+          <div style={{ display: "flex", gap: 28, flexWrap: "wrap", padding: "16px 0 0" }}>
+            <div>
+              <p className="tenue" style={{ margin: 0, fontSize: 12 }}>Fecha de emisión</p>
+              <p style={{ margin: "2px 0 0", fontSize: 15, fontWeight: 500 }}>
+                {d.emitidaAt ? fecha(d.emitidaAt) : "Sin emitir"}
               </p>
-              <p className="tenue" style={{ margin: 0, fontSize: 13 }}>Vence el {fecha(d.venceEl)}</p>
+            </div>
+            <div>
+              <p className="tenue" style={{ margin: 0, fontSize: 12 }}>Vence el</p>
+              <p style={{ margin: "2px 0 0", fontSize: 15, fontWeight: 700, color: "var(--error)" }}>
+                {fecha(d.venceEl)}
+              </p>
+            </div>
+            <div style={{ marginLeft: "auto", textAlign: "right", minWidth: 0 }}>
+              <p className="tenue" style={{ margin: 0, fontSize: 12 }}>Emitida a</p>
+              <p style={{ margin: "2px 0 0", fontSize: 15, fontWeight: 600 }}>{d.receptor}</p>
+              {d.receptorCuit && <p className="tenue" style={{ margin: 0, fontSize: 12 }}>CUIT {d.receptorCuit}</p>}
+              {d.facturaExterna && (
+                <p className="tenue" style={{ margin: 0, fontSize: 12 }}>
+                  Factura {d.facturaExterna.tipo} N° {d.facturaExterna.numero}
+                </p>
+              )}
             </div>
           </div>
 
-          <hr style={{ border: 0, borderTop: "1px solid var(--borde)", margin: "18px 0" }} />
-
-          <p style={{ margin: 0, fontSize: 13 }} className="tenue">Emitida a</p>
-          <p style={{ margin: "2px 0 0", fontSize: 16, fontWeight: 600 }}>{d.receptor}</p>
-          {d.receptorCuit && <p className="tenue" style={{ margin: 0, fontSize: 13 }}>CUIT {d.receptorCuit}</p>}
-          {d.facturaExterna && (
-            <p className="tenue" style={{ margin: "2px 0 0", fontSize: 13 }}>
-              Factura {d.facturaExterna.tipo} N° {d.facturaExterna.numero}
-            </p>
-          )}
+          <hr style={{ border: 0, borderTop: "1px solid var(--borde)", margin: "16px 0 0" }} />
 
           {/* ── El detalle ─────────────────────────────────────────────── */}
           {/* El resumen del mes ANTES del renglonado. Es lo primero que se mira: el total se
@@ -279,11 +316,6 @@ export default async function LiquidacionPage({
             </div>
           )}
 
-          <p className="tenue" style={{ marginTop: 22, fontSize: 12, lineHeight: 1.5 }}>
-            Los importes de esta liquidación quedaron congelados al emitirla: no cambian si después
-            se modifica el valor de la hora. Un cargo posterior al cierre entra en el mes siguiente,
-            no en este papel.
-          </p>
         </article>
       </main>
     </>

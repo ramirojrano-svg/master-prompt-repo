@@ -498,51 +498,6 @@ export default async function DetalleProfesionalPage({
             que a quien todavía no usó la app, que es justo el que necesita que le creen el
             acceso, no se le podía crear. */}
 
-        {/* ── Acceso a la app ────────────────────────────────────────────── */}
-        {administraUsuarios && (
-          // El id es el destino del enlace "dar acceso a la app" de la lista: sin él, ese enlace
-          // deja al final de la ficha y hay que buscar la sección a ojo. `scrollMarginTop` la baja
-          // por debajo de la barra fija, que si no la tapa.
-          <section id="acceso" style={{ marginTop: 26, scrollMarginTop: 76 }}>
-            <h2>Acceso a la app</h2>
-            {acceso ? (
-              <div className="panel">
-                <p style={{ margin: 0, fontSize: 14 }}>
-                  Entra con <strong>{acceso.email}</strong>
-                  {!acceso.activo && <span className="tenue"> · acceso desactivado</span>}
-                </p>
-                {/* Restablecer, no "ver": una contraseña guardada no se puede mostrar —está
-                    hasheada— y poder verla sería peor que no tenerla. Se pone una nueva y se la
-                    pasa; la anterior deja de servir en el acto. */}
-                <form action={resetearClave} style={{ marginTop: 12 }}>
-                  <label htmlFor="clave-nueva" style={{ marginTop: 0 }}>Contraseña nueva</label>
-                  <input id="clave-nueva" name="password" type="text" required minLength={LARGO_MIN_CLAVE} maxLength={200} placeholder={`al menos ${LARGO_MIN_CLAVE} caracteres`} />
-                  <p className="tenue" style={{ margin: "4px 0 0", fontSize: 12 }}>
-                    Se muestra mientras la escribís para que puedas pasársela. Al guardar, si tenía
-                    la app abierta en otro lado queda afuera.
-                  </p>
-                  <p style={{ marginTop: 12, marginBottom: 0 }}>
-                    <button type="submit" className="btn-suave">Restablecer contraseña</button>
-                  </p>
-                </form>
-              </div>
-            ) : (
-              <form action={darAcceso} className="panel">
-                <p className="tenue" style={{ margin: 0, fontSize: 13 }}>
-                  Todavía no puede entrar a la app. Creale un acceso y pasale estos datos.
-                </p>
-                <label htmlFor="acc-email">Email</label>
-                <input id="acc-email" name="email" type="email" required placeholder="profesional@email.com" />
-                <label htmlFor="acc-clave">Contraseña</label>
-                <input id="acc-clave" name="password" type="text" required minLength={LARGO_MIN_CLAVE} maxLength={200} placeholder={`al menos ${LARGO_MIN_CLAVE} caracteres`} />
-                <p style={{ marginTop: 14, marginBottom: 0 }}>
-                  <button type="submit">Crear acceso</button>
-                </p>
-              </form>
-            )}
-          </section>
-        )}
-
         {/* ── Datos del profesional ──────────────────────────────────────── */}
         {puede(actor.rol, "inquilino.administrar") && (
           <section style={{ marginTop: 26 }}>

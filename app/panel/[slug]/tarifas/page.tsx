@@ -201,8 +201,18 @@ export default async function TarifasPage({
                 <td style={{ padding: "8px 4px", textAlign: "right" }}>
                   <form action={darDeBaja} style={{ display: "inline" }}>
                     <input type="hidden" name="tarifaId" value={t.id} />
-                    <button type="submit" style={{ background: "none", border: "none", color: "var(--acento)", cursor: "pointer", padding: 0, font: "inherit" }}>
-                      Dar de baja
+                    {/* Una X redonda en vez de "Dar de baja" escrito: con siete precios en fila,
+                        la misma frase repetida siete veces pesaba más que los números, que son
+                        lo que uno viene a mirar. El texto vive en el title y en el aria-label,
+                        así que sigue estando para quien lo necesita. */}
+                    <button
+                      type="submit"
+                      className="nav-circ"
+                      title={`Dar de baja el precio de ${t.nombre}`}
+                      aria-label={`Dar de baja el precio de ${t.nombre}`}
+                      style={{ color: "var(--error)", borderColor: "var(--borde)", cursor: "pointer" }}
+                    >
+                      ×
                     </button>
                   </form>
                 </td>

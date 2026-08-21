@@ -100,7 +100,7 @@ export async function detalleDeLiquidacion(
     // este papel y no tiene que aparecer en él.
     db.asiento.findMany({
       where: { operadorId: a.operadorId, liquidacionId: liq.id },
-      select: { fechaHecho: true, concepto: true, montoCent: true, reservaId: true },
+      select: { fechaHecho: true, concepto: true, montoCent: true, reservaId: true, motivo: true, revierteAId: true },
       orderBy: { fechaHecho: "asc" },
     }),
   ]);
@@ -119,8 +119,15 @@ export async function detalleDeLiquidacion(
 
   const lineas: LineaLiquidacion[] = asientos.map((x) => {
     const r = x.reservaId ? porId.get(x.reservaId) : undefined;
-    const concepto = nombreDeConcepto(x.concepto);
-    if (!r) return { fecha: x.fechaHecho, concepto, detalle: concepto, montoCent: x.montoCent, minutos: 0 };
+    // Un asiento con `revierteAId` no es un ajuste cualquiera: es la vuelta atrás de otro. En el
+    // papel se leía "Ajuste a favor del centro $120.000" sin decir de dónde salía, que es la
+    // clase de renglón que hace desconfiar de todo el resto. Se nombra por lo que ES y se le
+    // pega el motivo, que ya se pide al anular.
+    const concepto = x.revierteAId ? "Cobro anulado" : nombreDeConcepto(x.concepto);
+    if (!r) {
+      const detalle = x.motivo ? `${concepto} · ${x.motivo}` : concepto;
+      return { fecha: x.fechaHecho, concepto, detalle, montoCent: x.montoCent, minutos: 0 };
+    }
     // Sin sala no es un dato que falte: es una reserva que usa la recepción y no el consultorio.
     const donde = r.sala?.nombre ?? "sin consultorio";
     return {

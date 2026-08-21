@@ -192,7 +192,7 @@ export default async function InquilinosPage({
                     ) : i.usuario ? (
                       <span style={{ color: "var(--error)" }}>acceso desactivado</span>
                     ) : (
-                      <Link href={`/panel/${slug}/inquilinos/${i.id}#acceso`}>dar acceso a la app</Link>
+                      <Link href={`/panel/${slug}/accesos`}>dar acceso a la app</Link>
                     )}
                   </span>
                 )}

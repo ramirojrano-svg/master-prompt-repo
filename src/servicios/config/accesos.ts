@@ -171,3 +171,34 @@ export const accesosCon = (db: PrismaClient) => ({
   crear: definirAccion({ ...CFG_CREAR_ACCESO, db }, (a, i) => crear(a, i, db)),
   restablecer: definirAccion({ ...CFG_RESTABLECER, db }, (a, i) => restablecer(a, i, db)),
 });
+
+/**
+ * Todos los profesionales del centro con su acceso, si lo tienen.
+ *
+ * Existe porque gestionar los accesos de a uno, entrando a cada ficha, no escala: en este centro
+ * hay treinta y cinco profesionales y a treinta y cuatro les falta. La pregunta que se hace de
+ * verdad no es "¿este tiene acceso?" sino "¿a quiénes les falta?", y esa solo se contesta con la
+ * lista entera delante.
+ */
+export async function accesosDelCentro(
+  operadorId: string,
+  db: PrismaClient = prisma,
+): Promise<{ inquilinoId: string; nombre: string; email: string | null; activo: boolean }[]> {
+  const [inquilinos, vinculos] = await Promise.all([
+    db.inquilino.findMany({
+      where: { operadorId, estado: { not: "baja" } },
+      select: { id: true, nombre: true },
+      orderBy: { nombre: "asc" },
+    }),
+    db.usuarioOperador.findMany({
+      where: { operadorId, inquilinoId: { not: null } },
+      select: { inquilinoId: true, activo: true, usuario: { select: { email: true } } },
+    }),
+  ]);
+  const porInquilino = new Map(vinculos.map((v) => [v.inquilinoId!, v]));
+
+  return inquilinos.map((i) => {
+    const v = porInquilino.get(i.id);
+    return { inquilinoId: i.id, nombre: i.nombre, email: v?.usuario.email ?? null, activo: v?.activo ?? false };
+  });
+}
