@@ -63,6 +63,14 @@ const PARCHES = [
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "email" TEXT',
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "whatsapp" TEXT',
   'ALTER TABLE "Liquidacion" ADD COLUMN IF NOT EXISTS "avisadaEl" TIMESTAMPTZ(6)',
+  // El freno de la fuerza bruta. Tabla nueva, con IF NOT EXISTS igual que las columnas.
+  `CREATE TABLE IF NOT EXISTS "IntentoFallido" (
+     "clave" TEXT PRIMARY KEY,
+     "fallos" INTEGER NOT NULL DEFAULT 0,
+     "bloqueadoHasta" TIMESTAMPTZ(6),
+     "ultimoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
+  'CREATE INDEX IF NOT EXISTS "IntentoFallido_ultimoEl_idx" ON "IntentoFallido"("ultimoEl")',
   // Datos de cobro del centro: van al pie de cada liquidación.
   'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroTitular" TEXT',
   'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroCuit" TEXT',

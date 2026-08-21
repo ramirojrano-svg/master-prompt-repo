@@ -531,3 +531,15 @@ ALTER TABLE "Ocupacion"
 -- Índices de lectura parciales (los generales ya están en el baseline).
 CREATE INDEX "ocupacion_sede_inicio_idx" ON "Ocupacion" ("sedeId", "inicio") WHERE "ocupa";
 CREATE INDEX "ocupacion_hold_expira_idx" ON "Ocupacion" ("expiraAt") WHERE "tipo" = 'hold' AND "ocupa";
+
+-- CreateTable
+CREATE TABLE "IntentoFallido" (
+    "clave" TEXT NOT NULL,
+    "fallos" INTEGER NOT NULL DEFAULT 0,
+    "bloqueadoHasta" TIMESTAMPTZ(6),
+    "ultimoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "IntentoFallido_pkey" PRIMARY KEY ("clave")
+);
+
+CREATE INDEX "IntentoFallido_ultimoEl_idx" ON "IntentoFallido"("ultimoEl");

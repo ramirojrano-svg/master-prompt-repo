@@ -25,6 +25,7 @@ import { prisma } from "../../db/prisma.ts";
 import { hashPassword } from "../../lib/password.ts";
 import { emailListo, enviarEmail, mailDeReset } from "../../lib/email.ts";
 import { LARGO_MIN_CLAVE } from "./accesos.ts";
+import { anotarFallo, puedeIntentar } from "../../lib/freno.ts";
 
 /** Cuánto vive un enlace. Corto a propósito: es una llave, no una credencial. */
 export const MINUTOS_VIGENCIA = 60;
@@ -67,6 +68,20 @@ export async function pedirReset(
   enviar: Enviador = enviarEmail,
 ): Promise<ResultadoPedido> {
   if (!emailListo()) return { ok: false, error: "SIN_EMAIL_CONFIGURADO" };
+
+  // Cada pedido manda un mail REAL, desde una casilla de Gmail con tope diario. Sin freno, pedir
+  // en bucle lo vacía y deja sin correo a toda la app — incluida la liquidación mensual, que sale
+  // sola y sin que nadie la mire.
+  //
+  // Se cuenta como fallo SIEMPRE, aunque el email exista y el envío salga bien: acá no hay un
+  // "acierto" que distinguir. El límite es a la cantidad de pedidos, no a los errores.
+  //
+  // La respuesta al bloqueado es la MISMA que a todos —"listo"—: decirle que está frenado le
+  // confirmaría que estuvo pegando en el lugar correcto.
+  const clave = `reset:${input.email}`;
+  const v = await puedeIntentar(clave, db);
+  if (!v.pasa) return { ok: true, enviado: false };
+  await anotarFallo(clave, db);
 
   const usuario = await db.usuario.findUnique({
     where: { email: input.email },

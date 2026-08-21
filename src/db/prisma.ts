@@ -14,6 +14,13 @@ import { PrismaClient } from "@prisma/client";
 import { getTenantCtx } from "../lib/tenant.ts";
 
 // Modelos con operadorId (tenant). Solo las ops donde un where olvidado filtra datos ajenos.
+//
+// Están TODOS los que tienen la columna, y una prueba lo verifica contra el esquema. Antes había
+// siete de trece, y las seis que faltaban eran justo las de plata —asientos, liquidaciones,
+// tarifas, gastos, membresías y el propio registro de auditoría—. No era una vulnerabilidad: los
+// servicios pasan `operadorId` explícito en cada consulta. Pero el guard existe para atajar el
+// olvido, y no cubrir las tablas donde un olvido sería más caro es tener la red debajo del lugar
+// equivocado.
 const TENANT_MODELS = new Set([
   "Sede",
   "Sala",
@@ -22,7 +29,16 @@ const TENANT_MODELS = new Set([
   "EsperaSlot",
   "BolsaAsiento",
   "UsuarioOperador",
+  "Asiento",
+  "Liquidacion",
+  "Tarifa",
+  "Gasto",
+  "Membresia",
+  "Auditoria",
 ]);
+
+/** Exportado solo para que la prueba pueda compararlo contra el esquema. */
+export const MODELOS_CON_TENANT: ReadonlySet<string> = TENANT_MODELS;
 const SCOPED_OPS = new Set(["findMany", "findFirst", "findFirstOrThrow", "count", "aggregate", "groupBy", "updateMany", "deleteMany"]);
 
 /**

@@ -520,6 +520,26 @@ model Asiento {
 /// varias acciones reciben contraseñas (crear un acceso, restablecer una clave), y un registro de
 /// auditoría que las guarde es una filtración con fecha y hora. Lo que sí guarda es el `resumen`,
 /// que arma cada acción a mano con los datos que sí se pueden escribir.
+/// Intentos fallidos contra una credencial, para poder frenar la fuerza bruta.
+///
+/// Es una tabla propia y no una lectura de `Auditoria`: ahi cada fila cuelga de un actor ya
+/// resuelto, y un login fallido no tiene actor todavia — justamente por eso fallo.
+///
+/// La clave es texto libre para poder contar por lo que haga falta ("login:ana@x.com",
+/// "reset:1.2.3.4") sin agregar una tabla por cada puerta que haya que proteger.
+model IntentoFallido {
+  clave          String    @id
+  fallos         Int       @default(0)
+  /// Hasta cuando esta frenada. Se guarda la FECHA y no un contador de segundos: asi el bloqueo
+  /// sobrevive a un reinicio y no depende de que algo lo vaya bajando.
+  bloqueadoHasta DateTime? @db.Timestamptz(6)
+  /// Del ultimo fallo. Sirve para olvidar los viejos: tres errores repartidos en un mes no son
+  /// un ataque, son alguien que no se acuerda la clave.
+  ultimoEl       DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([ultimoEl])
+}
+
 model Auditoria {
   id         String   @id @default(cuid())
   operadorId String

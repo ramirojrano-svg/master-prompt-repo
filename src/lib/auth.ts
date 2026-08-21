@@ -13,7 +13,7 @@ import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { prisma } from "../db/prisma.ts";
-import { accesoPorProveedor, autorizar, sesionVigente } from "./auth-core.ts";
+import { accesoPorProveedor, autorizar, sesionExpirada, sesionVigente } from "./auth-core.ts";
 
 /**
  * ¿Está configurado el login con Google? Se decide por la presencia de las credenciales y no por
@@ -82,9 +82,19 @@ export const authConfig: NextAuthConfig = {
       }
       if (!token.sub) return token;
       try {
-        const fila = await prisma.usuario.findUnique({ where: { id: token.sub }, select: { sessionVersion: true } });
+        const fila = await prisma.usuario.findUnique({
+          where: { id: token.sub },
+          // Los roles vienen en la MISMA consulta que ya se hacía: decidir cuánto dura la sesión
+          // no puede costar un viaje más a la base en cada request.
+          select: { sessionVersion: true, operadores: { select: { rol: true } } },
+        });
         // fila ausente (usuario borrado) => sv null => FAIL-CLOSED, la sesión muere.
         if (!sesionVigente(Number(token.sv ?? 0), fila?.sessionVersion ?? null)) return null;
+
+        // El plazo depende del rol: corto para quien administra, largo para el profesional. Ver
+        // `duracionDeSesion`. Devolver null mata la sesión y manda al login.
+        const roles = fila ? fila.operadores.map((o) => o.rol as string) : null;
+        if (sesionExpirada(token.iat, roles, Math.floor(Date.now() / 1000))) return null;
       } catch {
         // Error TRANSITORIO de la base: fail-open a propósito — una caída de la base nunca
         // debe desloguear a los usuarios legítimos (§9).

@@ -51,6 +51,9 @@ before(async () => {
 beforeEach(async () => {
   await pgPool.query('TRUNCATE "TokenClave" CASCADE');
   await pgPool.query('DELETE FROM "Usuario"');
+  // El freno cuenta CADA pedido, y varios de estos tests piden más de una vez. Sin limpiarlo,
+  // el sexto pedido del archivo se topa con el bloqueo puesto por el primero.
+  await pgPool.query('TRUNCATE "IntentoFallido"');
   await pgPool.query(
     `INSERT INTO "Usuario"("id","email","nombre","passwordHash","sessionVersion")
      VALUES ('u-reset',$1,'Profesional','hash-viejo',1), ('u-otro',$2,'Otro','hash-otro',1)`,
@@ -177,3 +180,21 @@ async function tokenReal(): Promise<string> {
   assert.ok(enlace, "el servicio tiene que haber armado un enlace");
   return tokenDe(enlace);
 }
+
+test("pedir el reset en bucle se frena antes de vaciar la cuota de correo", async () => {
+  // Cada pedido manda un mail REAL desde una casilla con tope diario. Llenarlo deja sin correo a
+  // toda la app, incluida la liquidación mensual — que sale sola y sin que nadie la mire.
+  for (let i = 0; i < 12; i++) {
+    const r = await pedirReset({ email: EMAIL }, CTX, db);
+    // La respuesta es SIEMPRE la misma, frenado o no: decirle que está bloqueado le confirmaría
+    // que estuvo pegando en el lugar correcto.
+    assert.equal(r.ok, true);
+  }
+
+  // El envío está apuntado a un puerto muerto, así que `enviado` es false siempre; lo que se
+  // cuenta es cuántas veces el servicio llegó a CREAR un token, que es cuando intentó mandar.
+  const u = await db.usuario.findUniqueOrThrow({ where: { email: EMAIL }, select: { id: true } });
+  const tokens = await db.tokenClave.count({ where: { usuarioId: u.id } });
+  assert.ok(tokens <= 6, `se armaron ${tokens} pedidos; el freno tenía que cortar antes`);
+  assert.ok(tokens >= 5, "y no puede frenar antes de tiempo al que se equivoca de buena fe");
+});
