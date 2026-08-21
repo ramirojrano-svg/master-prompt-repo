@@ -56,3 +56,53 @@ export async function registrar(e: EntradaAuditoria, db: PrismaClient = prisma):
     console.error("[auditoria] no se pudo registrar:", (err as Error)?.message ?? err);
   }
 }
+
+/** Cuánto se guarda. Un año cubre cualquier reclamo que llegue tarde sin ser un archivo eterno. */
+export const MESES_RETENCION = 12;
+
+/**
+ * Borra los registros viejos y devuelve cuántos.
+ *
+ * Corre en la tarea mensual, con el resto de la limpieza. Sin esto, la tabla crece para siempre:
+ * cada acción escribe una fila, nadie la lee, y en un plan con espacio limitado la primera que
+ * sorprende es la que nadie mira.
+ */
+export async function purgarAuditoria(db: PrismaClient = prisma, ahora = new Date()): Promise<number> {
+  const corte = new Date(ahora);
+  corte.setMonth(corte.getMonth() - MESES_RETENCION);
+  const r = await db.auditoria.deleteMany({ where: { creadoEl: { lt: corte } } });
+  return r.count;
+}
+
+export type FilaAuditoria = {
+  id: string;
+  creadoEl: Date;
+  usuarioId: string;
+  rol: string;
+  permiso: string;
+  resultado: string;
+  resumen: string | null;
+};
+
+/**
+ * Las últimas entradas del centro, para poder mirarlas.
+ *
+ * Un registro que nadie puede consultar no sirve el día que hace falta — y ese día es siempre uno
+ * en el que ya pasó algo. `soloRechazos` es el filtro que se usa de verdad: un intento sin
+ * permiso es lo que se va a buscar.
+ */
+export async function ultimasEntradas(
+  a: { operadorId: string; soloRechazos?: boolean; limite?: number },
+  db: PrismaClient = prisma,
+): Promise<FilaAuditoria[]> {
+  const filas = await db.auditoria.findMany({
+    where: {
+      operadorId: a.operadorId,
+      ...(a.soloRechazos ? { resultado: { not: "ok" } } : {}),
+    },
+    orderBy: { creadoEl: "desc" },
+    take: Math.min(a.limite ?? 200, 500),
+    select: { id: true, creadoEl: true, usuarioId: true, rol: true, permiso: true, resultado: true, resumen: true },
+  });
+  return filas.map((f) => ({ ...f, rol: String(f.rol) }));
+}

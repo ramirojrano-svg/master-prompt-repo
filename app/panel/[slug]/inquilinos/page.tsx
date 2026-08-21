@@ -53,7 +53,10 @@ export default async function InquilinosPage({
     },
     orderBy: [{ estado: "asc" }, { nombre: "asc" }],
     select: {
-      id: true, nombre: true, estado: true, pagador: true, foto: true, facturable: true,
+      // `fotoChica` y NO `foto`: la grande pesa hasta 120 KB y va incrustada en el HTML, así que
+      // pedirla para los treinta y seis eran megabytes en cada carga, sin caché posible. La
+      // grande queda de respaldo para quien todavía no volvió a elegir su foto.
+      id: true, nombre: true, estado: true, pagador: true, fotoChica: true, foto: true, facturable: true,
       // Quién puede ENTRAR a la app. Sin esto había que abrir las 29 fichas de a una para saber a
       // quién le falta el acceso, que es exactamente lo que hay que saber al ponerla en marcha.
       //
@@ -171,7 +174,7 @@ export default async function InquilinosPage({
                     reconoce sin leer. Quien no cargó ninguna muestra sus iniciales, así la columna
                     no se desalinea ni parece que falte un dato. */}
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                  <Avatar nombre={i.nombre} foto={i.foto} />
+                  <Avatar nombre={i.nombre} foto={i.fotoChica ?? i.foto} />
                   <span>
                     {/* El nombre ES el acceso a la ficha: es lo que uno toca cuando quiere ver a
                         alguien, y tenerlo como texto muerto obligaba a buscar el camino en otra

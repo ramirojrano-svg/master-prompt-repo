@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { diagnosticar, explicar, intentar, type Falla } from "./db-salud.ts";
+import { diagnosticar, explicar, intentar, type Falla, avisoDePooler } from "./db-salud.ts";
 
 test("P2021 (tabla ausente) => sin-esquema, con el nombre de la tabla", () => {
   const e = { name: "PrismaClientKnownRequestError", code: "P2021", meta: { table: "public.UsuarioOperador" } };
@@ -92,4 +92,22 @@ test("intentar() RE-LANZA lo que no es de base: un redirect tiene que seguir red
   // adentro de un intentar() se convertiría en una pantalla de "revisá la base".
   const redirect = Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT;replace;/login;307;" });
   await assert.rejects(() => intentar(async () => { throw redirect; }), /NEXT_REDIRECT/);
+});
+
+test("avisoDePooler reconoce las tres formas de declarar un pooler", () => {
+  const prod = "production";
+  assert.equal(avisoDePooler("postgresql://u:p@ep-x-pooler.aws.neon.tech/db", prod), null);
+  assert.equal(avisoDePooler("postgresql://u:p@db.supabase.co:6543/postgres", prod), null);
+  assert.equal(avisoDePooler("postgresql://u:p@host/db?pgbouncer=true", prod), null);
+});
+
+test("avisoDePooler avisa cuando la URL es la conexión directa", () => {
+  const aviso = avisoDePooler("postgresql://u:p@ep-x.aws.neon.tech/db", "production");
+  assert.ok(aviso?.includes("pooler"), "tiene que nombrar el problema");
+});
+
+test("avisoDePooler no molesta fuera de producción", () => {
+  // En desarrollo se apunta a un Postgres local, que no tiene ni necesita pooler.
+  assert.equal(avisoDePooler("postgresql://postgres@127.0.0.1:55432/motor", "development"), null);
+  assert.equal(avisoDePooler(undefined, "production"), null);
 });

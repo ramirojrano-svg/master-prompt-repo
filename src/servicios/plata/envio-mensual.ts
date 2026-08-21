@@ -29,8 +29,15 @@ import { datosDeCobro } from "../config/cobro.ts";
 import { mailDeLiquidacion, type Enviador } from "./mail-liquidacion.ts";
 import { seLeFactura } from "./facturable.ts";
 import { nombreSinEspecialidad } from "../../dominio/perfil.ts";
+import { purgarAuditoria } from "../../lib/auditoria.ts";
+import { purgarFrenos } from "../../lib/freno.ts";
 
 export type ResultadoEnvioMensual = {
+  /** Cuánto tardó la corrida, en milisegundos. Es lo que dice si el bucle se está acercando al
+   *  límite de la función antes de que lo choque de verdad. */
+  msTardo: number;
+  /** Filas viejas que se limpiaron de paso. */
+  purgado: { auditoria: number; frenos: number };
   /** El mes que se facturó. */
   periodo: string;
   /** Liquidaciones emitidas en esta corrida (las que ya existían no se recuentan). */
@@ -66,7 +73,11 @@ export async function envioMensual(
   ]);
 
   const venceEl = new Date(`${periodo}-${String(operador.cobroDiaVencimiento).padStart(2, "0")}T12:00:00.000Z`);
-  const resultado: ResultadoEnvioMensual = { periodo, emitidas: 0, enviadas: 0, fallidas: [], yaAvisadas: 0 };
+  const arranque = Date.now();
+  const resultado: ResultadoEnvioMensual = {
+    periodo, emitidas: 0, enviadas: 0, fallidas: [], yaAvisadas: 0,
+    msTardo: 0, purgado: { auditoria: 0, frenos: 0 },
+  };
 
   for (const inq of inquilinos) {
     // A quien no se le factura no se le emite nada: no hay plata que reclamarle.
@@ -125,5 +136,16 @@ export async function envioMensual(
     }
   }
 
+  // La limpieza va acá y no en una tarea aparte: es una vez por mes, y una tarea más es una cosa
+  // más que puede dejar de correr sin que nadie lo note.
+  try {
+    resultado.purgado.auditoria = await purgarAuditoria(db, new Date(a.hoy));
+    resultado.purgado.frenos = await purgarFrenos(db, new Date(a.hoy));
+  } catch (e) {
+    // Que falle la limpieza no puede voltear el envío: los avisos son el objetivo, esto es aseo.
+    console.error("[envio-mensual] no se pudo purgar:", (e as Error)?.message ?? e);
+  }
+
+  resultado.msTardo = Date.now() - arranque;
   return resultado;
 }

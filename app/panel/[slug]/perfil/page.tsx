@@ -41,6 +41,7 @@ export default async function PerfilPage({
       nombre: formData.get("nombre"),
       titulo: formData.get("titulo") ?? "",
       foto: formData.get("foto") ?? undefined,
+      fotoChica: formData.get("fotoChica") ?? undefined,
       borrarFoto: formData.get("borrarFoto") ?? false,
     });
 

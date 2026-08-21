@@ -115,3 +115,28 @@ export async function intentar<T>(fn: () => Promise<T>): Promise<{ ok: true; val
     return { ok: false, falla };
   }
 }
+
+/**
+ * ¿La URL de la base apunta a una conexión POOLED?
+ *
+ * En Vercel cada instancia abre su propio grupo de conexiones. Apuntando a la base directa en vez
+ * del pooler, un pico de visitas las agota y la app contesta "too many connections" justo cuando
+ * más se usa — que es el peor momento para diagnosticar, porque el síntoma no dice nada del motivo.
+ *
+ * Solo AVISA: no impide arrancar. Una heurística sobre el texto de una URL no puede tener la
+ * última palabra sobre si la app corre, y un centro con poco tráfico funciona igual sin pooler.
+ */
+export function avisoDePooler(url: string | undefined, entorno: string): string | null {
+  if (entorno !== "production" || !url) return null;
+
+  // Las tres formas en que se declara un pooler en los proveedores que se usan: Neon lo pone en el
+  // host, Supabase en el puerto, y PgBouncer pide el parámetro.
+  const pooled =
+    /-pooler\./.test(url) || /:6543\b/.test(url) || /[?&]pgbouncer=true\b/.test(url) || /pooler\./.test(url);
+  if (pooled) return null;
+
+  return (
+    "DATABASE_URL no parece apuntar al pooler. En producción cada instancia abre sus propias " +
+    "conexiones, y sin pooler un pico las agota. En Neon es el host que termina en '-pooler'."
+  );
+}

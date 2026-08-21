@@ -57,6 +57,7 @@ const sql = readFileSync(MIGRACION, "utf8");
 const PARCHES = [
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "titulo" TEXT',
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "foto" TEXT',
+  'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "fotoChica" TEXT',
   // Quien usa el consultorio pero no es cliente del centro. Nace en TRUE: todos los que ya están
   // cargados facturan, que es lo que venía pasando hasta ahora.
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "facturable" BOOLEAN NOT NULL DEFAULT true',

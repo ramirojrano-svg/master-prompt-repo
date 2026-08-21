@@ -214,6 +214,15 @@ model Inquilino {
   // tamaño se acota en el borde de entrada, no acá.
   titulo     String?
   foto       String?
+  /// La misma foto a 48 px, que es como se dibuja en las listas.
+  ///
+  /// Existe porque `foto` puede pesar 120 KB y va incrustada en el HTML: pedirla para los treinta
+  /// y seis en cada carga de Profesionales son megabytes que ademas no se pueden cachear. Esta
+  /// ronda el kilobyte.
+  ///
+  /// Nula mientras la persona no vuelva a elegir su foto; ahi la lista cae a la grande, que es lo
+  /// que hacia siempre.
+  fotoChica  String?
 
   // A dónde se le manda la liquidación. Es SEPARADO del email con el que entra a la app, y no una
   // lectura de su cuenta: la mayoría del padrón no tiene acceso creado —y no lo necesita—, pero

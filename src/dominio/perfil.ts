@@ -31,6 +31,9 @@ export const PerfilInput = z.object({
   // Ausente = dejar la foto como está. Distinguirlo de "borrala" importa: un formulario que no
   // reenvía la foto no puede querer decir que la saquen.
   foto: z.string().max(FOTO_MAX_CHARS).optional(),
+  // La versión de 48 px que arma el navegador junto con la grande. Su techo es mucho más bajo:
+  // a ese tamaño no hay JPEG que llegue a 8 KB, y aceptar más sería aceptar cualquier cosa.
+  fotoChica: z.string().max(12_000).optional(),
   borrarFoto: z.coerce.boolean().optional(),
 });
 

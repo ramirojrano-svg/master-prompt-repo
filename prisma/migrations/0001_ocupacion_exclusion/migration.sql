@@ -136,6 +136,7 @@ CREATE TABLE "Inquilino" (
     -- miniatura recortada a 200px pesa menos que muchas filas de esta misma base.
     "titulo" TEXT,
     "foto" TEXT,
+    "fotoChica" TEXT,
 
     "facturable" BOOLEAN NOT NULL DEFAULT true,
     "email" TEXT,

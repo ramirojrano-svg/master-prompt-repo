@@ -55,6 +55,10 @@ async function guardar(
 
   const foto = input.foto?.trim();
   if (foto && !FOTO_RE.test(foto)) return { ok: false, error: "FOTO_INVALIDA" };
+  // La chica se valida igual que la grande: llega del navegador y una data URL sin controlar es
+  // una etiqueta <img> con lo que sea adentro.
+  const fotoChica = input.fotoChica?.trim();
+  if (fotoChica && !FOTO_RE.test(fotoChica)) return { ok: false, error: "FOTO_INVALIDA" };
 
   await db.inquilino.update({
     where: { id: propia.id },
@@ -62,7 +66,13 @@ async function guardar(
       nombre: input.nombre,
       titulo: input.titulo ? input.titulo : null,
       // Tres casos, y los tres distintos: borrarla, cambiarla, o no tocarla.
-      ...(input.borrarFoto ? { foto: null } : foto ? { foto } : {}),
+      // Las dos se mueven juntas SIEMPRE. Guardar una sin la otra deja la lista mostrando la
+      // foto vieja y la ficha la nueva, que es peor que no tener miniatura.
+      ...(input.borrarFoto
+        ? { foto: null, fotoChica: null }
+        : foto
+          ? { foto, fotoChica: fotoChica ?? null }
+          : {}),
     },
   });
   return { ok: true };

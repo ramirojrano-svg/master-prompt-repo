@@ -4,6 +4,7 @@
 // la app llama env() en el arranque.
 
 import { z } from "zod";
+import { avisoDePooler } from "./lib/db-salud.ts";
 
 const esquema = z.object({
   DATABASE_URL: z.string().url(), // pooler, modo transacción (6543 en Supabase)
@@ -41,5 +42,14 @@ let cache: Env | undefined;
 
 /** Env validado, memoizado. Se llama en el arranque de la app; si falta una var, corta acá. */
 export function env(): Env {
-  return (cache ??= parseEnv(process.env));
+  if (cache) return cache;
+  cache = parseEnv(process.env);
+
+  // Avisa —no impide arrancar— si en producción la base no parece la pooled. Una heurística sobre
+  // el texto de una URL no puede decidir si la app corre, pero callarse deja un problema que solo
+  // aparece bajo carga: "too many connections" en el peor momento y sin pista del motivo.
+  const aviso = avisoDePooler(cache.DATABASE_URL, cache.NODE_ENV);
+  if (aviso) console.warn(`[entorno] ${aviso}`);
+
+  return cache;
 }

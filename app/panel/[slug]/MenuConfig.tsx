@@ -46,6 +46,7 @@ export async function MenuConfig({ rol, slug }: { rol: Rol; slug: string }) {
         {administra && (
           <p style={{ margin: "0 0 10px", fontSize: 13, display: "grid", gap: 6 }}>
             <Link href={`/panel/${slug}/accesos`}>Acceso a la app</Link>
+            <Link href={`/panel/${slug}/auditoria`}>Registro de actividad</Link>
             <Link href={`/panel/${slug}/cobro`}>Datos de cobro</Link>
             <Link href={`/panel/${slug}/correo`}>Envío de correo</Link>
           </p>
