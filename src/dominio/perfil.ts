@@ -57,3 +57,53 @@ export function inicialesDe(nombre: string): string {
   const letras = limpio.slice(0, 2).map((p) => p[0] ?? "");
   return letras.join("").toUpperCase() || "?";
 }
+
+/**
+ * El nombre a secas, sin la especialidad entre paréntesis ni el guion de quién factura.
+ *
+ * En la lista de profesionales "Marta Terrón (Alergista)" ayuda: hay veintinueve y la especialidad
+ * es lo que distingue a dos Martas. En la liquidación no: es un documento dirigido A esa persona,
+ * y ahí el paréntesis se lee como una anotación interna del centro que se coló en el papel.
+ *
+ * No toca el nombre guardado. Es cómo se ESCRIBE, no qué se guarda.
+ */
+export function nombreSinEspecialidad(nombre: string): string {
+  return nombre
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\s+/g, " ")
+    // Un nombre que quedó terminando en guion o coma después de sacar el paréntesis: pasa con
+    // "Verónica Sorasio - Guillermina Ortega (Dermatología)", que sin esto queda con el guion
+    // colgando si el paréntesis estaba al final.
+    .replace(/[\s,–—-]+$/, "")
+    .trim();
+}
+
+/**
+ * El celular como lo quiere wa.me: solo dígitos, con código de país y sin el 15.
+ *
+ * Se normaliza al guardar y no al usar, porque cada uno lo escribe distinto —"11 2233-4455",
+ * "+54 9 11 2233 4455", "011 15 2233 4455"— y un link armado con cualquiera de esos no abre nada.
+ * Devuelve null si no queda un número plausible: mejor no ofrecer el botón que ofrecer uno roto.
+ */
+export function telefonoAWa(bruto: string | null | undefined): string | null {
+  if (!bruto) return null;
+  let n = bruto.replace(/\D/g, "");
+  if (!n) return null;
+
+  // Argentina: 0 de larga distancia y 15 de celular son prefijos de discado interno que el
+  // formato internacional no lleva. Se sacan antes de anteponer el país.
+  if (n.startsWith("54")) {
+    n = n.slice(2).replace(/^0/, "");
+    // El 9 va después del 54 y antes del área: si ya venía, no se duplica.
+    n = n.replace(/^9/, "");
+    n = n.replace(/^(\d{2,4})15/, "$1");
+    n = `549${n}`;
+  } else {
+    n = n.replace(/^0/, "");
+    n = n.replace(/^(\d{2,4})15/, "$1");
+    n = `549${n}`;
+  }
+  // Un número argentino con código de país queda entre 12 y 13 dígitos. Fuera de ahí no se
+  // adivina: se devuelve null y el botón no se dibuja.
+  return n.length >= 12 && n.length <= 14 ? n : null;
+}

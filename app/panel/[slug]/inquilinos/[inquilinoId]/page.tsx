@@ -113,6 +113,7 @@ export default async function DetalleProfesionalPage({
       nombre: formData.get("nombre"),
       pagador: formData.get("pagador"),
       email: formData.get("email"),
+      whatsapp: formData.get("whatsapp"),
       // Una casilla destildada no viaja en el formulario: ausente significa "no se le factura".
       facturable: formData.get("facturable") === "true",
     });
@@ -511,6 +512,12 @@ export default async function DetalleProfesionalPage({
               <p className="tenue" style={{ margin: "4px 0 0", fontSize: 12 }}>
                 Es aparte del email con el que entra a la app: la mayoría no tiene acceso creado y
                 no lo necesita, pero igual hay que poder mandarle la cuenta del mes.
+              </p>
+
+              <label htmlFor="whatsapp">WhatsApp</label>
+              <input id="whatsapp" name="whatsapp" defaultValue={d.inquilino.whatsapp ?? ""} placeholder="11 2233-4455" />
+              <p className="tenue" style={{ margin: "4px 0 0", fontSize: 12 }}>
+                Para mandarle la liquidación por WhatsApp. Escribilo como quieras: se normaliza solo.
               </p>
 
               <label htmlFor="pagador">Quién abona (si no es el mismo profesional)</label>

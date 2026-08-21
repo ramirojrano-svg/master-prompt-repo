@@ -1,8 +1,12 @@
-// tests/integracion/periodo-trabajo.test.ts — con qué mes abren Cierre y Cobranza.
+// tests/integracion/periodo-trabajo.test.ts — con qué mes abre Cierre de mes.
 //
-// Parece un detalle de presentación y no lo es: si la pantalla abre en un mes vacío, lo primero
-// que ve el que entra es todo en cero. Eso no se lee como "estás al día", se lee como que la app
-// se rompió — y la respuesta real queda escondida detrás de una flecha que nadie va a tocar.
+// El centro cobra A MES ENTRANTE: el último día hábil de agosto se emite y se manda lo que cada
+// profesional va a pagar por septiembre. Así que la pantalla abre en el mes que VIENE, que es el
+// que se está por cobrar — no en el que pasó.
+//
+// El caso de borde importa igual que antes: si el mes que viene todavía no tiene una sola reserva
+// cargada, abrir ahí muestra todo en cero. Eso no se lee como "estás al día", se lee como que la
+// app se rompió, y la respuesta real queda detrás de una flecha que nadie va a tocar.
 
 import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -35,13 +39,14 @@ after(async () => {
   await pgPool.end();
 });
 
-test("con historia abre el mes anterior: es el que se cierra y el que se cobra", async () => {
-  await mov("2026-07", "c:julio");
-  assert.equal(await periodoDeTrabajo({ operadorId: "op1", hoy: "2026-08" }, db), "2026-07");
+test("con reservas cargadas abre el mes que VIENE: es el que se está por cobrar", async () => {
+  await mov("2026-09", "c:septiembre");
+  assert.equal(await periodoDeTrabajo({ operadorId: "op1", hoy: "2026-08" }, db), "2026-09");
 });
 
-test("sin historia abre el mes en curso, no una pantalla vacía", async () => {
-  // El caso de un centro que empezó a usar la app este mes: todo lo que existe es de agosto.
+test("sin nada cargado para el mes que viene, abre el mes en curso", async () => {
+  // A principio de mes todavía no hay reservas del siguiente: abrir ahí sería una pantalla en
+  // cero que parece rota.
   await mov("2026-08", "c:agosto");
   assert.equal(await periodoDeTrabajo({ operadorId: "op1", hoy: "2026-08" }, db), "2026-08");
 });
@@ -50,17 +55,17 @@ test("una base sin un solo movimiento abre el mes en curso", async () => {
   assert.equal(await periodoDeTrabajo({ operadorId: "op1", hoy: "2026-08" }, db), "2026-08");
 });
 
-test("el mes en curso con movimientos NO tapa al anterior", async () => {
-  // El 2 de septiembre ya hay reservas de septiembre, pero lo que hay que cerrar y cobrar es
-  // agosto. Elegir "el último mes con movimientos" a secas rompería justo este caso.
-  await mov("2026-08", "c:agosto");
+test("el mes en curso con movimientos no tapa al que viene", async () => {
+  // En septiembre ya hay reservas de septiembre cargadas, pero lo que se está por cobrar es
+  // octubre. El mes en curso es solo el paracaídas de cuando el siguiente está vacío.
   await mov("2026-09", "c:septiembre");
-  assert.equal(await periodoDeTrabajo({ operadorId: "op1", hoy: "2026-09" }, db), "2026-08");
+  await mov("2026-10", "c:octubre");
+  assert.equal(await periodoDeTrabajo({ operadorId: "op1", hoy: "2026-09" }, db), "2026-10");
 });
 
-test("cruza el año sin marearse: en enero el anterior es diciembre", async () => {
-  await mov("2025-12", "c:diciembre");
-  assert.equal(await periodoDeTrabajo({ operadorId: "op1", hoy: "2026-01" }, db), "2025-12");
+test("cruza el año sin marearse: en diciembre el que viene es enero", async () => {
+  await mov("2027-01", "c:enero");
+  assert.equal(await periodoDeTrabajo({ operadorId: "op1", hoy: "2026-12" }, db), "2027-01");
 });
 
 test("lo pedido por la URL manda, aunque el mes esté vacío", async () => {
@@ -71,18 +76,18 @@ test("lo pedido por la URL manda, aunque el mes esté vacío", async () => {
 });
 
 test("un período basura en la URL cae al default, no rompe la pantalla", async () => {
-  await mov("2026-07", "c:julio");
+  await mov("2026-09", "c:septiembre");
   for (const basura of ["", "2026-13", "agosto", "../../etc"]) {
-    assert.equal(await periodoDeTrabajo({ operadorId: "op1", hoy: "2026-08", pedido: basura }, db), "2026-07", basura);
+    assert.equal(await periodoDeTrabajo({ operadorId: "op1", hoy: "2026-08", pedido: basura }, db), "2026-09", basura);
   }
 });
 
-test("los movimientos de OTRO centro no cuentan como historia propia", async () => {
+test("los movimientos de OTRO centro no cuentan como propios", async () => {
   await pgPool.query(`INSERT INTO "Operador"("id","nombre","slug") VALUES('op2','Otro','otro')`);
   await pgPool.query(`INSERT INTO "Inquilino"("id","operadorId","nombre") VALUES('in9','op2','Ajeno')`);
-  await mov("2026-07", "c:ajeno", "op2", "in9");
+  await mov("2026-09", "c:ajeno", "op2", "in9");
 
-  // op1 no tiene nada en julio: abrir ahí le mostraría una pantalla vacía por la actividad de
-  // un centro que no es el suyo.
+  // op1 no tiene nada en septiembre: abrir ahí le mostraría una pantalla vacía por la actividad
+  // de un centro que no es el suyo.
   assert.equal(await periodoDeTrabajo({ operadorId: "op1", hoy: "2026-08" }, db), "2026-08");
 });

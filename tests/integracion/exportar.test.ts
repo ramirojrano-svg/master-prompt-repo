@@ -65,7 +65,7 @@ test("los movimientos salen con el nombre del profesional y la plata con punto d
   // $1.234,56 se escribe 1234.56 — con coma, Excel lo parte en dos columnas.
   assert.ok(fila.includes("1234.56"), `esperaba el importe con punto en: ${fila}`);
   // El concepto va en castellano: la planilla la lee el contador, no el código.
-  assert.ok(fila.includes("Uso de consultorio"), `esperaba el concepto legible en: ${fila}`);
+  assert.ok(fila.includes("Reservó consultorio"), `esperaba el concepto legible en: ${fila}`);
   assert.ok(fila.includes("c:1"), "la clave del asiento va igual: es lo que permite conciliar");
 });
 

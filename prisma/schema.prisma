@@ -220,6 +220,10 @@ model Inquilino {
   // igual hay que poder mandarle la cuenta del mes. Si alguna vez se le da acceso, el email de
   // esa cuenta puede ser otro sin que eso cambie a dónde llega la liquidación.
   email      String?
+  // El celular, para mandarle la liquidación por WhatsApp. Solo dígitos con código de país
+  // (5491122334455): es el formato que pide wa.me y el único que no depende de cómo lo escribió
+  // quien lo cargó.
+  whatsapp   String?
 
   /// ¿Se le factura? Falso para quien usa el consultorio pero no es un cliente del centro — un
   /// socio, el propio dueño. No es lo mismo que una tarifa de $0: ese seguiría apareciendo en el
@@ -551,6 +555,11 @@ model Liquidacion {
   totalCent    BigInt
   venceEl      DateTime  @db.Timestamptz(6)
   emitidaAt    DateTime? @db.Timestamptz(6)
+  // Cuándo se le mandó por mail al profesional. NULL = todavía no se le avisó.
+  //
+  // Es lo que hace idempotente al envío automático: el cron dispara todos los días y podría
+  // dispararse dos veces el mismo día, y sin esta marca cada corrida mandaría todo de nuevo.
+  avisadaEl    DateTime? @db.Timestamptz(6)
   // datos fiscales del receptor ESTAMPADOS al emitir, no leídos de la ficha
   receptorRazonSocial String
   receptorCuit        String?

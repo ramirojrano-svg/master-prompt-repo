@@ -21,6 +21,7 @@
 import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { nombreDeConcepto } from "../../dominio/conceptos.ts";
+import { nombreSinEspecialidad } from "../../dominio/perfil.ts";
 import { fechaEnZona, formatHora } from "../../dominio/motor/zona.ts";
 
 export type LineaLiquidacion = {
@@ -99,7 +100,11 @@ export async function detalleDeLiquidacion(
     // preguntar "qué cargos hay en el período": un cargo tardío, posterior al cierre, no está en
     // este papel y no tiene que aparecer en él.
     db.asiento.findMany({
-      where: { operadorId: a.operadorId, liquidacionId: liq.id },
+      // Se excluyen las reversas. El contraasiento de un cobro anulado es correcto y su plata
+      // ya esta dentro del total congelado, pero como RENGLON no explica nada: el profesional ve
+      // "Cobro anulado $120.000" y lo lee como un cargo nuevo que no reconoce. Lo que le importa
+      // es cuanto debe, y eso no cambia por esconder la linea.
+      where: { operadorId: a.operadorId, liquidacionId: liq.id, revierteAId: null },
       select: { fechaHecho: true, concepto: true, montoCent: true, reservaId: true, motivo: true, revierteAId: true },
       orderBy: { fechaHecho: "asc" },
     }),
@@ -167,7 +172,9 @@ export async function detalleDeLiquidacion(
     estado: liq.estado,
     emitidaAt: liq.emitidaAt,
     venceEl: liq.venceEl,
-    receptor: liq.receptorRazonSocial,
+    // Sin la especialidad: el papel va dirigido A esa persona, y ahi el parentesis se lee
+    // como una anotacion interna del centro que se colo. No toca lo estampado, es como se escribe.
+    receptor: nombreSinEspecialidad(liq.receptorRazonSocial),
     receptorCuit: liq.receptorCuit,
     receptorCondIva: liq.receptorCondIva,
     inquilinoId: liq.inquilinoId,

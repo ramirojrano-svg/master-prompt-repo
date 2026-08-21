@@ -51,13 +51,12 @@ function lineasDeCobro(c: DatosDeCobro): string[] {
 export function mailDeLiquidacion(d: DetalleLiquidacion, cobro: DatosDeCobro, centro: string): Omit<Mensaje, "para"> {
   const plata = (n: bigint) => formatearPesos(n, d.moneda);
   const mes = nombreDePeriodo(d.periodo);
-  const aPagar = d.saldoCent > 0n ? d.saldoCent : 0n;
-  const cobroLineas = d.saldoCent > 0n && hayDatosDeCobro(cobro) ? lineasDeCobro(cobro) : [];
+  const cobroLineas = d.totalCent > 0n && hayDatosDeCobro(cobro) ? lineasDeCobro(cobro) : [];
 
   const asunto = `${centro} · Consultorios de ${mes} · ${plata(d.totalCent)}`;
 
   const resumen = d.sesiones > 0
-    ? `En ${mes} usaste ${horasYMinutos(d.minutosUsados)} de consultorio, en ${d.sesiones} ${d.sesiones === 1 ? "sesión" : "sesiones"}.`
+    ? `Para ${mes} reservaste ${horasYMinutos(d.minutosUsados)} de consultorio, en ${d.sesiones} ${d.sesiones === 1 ? "sesión" : "sesiones"}.`
     : `Liquidación de ${mes}.`;
 
   const filas = d.lineas.map((l) => ({ f: dia(l.fecha), q: l.detalle, i: plata(l.montoCent) }));
@@ -68,14 +67,13 @@ export function mailDeLiquidacion(d: DetalleLiquidacion, cobro: DatosDeCobro, ce
     resumen,
     "",
     `Total del mes: ${plata(d.totalCent)}`,
-    ...(d.pagadoCent > 0n ? [`Ya pagado: ${plata(d.pagadoCent)}`, `Saldo a pagar: ${plata(aPagar)}`] : []),
     `Vence el ${fechaLarga(d.venceEl)}.`,
     "",
     ...(cobroLineas.length ? ["Para transferir:", ...cobroLineas.map((x) => `  ${x}`), ""] : []),
     "Detalle:",
     ...filas.map((r) => `  ${r.f}  ${r.q}  ${r.i}`),
     "",
-    `Liquidación N° ${d.numero} · ${centro}`,
+    centro,
   ].join("\n");
 
   // HTML con estilos EN LÍNEA: los clientes de correo descartan las hojas de estilo, así que un
@@ -87,8 +85,6 @@ export function mailDeLiquidacion(d: DetalleLiquidacion, cobro: DatosDeCobro, ce
 
   <table style="border-collapse:collapse;width:100%;margin:0 0 18px">
     <tr><td style="padding:6px 0;color:#5c7382">Total del mes</td><td style="padding:6px 0;text-align:right;font-weight:600;font-size:19px">${esc(plata(d.totalCent))}</td></tr>
-    ${d.pagadoCent > 0n ? `<tr><td style="padding:6px 0;color:#5c7382">Ya pagado</td><td style="padding:6px 0;text-align:right">${esc(plata(d.pagadoCent))}</td></tr>
-    <tr><td style="padding:6px 0;color:#5c7382">Saldo a pagar</td><td style="padding:6px 0;text-align:right;font-weight:600;color:#c0342b">${esc(plata(aPagar))}</td></tr>` : ""}
     <tr><td style="padding:6px 0;color:#5c7382">Vence el</td><td style="padding:6px 0;text-align:right">${esc(fechaLarga(d.venceEl))}</td></tr>
   </table>
 
@@ -106,7 +102,7 @@ export function mailDeLiquidacion(d: DetalleLiquidacion, cobro: DatosDeCobro, ce
     </tr>`).join("")}
   </table>
 
-  <p style="margin:18px 0 0;font-size:12px;color:#5c7382">Liquidación N° ${d.numero} · ${esc(centro)}</p>
+  <p style="margin:18px 0 0;font-size:12px;color:#5c7382">${esc(centro)}</p>
 </div>`.trim();
 
   return { asunto, html, texto };

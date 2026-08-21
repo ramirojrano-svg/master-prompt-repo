@@ -95,14 +95,15 @@ export function horasYMinutos(min: number): string {
 }
 
 /**
- * El día `dia` del mes SIGUIENTE al período: es cuándo vence lo que se acaba de cerrar.
+ * El día `dia` DEL PROPIO período: es cuándo vence lo que se acaba de cerrar.
  *
- * Se cierra agosto y se cobra en septiembre, así que el vencimiento nunca cae dentro del mes
- * facturado. El día se topea en 28 antes de llegar acá (ver `CobroInput`): un vencimiento el 30
- * no existe en febrero, y una fecha que algunos meses no existe es una fecha que algún mes falla.
+ * Este centro cobra a mes entrante — el 31 de agosto se emite septiembre — así que el vencimiento
+ * cae DENTRO del mes facturado: septiembre se paga el 7 de septiembre. Con facturación a mes
+ * vencido sería el mes siguiente, que es como estaba antes y no es como trabaja este centro.
+ *
+ * El día se topea en 28 antes de llegar acá (ver `CobroInput`): un vencimiento el 30 no existe en
+ * febrero, y una fecha que algunos meses no existe es una fecha que algún mes falla.
  */
 export function venceElDelPeriodo(periodo: Periodo, dia: number): FechaLocal {
-  const [a, m] = periodo.split("-").map(Number) as [number, number];
-  const siguiente = m === 12 ? { a: a + 1, m: 1 } : { a, m: m + 1 };
-  return `${siguiente.a}-${String(siguiente.m).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+  return `${periodo}-${String(dia).padStart(2, "0")}`;
 }

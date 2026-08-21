@@ -1,23 +1,20 @@
-// src/servicios/plata/periodo-trabajo.ts — con qué mes abren Cierre y Cobranza.
+// src/servicios/plata/periodo-trabajo.ts — con qué mes abre Cierre de mes.
 //
-// Las dos pantallas abrían siempre en el mes ANTERIOR, por un razonamiento correcto y a la vez
-// incompleto: el mes en curso todavía está sumando horas, así que lo que se cierra y lo que se
-// reclama es el que ya terminó.
+// Este centro cobra A MES ENTRANTE: el último día hábil de agosto se le manda a cada profesional
+// lo que va a pagar por SEPTIEMBRE, calculado sobre las reservas que ya tiene cargadas. No se
+// cobra a mes vencido.
 //
-// El problema aparece cuando el mes anterior no existe. Un centro que empezó a usar la app este
-// mes abre Cierre y Cobranza y ve todo en cero: no porque esté al día, sino porque está mirando un
-// mes en el que nunca pasó nada. Una pantalla que arranca vacía parece rota, y la que la abre no
-// tiene forma de saber que la respuesta está a un clic de la flecha.
+// Eso da vuelta el default de la pantalla. Antes abría en el mes anterior —el que ya terminó de
+// sumar horas—, que es lo correcto cuando se factura lo consumido. Acá el mes que hay que cerrar
+// es el que VIENE, porque es el que se está por cobrar.
 //
-// La regla es entonces: **el mes anterior si tuvo movimientos; si no, el mes en curso**. Con
-// historia se comporta como antes; sin historia, muestra el único mes que tiene algo que mostrar.
-// No se elige "el último mes con movimientos" a secas porque en septiembre eso daría septiembre
-// —que ya tiene reservas del día 1— y volvería a esconder agosto, que es justo el que hay que
-// cerrar y cobrar.
+// Queda un caso que hay que atender: si el mes que viene todavía no tiene ni una reserva cargada,
+// abrir ahí muestra una pantalla en cero que parece rota. Ahí se cae al mes en curso, que es el
+// único con algo para mostrar. La flecha sigue estando para ir a cualquier otro.
 
 import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
-import { esPeriodoValido, periodoAnterior, type Periodo } from "../../dominio/reporte.ts";
+import { esPeriodoValido, periodoSiguiente, type Periodo } from "../../dominio/reporte.ts";
 
 /**
  * El período con el que abrir la pantalla.
@@ -31,11 +28,11 @@ export async function periodoDeTrabajo(
 ): Promise<Periodo> {
   if (a.pedido && esPeriodoValido(a.pedido)) return a.pedido;
 
-  const anterior = periodoAnterior(a.hoy);
+  const siguiente = periodoSiguiente(a.hoy);
   // Un solo asiento alcanza para decidir: no hace falta contarlos ni sumarlos.
   const hubo = await db.asiento.findFirst({
-    where: { operadorId: a.operadorId, periodo: anterior },
+    where: { operadorId: a.operadorId, periodo: siguiente },
     select: { id: true },
   });
-  return hubo ? anterior : a.hoy;
+  return hubo ? siguiente : a.hoy;
 }

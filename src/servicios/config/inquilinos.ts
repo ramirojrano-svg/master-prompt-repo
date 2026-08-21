@@ -8,6 +8,7 @@ import { EstadoInquilino, type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
 import type { Actor } from "../../lib/actor.ts";
+import { telefonoAWa } from "../../dominio/perfil.ts";
 
 export const InquilinoInput = z.object({
   nombre: z.string().trim().min(1).max(120),
@@ -20,6 +21,12 @@ export const InquilinoInput = z.object({
   facturable: z.coerce.boolean().optional(),
   // A dónde se le manda la liquidación. Vacío se guarda como NULL: "" y null significarían lo
   // mismo y habría que preguntar por los dos en cada lugar que lo use.
+  // Se guarda ya normalizado: cada uno lo escribe distinto, y un link de wa.me armado con
+  // cualquiera de esas formas no abre nada. Lo que no se pueda normalizar se guarda NULL.
+  whatsapp: z.preprocess(
+    (v) => (typeof v === "string" ? telefonoAWa(v) : null),
+    z.string().nullable().optional(),
+  ),
   email: z.preprocess(
     (v) => (typeof v === "string" && v.trim() === "" ? null : v),
     z.string().trim().email().max(160).nullable().optional(),
@@ -28,7 +35,7 @@ export const InquilinoInput = z.object({
 
 export type ResultadoInquilino = { ok: true; id: string } | { ok: false; error: "NO_ENCONTRADO" };
 
-type DatosInquilino = { nombre: string; pagador?: string; facturable?: boolean; email?: string | null };
+type DatosInquilino = { nombre: string; pagador?: string; facturable?: boolean; email?: string | null; whatsapp?: string | null };
 
 async function crear(actor: Actor, input: DatosInquilino, db: PrismaClient): Promise<ResultadoInquilino> {
   const i = await db.inquilino.create({
@@ -39,6 +46,7 @@ async function crear(actor: Actor, input: DatosInquilino, db: PrismaClient): Pro
       estado: EstadoInquilino.activo,
       facturable: input.facturable ?? true,
       email: input.email ?? null,
+      whatsapp: input.whatsapp ?? null,
     },
     select: { id: true },
   });
@@ -58,7 +66,7 @@ async function editar(
   // un pago o una nota de crédito, que son movimientos que quedan registrados.
   const r = await db.inquilino.updateMany({
     where: { id: input.inquilinoId, operadorId: actor.operadorId },
-    data: { nombre: input.nombre, pagador: input.pagador || null, facturable: input.facturable ?? false, email: input.email ?? null },
+    data: { nombre: input.nombre, pagador: input.pagador || null, facturable: input.facturable ?? false, email: input.email ?? null, whatsapp: input.whatsapp ?? null },
   });
   return r.count === 1 ? { ok: true, id: input.inquilinoId } : { ok: false, error: "NO_ENCONTRADO" };
 }

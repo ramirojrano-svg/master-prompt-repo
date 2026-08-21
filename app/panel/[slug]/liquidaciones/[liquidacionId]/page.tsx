@@ -65,7 +65,7 @@ export default async function LiquidacionPage({
   // enterarse después de que fue a la casilla equivocada no tiene arreglo.
   const inq = await prisma.inquilino.findFirst({
     where: { id: d.inquilinoId, operadorId: actor.operadorId },
-    select: { email: true },
+    select: { email: true, whatsapp: true },
   });
   const emailDestino = inq?.email?.trim() || null;
   const puedeEnviar = puede(actor.rol, "periodo.cerrar");
@@ -73,6 +73,23 @@ export default async function LiquidacionPage({
   const plata = (n: bigint) => formatearPesos(n, d.moneda);
   const dia = (x: Date) => x.toLocaleDateString("es-AR", DIA_MES);
   const fecha = (x: Date) => x.toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" });
+
+  // El mensaje para WhatsApp: corto y con lo que se necesita para pagar. El detalle día por día
+  // no va — en un chat es un muro de texto — y para eso está el PDF, que se adjunta a mano.
+  const wa = inq?.whatsapp
+    ? `https://wa.me/${inq.whatsapp}?text=${encodeURIComponent(
+        [
+          `Hola ${d.receptor}, te paso la liquidación de ${nombreDePeriodo(d.periodo)} de ${d.centro.nombre}.`,
+          "",
+          `Total: ${formatearPesos(d.totalCent, d.moneda)}`,
+          `Vence el ${fecha(d.venceEl)}.`,
+          ...(hayDatosDeCobro(cobro)
+            ? ["", "Para transferir:",
+               ...[cobro.titular && `Titular: ${cobro.titular}`, cobro.alias && `Alias: ${cobro.alias}`, cobro.cbu && `CBU/CVU: ${cobro.cbu}`].filter(Boolean)]
+            : []),
+        ].join("\n"),
+      )}`
+    : null;
 
   return (
     <>
@@ -129,6 +146,18 @@ export default async function LiquidacionPage({
                 <Link href={`/panel/${slug}/inquilinos/${d.inquilinoId}`}>su ficha</Link>.
               </p>
             )}
+
+            {/* WhatsApp abre el chat con el mensaje escrito; el envío lo confirma quien lo manda.
+                No es un mail automático porque no puede serlo: mandar por WhatsApp sin que haya
+                una persona apretando requiere la API de Meta, con verificación de empresa y
+                plantillas aprobadas de por medio. Esto funciona hoy y sin configurar nada. */}
+            {wa && (
+              <p style={{ margin: "10px 0 0", fontSize: 13 }}>
+                <a href={wa} target="_blank" rel="noopener noreferrer" className="pastilla" style={{ padding: "7px 14px", fontSize: 13 }}>
+                  Mandar por WhatsApp
+                </a>
+              </p>
+            )}
           </div>
         )}
 
@@ -161,10 +190,7 @@ export default async function LiquidacionPage({
                 </p>
               </div>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <p style={{ margin: 0, fontSize: 12, opacity: 0.75, letterSpacing: "0.06em" }}>LIQUIDACIÓN</p>
-              <p style={{ margin: "2px 0 0", fontSize: 24, fontWeight: 600, letterSpacing: "-0.02em" }}>N° {d.numero}</p>
-            </div>
+
           </header>
 
           {/* Las dos fechas, una al lado de la otra y del mismo tamaño: son la pregunta que se
@@ -203,8 +229,8 @@ export default async function LiquidacionPage({
               día para el que quiera verificarla. */}
           {d.sesiones > 0 && (
             <p style={{ margin: "20px 0 0", fontSize: 15 }}>
-              En {nombreDePeriodo(d.periodo)} usó <b>{horasYMinutos(d.minutosUsados)}</b> de consultorio,
-              en <b>{d.sesiones}</b> {d.sesiones === 1 ? "sesión" : "sesiones"}.
+              Para {nombreDePeriodo(d.periodo)} reservó <b>{horasYMinutos(d.minutosUsados)}</b> de
+              consultorio, en <b>{d.sesiones}</b> {d.sesiones === 1 ? "sesión" : "sesiones"}.
             </p>
           )}
 
@@ -267,40 +293,12 @@ export default async function LiquidacionPage({
             </table>
           </div>
 
-          {/* ── Los pagos ──────────────────────────────────────────────── */}
-          {d.pagos.length > 0 && (
-            <>
-              <h2 style={{ fontSize: 15, marginTop: 24, marginBottom: 8 }}>Pagos recibidos</h2>
-              <table className="lista-personas" style={{ width: "100%" }}>
-                <tbody>
-                  {d.pagos.map((p, i) => (
-                    <tr key={i}>
-                      <td style={{ whiteSpace: "nowrap" }}>{dia(p.fecha)}</td>
-                      <td className="tenue" style={{ fontSize: 13 }}>
-                        {p.medio ?? "sin medio registrado"}
-                        {p.referencia && ` · comprobante ${p.referencia}`}
-                      </td>
-                      <td className="num">{plata(p.montoCent)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
 
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-            <p style={{ margin: 0, fontSize: 15 }}>
-              <span className="tenue">{d.saldoCent > 0n ? "Saldo a pagar" : d.saldoCent < 0n ? "A favor" : "Saldo"}</span>{" "}
-              <b style={{ fontSize: 18, color: d.saldoCent > 0n ? "var(--error)" : undefined }}>
-                {plata(d.saldoCent < 0n ? -d.saldoCent : d.saldoCent)}
-              </b>
-            </p>
-          </div>
 
           {/* A dónde transferir. Sin esto el papel dice cuánto hay que pagar y no a dónde, y el
               circuito termina igual en un WhatsApp preguntando el alias. Solo se dibuja si hay
               algo cargado: un recuadro vacío es peor que ningún recuadro. */}
-          {d.saldoCent > 0n && hayDatosDeCobro(cobro) && (
+          {d.totalCent > 0n && hayDatosDeCobro(cobro) && (
             <div className="panel" style={{ padding: 16, marginTop: 22, background: "var(--fondo-suave, #f4f9fb)" }}>
               <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Para transferir</p>
               <dl style={{ margin: "10px 0 0", display: "grid", gridTemplateColumns: "auto 1fr", gap: "5px 14px", fontSize: 13 }}>

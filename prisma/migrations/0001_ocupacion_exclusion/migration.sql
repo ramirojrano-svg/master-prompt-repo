@@ -139,6 +139,7 @@ CREATE TABLE "Inquilino" (
 
     "facturable" BOOLEAN NOT NULL DEFAULT true,
     "email" TEXT,
+    "whatsapp" TEXT,
 
     CONSTRAINT "Inquilino_pkey" PRIMARY KEY ("id")
 );
@@ -321,6 +322,7 @@ CREATE TABLE "Liquidacion" (
     "totalCent" BIGINT NOT NULL,
     "venceEl" TIMESTAMPTZ(6) NOT NULL,
     "emitidaAt" TIMESTAMPTZ(6),
+    "avisadaEl" TIMESTAMPTZ(6),
     "receptorRazonSocial" TEXT NOT NULL,
     "receptorCuit" TEXT,
     "receptorCondIva" TEXT NOT NULL,

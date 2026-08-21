@@ -61,6 +61,8 @@ const PARCHES = [
   // cargados facturan, que es lo que venía pasando hasta ahora.
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "facturable" BOOLEAN NOT NULL DEFAULT true',
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "email" TEXT',
+  'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "whatsapp" TEXT',
+  'ALTER TABLE "Liquidacion" ADD COLUMN IF NOT EXISTS "avisadaEl" TIMESTAMPTZ(6)',
   // Datos de cobro del centro: van al pie de cada liquidación.
   'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroTitular" TEXT',
   'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroCuit" TEXT',

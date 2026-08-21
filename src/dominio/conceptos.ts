@@ -7,7 +7,7 @@
 import type { Concepto } from "@prisma/client";
 
 const NOMBRES: Record<Concepto, string> = {
-  cargo_uso: "Uso de consultorio",
+  cargo_uso: "Reservó consultorio",
   cargo_excedente: "Horas excedentes",
   cargo_membresia: "Membresía",
   cargo_exclusividad: "Exclusividad",
