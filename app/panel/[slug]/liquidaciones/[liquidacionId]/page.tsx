@@ -14,6 +14,7 @@ import Link from "next/link";
 import { Cabecera } from "../../Cabecera.tsx";
 import { Logo } from "../../../../Logo.tsx";
 import { BotonImprimir } from "./BotonImprimir.tsx";
+import { Copiar } from "./Copiar.tsx";
 import { actorDeSesion } from "../../../../../src/lib/sesion.ts";
 import { puede } from "../../../../../src/lib/permisos.ts";
 import { detalleDeLiquidacion } from "../../../../../src/servicios/plata/detalle-liquidacion.ts";
@@ -65,7 +66,7 @@ export default async function LiquidacionPage({
   // enterarse después de que fue a la casilla equivocada no tiene arreglo.
   const inq = await prisma.inquilino.findFirst({
     where: { id: d.inquilinoId, operadorId: actor.operadorId },
-    select: { email: true, whatsapp: true },
+    select: { email: true },
   });
   const emailDestino = inq?.email?.trim() || null;
   const puedeEnviar = puede(actor.rol, "periodo.cerrar");
@@ -74,22 +75,6 @@ export default async function LiquidacionPage({
   const dia = (x: Date) => x.toLocaleDateString("es-AR", DIA_MES);
   const fecha = (x: Date) => x.toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" });
 
-  // El mensaje para WhatsApp: corto y con lo que se necesita para pagar. El detalle día por día
-  // no va — en un chat es un muro de texto — y para eso está el PDF, que se adjunta a mano.
-  const wa = inq?.whatsapp
-    ? `https://wa.me/${inq.whatsapp}?text=${encodeURIComponent(
-        [
-          `Hola ${d.receptor}, te paso la liquidación de ${nombreDePeriodo(d.periodo)} de ${d.centro.nombre}.`,
-          "",
-          `Total: ${formatearPesos(d.totalCent, d.moneda)}`,
-          `Vence el ${fecha(d.venceEl)}.`,
-          ...(hayDatosDeCobro(cobro)
-            ? ["", "Para transferir:",
-               ...[cobro.titular && `Titular: ${cobro.titular}`, cobro.alias && `Alias: ${cobro.alias}`, cobro.cbu && `CBU/CVU: ${cobro.cbu}`].filter(Boolean)]
-            : []),
-        ].join("\n"),
-      )}`
-    : null;
 
   return (
     <>
@@ -147,17 +132,6 @@ export default async function LiquidacionPage({
               </p>
             )}
 
-            {/* WhatsApp abre el chat con el mensaje escrito; el envío lo confirma quien lo manda.
-                No es un mail automático porque no puede serlo: mandar por WhatsApp sin que haya
-                una persona apretando requiere la API de Meta, con verificación de empresa y
-                plantillas aprobadas de por medio. Esto funciona hoy y sin configurar nada. */}
-            {wa && (
-              <p style={{ margin: "10px 0 0", fontSize: 13 }}>
-                <a href={wa} target="_blank" rel="noopener noreferrer" className="pastilla" style={{ padding: "7px 14px", fontSize: 13 }}>
-                  Mandar por WhatsApp
-                </a>
-              </p>
-            )}
           </div>
         )}
 
@@ -305,10 +279,26 @@ export default async function LiquidacionPage({
                 {cobro.titular && (<><dt className="tenue">Titular</dt><dd style={{ margin: 0 }}>{cobro.titular}</dd></>)}
                 {cobro.cuit && (<><dt className="tenue">CUIT</dt><dd style={{ margin: 0 }}>{cobro.cuit}</dd></>)}
                 {cobro.banco && (<><dt className="tenue">Banco</dt><dd style={{ margin: 0 }}>{cobro.banco}</dd></>)}
-                {cobro.alias && (<><dt className="tenue">Alias</dt><dd style={{ margin: 0, fontWeight: 600 }}>{cobro.alias}</dd></>)}
+                {cobro.alias && (
+                  <>
+                    <dt className="tenue">Alias</dt>
+                    <dd style={{ margin: 0, fontWeight: 600 }}>
+                      {cobro.alias}
+                      <Copiar valor={cobro.alias} que="el alias" />
+                    </dd>
+                  </>
+                )}
                 {/* Monoespaciada: veintidós dígitos seguidos se copian a mano y en una tipografía
                     proporcional el 1 y el 7 se confunden. */}
-                {cobro.cbu && (<><dt className="tenue">CBU/CVU</dt><dd style={{ margin: 0, fontFamily: "ui-monospace, monospace", letterSpacing: "0.02em" }}>{cobro.cbu}</dd></>)}
+                {cobro.cbu && (
+                  <>
+                    <dt className="tenue">CBU/CVU</dt>
+                    <dd style={{ margin: 0, fontFamily: "ui-monospace, monospace", letterSpacing: "0.02em" }}>
+                      {cobro.cbu}
+                      <Copiar valor={cobro.cbu} que="el CBU" />
+                    </dd>
+                  </>
+                )}
               </dl>
               {cobro.nota && <p className="tenue" style={{ margin: "10px 0 0", fontSize: 12 }}>{cobro.nota}</p>}
             </div>

@@ -146,8 +146,14 @@ export default async function MisReservasPage({
             No tenés reservas en {nombreDePeriodo(periodo)}. <Link href={`/panel/${slug}`}>Ir al calendario</Link>
           </p>
         ) : (
-          <div className="panel" style={{ padding: 0, overflowX: "auto" }}>
-            <table>
+          <div className="panel" style={{ padding: 0 }}>
+            {/* SIN `overflow: auto`. Lo tenía para que la tabla no desbordara en un teléfono, y
+                eso recortaba el globo de "Cambiar": un elemento posicionado no puede escaparse de
+                un contenedor con scroll. Peor todavía, poner `overflow-x` hace que el navegador
+                convierta `overflow-y` en `auto` — de ahí salía la barra vertical de la captura.
+                La tabla usa `lista-personas`, que abajo de 720px la apila en bloques: así no hay
+                nada que desbordar y el globo queda libre. */}
+            <table className="lista-personas">
               <thead>
                 <tr>
                   <th>Día</th>
@@ -170,14 +176,14 @@ export default async function MisReservasPage({
                       <td style={{ whiteSpace: "nowrap", textDecoration: cancelada ? "line-through" : undefined }}>
                         {nombrarFecha(t.fecha)}
                       </td>
-                      <td style={{ whiteSpace: "nowrap" }}>{t.horaTexto}</td>
-                      <td>{t.salaNombre}</td>
-                      <td className="num">{horasYMinutos(t.minutos)}</td>
+                      <td style={{ whiteSpace: "nowrap" }} data-rotulo="Horario:">{t.horaTexto}</td>
+                      <td data-rotulo="Consultorio:">{t.salaNombre}</td>
+                      <td className="num" data-rotulo="Duración:">{horasYMinutos(t.minutos)}</td>
                       {/* Siempre un valor. El guioncito de antes aparecía en las reservas que
                           nacieron antes de que hubiera precios, que son justo las que hay que
                           cobrar igual. Lo único que no se afirma es un importe cuando el centro
                           todavía no le puso precio a esas horas: ahí "$ 0,00" sería mentira. */}
-                      <td className="num">
+                      <td className="num" data-rotulo="Importe:">
                         {t.sinTarifa ? <span className="tenue">a definir</span> : plata(t.importeCent)}
                       </td>
                       <td className="num" style={{ whiteSpace: "nowrap" }}>

@@ -236,22 +236,27 @@ export default async function CierrePage({
                     </td>
                     <td>
                       {f.liquidacion ? (
-                        // Una hoja y no un "N° 14": recién cerrado, lo que uno quiere es ABRIR el
-                        // papel para mirarlo antes de mandarlo, y un ícono de documento dice eso
-                        // de un vistazo. El número queda al lado, que sigue siendo el dato con el
-                        // que se lo nombra por teléfono.
-                        <Link
-                          href={`/panel/${slug}/liquidaciones/${f.liquidacion.id}`}
-                          title={`Ver la liquidación N° ${f.liquidacion.numero} de ${f.nombre}`}
-                          style={{ display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}
-                        >
-                          {/* `flexShrink` en el ícono: sin eso, en una columna angosta el SVG se
-                              aplasta a un rectángulo antes de que el texto decida partirse. */}
-                          <span style={{ display: "flex", flexShrink: 0 }}><IconoDocumento tam={20} /></span>
-                          <span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 9, whiteSpace: "nowrap" }}>
+                          {/* Dos cosas distintas, dos destinos. El ícono BAJA el archivo —es un
+                              <a> y no un <Link> porque es una descarga, no una navegación: con
+                              Link, Next precargaría la ruta y trataría la respuesta como una
+                              página—. El número ABRE el papel, que es desde donde se manda por
+                              mail. Antes el ícono hacía las dos veces lo mismo. */}
+                          <a
+                            href={`/panel/${slug}/liquidaciones/${f.liquidacion.id}/pdf`}
+                            title={`Descargar la liquidación de ${f.nombre}`}
+                            aria-label={`Descargar la liquidación de ${f.nombre}`}
+                            style={{ display: "flex", flexShrink: 0 }}
+                          >
+                            <IconoDocumento tam={20} />
+                          </a>
+                          <Link
+                            href={`/panel/${slug}/liquidaciones/${f.liquidacion.id}`}
+                            title={`Ver la liquidación N° ${f.liquidacion.numero}`}
+                          >
                             <b>N° {f.liquidacion.numero}</b> · {plata(f.liquidacion.totalCent)}
-                          </span>
-                        </Link>
+                          </Link>
+                        </span>
                       ) : (
                         <span className="tenue">sin cerrar</span>
                       )}
