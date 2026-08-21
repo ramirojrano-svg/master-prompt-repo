@@ -44,7 +44,8 @@ export async function MenuConfig({ rol, slug }: { rol: Rol; slug: string }) {
         <p className="tenue" style={{ margin: "0 0 12px", fontSize: 12 }}>{ETIQUETA_ROL[rol]}</p>
 
         {administra && (
-          <p style={{ margin: "0 0 10px", fontSize: 13 }}>
+          <p style={{ margin: "0 0 10px", fontSize: 13, display: "grid", gap: 6 }}>
+            <Link href={`/panel/${slug}/cobro`}>Datos de cobro</Link>
             <Link href={`/panel/${slug}/correo`}>Envío de correo</Link>
           </p>
         )}

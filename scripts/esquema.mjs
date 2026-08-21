@@ -60,6 +60,14 @@ const PARCHES = [
   // Quien usa el consultorio pero no es cliente del centro. Nace en TRUE: todos los que ya están
   // cargados facturan, que es lo que venía pasando hasta ahora.
   'ALTER TABLE "Inquilino" ADD COLUMN IF NOT EXISTS "facturable" BOOLEAN NOT NULL DEFAULT true',
+  // Datos de cobro del centro: van al pie de cada liquidación.
+  'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroTitular" TEXT',
+  'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroCuit" TEXT',
+  'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroCbu" TEXT',
+  'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroAlias" TEXT',
+  'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroBanco" TEXT',
+  'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroNota" TEXT',
+  'ALTER TABLE "Operador" ADD COLUMN IF NOT EXISTS "cobroDiaVencimiento" INTEGER NOT NULL DEFAULT 7',
   // Los pedidos de "olvidé mi contraseña". Tabla nueva: se crea con IF NOT EXISTS igual que las
   // columnas, así una base ya cargada la suma sin perder nada.
   `CREATE TABLE IF NOT EXISTS "TokenClave" (

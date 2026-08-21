@@ -30,6 +30,9 @@ export type LineaLiquidacion = {
   /** El renglón que se lee: horario y consultorio si es una sesión, si no el concepto solo. */
   detalle: string;
   montoCent: bigint;
+  /** Minutos de la sesión. 0 en un renglón que no es una hora de consultorio (una penalidad,
+   *  un ajuste): sumarlos como si lo fueran inflaría el total de horas del mes. */
+  minutos: number;
 };
 
 export type PagoImputado = {
@@ -59,6 +62,11 @@ export type DetalleLiquidacion = {
   totalCent: bigint;
   moneda: string;
   lineas: LineaLiquidacion[];
+  /** Cuántas horas de consultorio usó en el mes. Es el número que el profesional revisa
+   *  primero: el total se explica solo si antes se entiende cuánto usó. */
+  minutosUsados: number;
+  /** Cuántas sesiones fueron. */
+  sesiones: number;
   pagos: PagoImputado[];
   pagadoCent: bigint;
   /** Total − pagado. Negativo = pagó de más. */
@@ -112,7 +120,7 @@ export async function detalleDeLiquidacion(
   const lineas: LineaLiquidacion[] = asientos.map((x) => {
     const r = x.reservaId ? porId.get(x.reservaId) : undefined;
     const concepto = nombreDeConcepto(x.concepto);
-    if (!r) return { fecha: x.fechaHecho, concepto, detalle: concepto, montoCent: x.montoCent };
+    if (!r) return { fecha: x.fechaHecho, concepto, detalle: concepto, montoCent: x.montoCent, minutos: 0 };
     // Sin sala no es un dato que falte: es una reserva que usa la recepción y no el consultorio.
     const donde = r.sala?.nombre ?? "sin consultorio";
     return {
@@ -120,6 +128,7 @@ export async function detalleDeLiquidacion(
       concepto,
       detalle: `${formatHora(r.inicio, tz)} a ${formatHora(r.fin, tz)} · ${donde}`,
       montoCent: x.montoCent,
+      minutos: Math.round((r.fin.getTime() - r.inicio.getTime()) / 60_000),
     };
   });
   // Reordenadas por la fecha que se muestra: para los cargos de uso esa es la de la sesión, que
@@ -159,6 +168,8 @@ export async function detalleDeLiquidacion(
     totalCent: liq.totalCent,
     moneda: operador.moneda,
     lineas,
+    minutosUsados: lineas.reduce((acc, l) => acc + l.minutos, 0),
+    sesiones: lineas.filter((l) => l.minutos > 0).length,
     pagos,
     pagadoCent,
     saldoCent: liq.totalCent - pagadoCent,

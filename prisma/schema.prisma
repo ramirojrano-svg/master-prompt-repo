@@ -29,6 +29,26 @@ model Operador {
   slug     String   @unique
   creadoEl DateTime @default(now()) @db.Timestamptz(6)
 
+  // ── Datos de cobro del centro ──────────────────────────────────────────────
+  // Van al pie de cada liquidación: sin ellos, el papel dice cuánto hay que pagar y no a dónde,
+  // y el profesional tiene que preguntar por WhatsApp igual. Son del CENTRO y no de la sede
+  // porque quien cobra es el titular, no el edificio.
+  //
+  // Todos opcionales: un centro recién creado no los tiene todavía, y la app no puede exigirlos
+  // para dejar cerrar un mes. Lo que falte, simplemente no se imprime.
+  cobroTitular String? // a nombre de quién está la cuenta
+  cobroCuit    String?
+  cobroCbu     String? // CBU o CVU: para quien transfiere son el mismo campo
+  cobroAlias   String?
+  cobroBanco   String?
+  /** Línea libre para lo que no entra arriba: "poner el apellido en el concepto", otro medio, etc. */
+  cobroNota    String?
+  /**
+   * Día del mes en que vence una liquidación. La fecha de vencimiento se estampa al emitir y no
+   * se recalcula; esto es solo el valor que la pantalla de cierre propone.
+   */
+  cobroDiaVencimiento Int @default(7)
+
   sedes         Sede[]
   salas         Sala[]
   inquilinos    Inquilino[]

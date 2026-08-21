@@ -17,7 +17,8 @@ import { actorDeSesion } from "../../../../../src/lib/sesion.ts";
 import { puede } from "../../../../../src/lib/permisos.ts";
 import { detalleDeLiquidacion } from "../../../../../src/servicios/plata/detalle-liquidacion.ts";
 import { formatearPesos } from "../../../../../src/dominio/tarifa.ts";
-import { nombreDePeriodo } from "../../../../../src/dominio/reporte.ts";
+import { horasYMinutos, nombreDePeriodo } from "../../../../../src/dominio/reporte.ts";
+import { datosDeCobro, hayDatosDeCobro } from "../../../../../src/servicios/config/cobro.ts";
 
 const DIA_MES: Intl.DateTimeFormatOptions = { weekday: "short", day: "2-digit", month: "2-digit" };
 
@@ -28,6 +29,7 @@ export default async function LiquidacionPage({ params }: { params: Promise<{ sl
   if (!actor) redirect(`/login?centro=${encodeURIComponent(slug)}`);
 
   const d = await detalleDeLiquidacion({ operadorId: actor.operadorId, liquidacionId });
+  const cobro = await datosDeCobro(actor.operadorId);
   // Inexistente y ajena dan lo mismo a propósito: distinguirlas le confirmaría a quien prueba ids
   // cuáles existen (§6.11).
   if (!d) redirect(`/panel/${slug}`);
@@ -94,7 +96,17 @@ export default async function LiquidacionPage({ params }: { params: Promise<{ sl
           )}
 
           {/* ── El detalle ─────────────────────────────────────────────── */}
-          <h2 style={{ fontSize: 15, marginTop: 24, marginBottom: 8 }}>Detalle</h2>
+          {/* El resumen del mes ANTES del renglonado. Es lo primero que se mira: el total se
+              entiende solo si antes se sabe cuánto usó. Abajo queda la discriminación día por
+              día para el que quiera verificarla. */}
+          {d.sesiones > 0 && (
+            <p style={{ margin: "20px 0 0", fontSize: 15 }}>
+              En {nombreDePeriodo(d.periodo)} usó <b>{horasYMinutos(d.minutosUsados)}</b> de consultorio,
+              en <b>{d.sesiones}</b> {d.sesiones === 1 ? "sesión" : "sesiones"}.
+            </p>
+          )}
+
+          <h2 style={{ fontSize: 15, marginTop: 20, marginBottom: 8 }}>Detalle día por día</h2>
           {d.lineas.length === 0 ? (
             <p className="tenue">Esta liquidación no tiene renglones.</p>
           ) : (
@@ -182,6 +194,25 @@ export default async function LiquidacionPage({ params }: { params: Promise<{ sl
               </b>
             </p>
           </div>
+
+          {/* A dónde transferir. Sin esto el papel dice cuánto hay que pagar y no a dónde, y el
+              circuito termina igual en un WhatsApp preguntando el alias. Solo se dibuja si hay
+              algo cargado: un recuadro vacío es peor que ningún recuadro. */}
+          {d.saldoCent > 0n && hayDatosDeCobro(cobro) && (
+            <div className="panel" style={{ padding: 16, marginTop: 22, background: "var(--fondo-suave, #f4f9fb)" }}>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Para transferir</p>
+              <dl style={{ margin: "10px 0 0", display: "grid", gridTemplateColumns: "auto 1fr", gap: "5px 14px", fontSize: 13 }}>
+                {cobro.titular && (<><dt className="tenue">Titular</dt><dd style={{ margin: 0 }}>{cobro.titular}</dd></>)}
+                {cobro.cuit && (<><dt className="tenue">CUIT</dt><dd style={{ margin: 0 }}>{cobro.cuit}</dd></>)}
+                {cobro.banco && (<><dt className="tenue">Banco</dt><dd style={{ margin: 0 }}>{cobro.banco}</dd></>)}
+                {cobro.alias && (<><dt className="tenue">Alias</dt><dd style={{ margin: 0, fontWeight: 600 }}>{cobro.alias}</dd></>)}
+                {/* Monoespaciada: veintidós dígitos seguidos se copian a mano y en una tipografía
+                    proporcional el 1 y el 7 se confunden. */}
+                {cobro.cbu && (<><dt className="tenue">CBU/CVU</dt><dd style={{ margin: 0, fontFamily: "ui-monospace, monospace", letterSpacing: "0.02em" }}>{cobro.cbu}</dd></>)}
+              </dl>
+              {cobro.nota && <p className="tenue" style={{ margin: "10px 0 0", fontSize: 12 }}>{cobro.nota}</p>}
+            </div>
+          )}
 
           <p className="tenue" style={{ marginTop: 22, fontSize: 12, lineHeight: 1.5 }}>
             Los importes de esta liquidación quedaron congelados al emitirla: no cambian si después

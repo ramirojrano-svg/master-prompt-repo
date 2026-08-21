@@ -19,9 +19,10 @@ import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { pendientesDeCierre, liquidacionesDeNoFacturables, cerrarMesDe, cerrarMesTodos } from "../../../../src/servicios/plata/cierre.ts";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
-import { nombreDePeriodo, periodoAnterior, periodoSiguiente } from "../../../../src/dominio/reporte.ts";
+import { nombreDePeriodo, periodoAnterior, periodoSiguiente, venceElDelPeriodo } from "../../../../src/dominio/reporte.ts";
 import { periodoDeTrabajo } from "../../../../src/servicios/plata/periodo-trabajo.ts";
-import { fechaEnZona, sumarDiasLocal } from "../../../../src/dominio/motor/zona.ts";
+import { datosDeCobro } from "../../../../src/servicios/config/cobro.ts";
+import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
 import { BotonEnviar } from "../BotonEnviar.tsx";
 
 export default async function CierrePage({
@@ -48,9 +49,10 @@ export default async function CierrePage({
   // Por default se trabaja el mes ANTERIOR —el mes en curso todavía está sumando horas—, salvo que
   // ese mes esté vacío: ahí se abre el mes en curso, que es el único que tiene algo para mostrar.
   const periodo = await periodoDeTrabajo({ operadorId: actor.operadorId, hoy: hoy.slice(0, 7), pedido: sp.periodo });
-  const [filas, huerfanas] = await Promise.all([
+  const [filas, huerfanas, cobro] = await Promise.all([
     pendientesDeCierre({ operadorId: actor.operadorId, periodo }),
     liquidacionesDeNoFacturables({ operadorId: actor.operadorId, periodo }),
+    datosDeCobro(actor.operadorId),
   ]);
 
   const plata = (c: bigint) => formatearPesos(c, operador.moneda);
@@ -63,8 +65,11 @@ export default async function CierrePage({
   const tardioCent = tardios.reduce((acc, f) => acc + f.pendienteCent, 0n);
   const yaCerradas = filas.filter((f) => f.liquidacion);
   const totalPendiente = conPendiente.reduce((acc, f) => acc + f.pendienteCent, 0n);
-  // Diez días para pagar, contados desde hoy: es un default, y el campo se puede cambiar.
-  const venceDefault = sumarDiasLocal(hoy, 10)!;
+  // El día que el centro tenga configurado, del mes SIGUIENTE al facturado: se cierra agosto y se
+  // cobra en septiembre. Antes eran "diez días desde hoy", lo que corría el vencimiento según el
+  // día en que uno se acordaba de cerrar — dos meses seguidos vencían en fechas distintas. Sigue
+  // siendo un default: el campo se puede cambiar antes de emitir.
+  const venceDefault = venceElDelPeriodo(periodo, cobro.diaVencimiento);
   const volverA = `/panel/${slug}/cierre?periodo=${periodo}`;
 
   async function cerrarUno(formData: FormData) {

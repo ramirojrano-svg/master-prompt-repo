@@ -9,6 +9,7 @@ import {
   periodoAnterior,
   porcentaje,
   sinDetallar,
+  venceElDelPeriodo,
 } from "./reporte.ts";
 
 test("un período es 'YYYY-MM' de verdad: el mes 13 no existe", () => {
@@ -72,4 +73,20 @@ test("las horas se muestran como horas y minutos, no como decimales", () => {
   assert.equal(horasYMinutos(45), "45′");
   assert.equal(horasYMinutos(0), "0′");
   assert.equal(horasYMinutos(-90), "−1 h 30′");
+});
+
+test("venceElDelPeriodo cae en el mes siguiente al facturado", () => {
+  // Se cierra agosto y se cobra en septiembre: el vencimiento nunca puede caer dentro del mes
+  // que se está facturando.
+  assert.equal(venceElDelPeriodo("2026-08", 7), "2026-09-07");
+  assert.equal(venceElDelPeriodo("2026-01", 7), "2026-02-07");
+});
+
+test("venceElDelPeriodo cruza el año en diciembre", () => {
+  assert.equal(venceElDelPeriodo("2026-12", 7), "2027-01-07");
+});
+
+test("venceElDelPeriodo rellena el día con cero a la izquierda", () => {
+  // "2026-09-7" no es una fecha válida para un <input type=date> ni para el parser.
+  assert.equal(venceElDelPeriodo("2026-08", 1), "2026-09-01");
 });

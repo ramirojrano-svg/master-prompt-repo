@@ -45,6 +45,13 @@ CREATE TABLE "Operador" (
     "moneda" TEXT NOT NULL DEFAULT 'ARS',
     "slug" TEXT NOT NULL,
     "creadoEl" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "cobroTitular" TEXT,
+    "cobroCuit" TEXT,
+    "cobroCbu" TEXT,
+    "cobroAlias" TEXT,
+    "cobroBanco" TEXT,
+    "cobroNota" TEXT,
+    "cobroDiaVencimiento" INTEGER NOT NULL DEFAULT 7,
 
     CONSTRAINT "Operador_pkey" PRIMARY KEY ("id")
 );
