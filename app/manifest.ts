@@ -27,14 +27,20 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#f4f9fb",
     lang: "es-AR",
     dir: "ltr",
+    // Dos juegos distintos, y compartir un archivo entre los dos era el error de antes.
+    //
+    //  · `any` va TRANSPARENTE y con el logo lo más grande que entra. Es el que usa la barra de
+    //    tareas del escritorio, donde un fondo blanco se ve como un recuadro pegado al lado de
+    //    íconos que no lo tienen.
+    //  · `maskable` va con fondo y con margen: Android lo recorta con la forma que use el
+    //    teléfono, así que el dibujo tiene que llegar al borde y el logo quedar dentro del 80%
+    //    central. Transparente, ese recorte dejaría ver el fondo del launcher.
+    //
+    // Los tres se generan desde public/logo.png con `node scripts/iconos.mjs`.
     icons: [
-      // `any` y `maskable` en el mismo archivo: Android recorta el ícono con la forma que use el
-      // teléfono —círculo, óvalo, cuadrado redondeado— y por eso el logo está centrado con margen,
-      // dentro de la zona que ningún recorte se come.
       { src: "/icono-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icono-192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
       { src: "/icono-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icono-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/icono-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }

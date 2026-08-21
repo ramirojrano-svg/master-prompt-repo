@@ -14,6 +14,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { Cabecera } from "../Cabecera.tsx";
+import { Buscador } from "../Buscador.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { accesosDelCentro, crearAcceso, restablecerClave, LARGO_MIN_CLAVE } from "../../../../src/servicios/config/accesos.ts";
@@ -34,7 +35,7 @@ export default async function AccesosPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ ok?: string; error?: string; n?: string }>;
+  searchParams: Promise<{ ok?: string; error?: string; n?: string; q?: string }>;
 }) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -43,9 +44,20 @@ export default async function AccesosPage({
   if (!actor) redirect(`/login?centro=${encodeURIComponent(slug)}`);
   if (!puede(actor.rol, "usuarios.administrar")) redirect(`/panel/${slug}`);
 
-  const filas = await accesosDelCentro(actor.operadorId);
+  const todas = await accesosDelCentro(actor.operadorId);
+  // El filtro es sobre el nombre Y sobre el email: con treinta y seis, buscar "gmail" para ver a
+  // quiénes se les cargó una casilla de ese dominio es una pregunta tan válida como buscar a
+  // alguien por su apellido.
+  const busca = (sp.q ?? "").trim().toLocaleLowerCase("es");
+  const filas = busca
+    ? todas.filter((f) => `${f.nombre} ${f.email ?? ""}`.toLocaleLowerCase("es").includes(busca))
+    : todas;
+
   const sinAcceso = filas.filter((f) => !f.email);
   const conAcceso = filas.filter((f) => f.email);
+  // El contador de arriba habla SIEMPRE del centro entero, no de lo que quedó después de filtrar:
+  // "2 de 3 no entran" mientras se busca una letra sería un número que no significa nada.
+  const faltanEnTotal = todas.filter((f) => !f.email).length;
   const ruta = `/panel/${slug}/accesos`;
 
   async function crear(formData: FormData) {
@@ -83,13 +95,19 @@ export default async function AccesosPage({
         {sp.ok === "clave" && <p className="aviso-ok">Contraseña cambiada. Si tenía la app abierta en algún lado, quedó afuera.</p>}
         {sp.error && <p className="aviso-error">{FALLA[sp.error] ?? "No se pudo completar."}</p>}
 
-        <p className="tenue" style={{ margin: "6px 0 20px", fontSize: 13, lineHeight: 1.6 }}>
-          {sinAcceso.length === 0
+        <p className="tenue" style={{ margin: "6px 0 14px", fontSize: 13, lineHeight: 1.6 }}>
+          {faltanEnTotal === 0
             ? "Todos los profesionales activos pueden entrar a la app."
-            : `${sinAcceso.length} de ${filas.length} profesionales todavía no pueden entrar.`}{" "}
+            : `${faltanEnTotal} de ${todas.length} profesionales todavía no pueden entrar.`}{" "}
           La contraseña se muestra mientras la escribís para que puedas pasársela; después no se
           puede volver a ver, solo cambiar.
         </p>
+
+        <Buscador inicial={busca} placeholder="Buscar por nombre o email…" etiqueta="Buscar profesional" />
+
+        {busca && filas.length === 0 && (
+          <p className="tenue">Ningún profesional coincide con «{busca}».</p>
+        )}
 
         {/* Los que faltan, primero: es la pregunta con la que uno abre esta pantalla. */}
         {sinAcceso.length > 0 && (

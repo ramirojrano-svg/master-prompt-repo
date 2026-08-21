@@ -1,6 +1,6 @@
 "use client";
 
-// app/panel/[slug]/inquilinos/Buscador.tsx — filtra mientras se tipea.
+// app/panel/[slug]/Buscador.tsx — filtra una lista mientras se tipea.
 //
 // Antes era un form GET con botón "Buscar": había que escribir y apretar. Con 29 nombres eso son
 // dos gestos para algo que se hace todo el tiempo.
@@ -12,6 +12,11 @@
 //
 // El `replace` en vez de `push` es a propósito: si cada letra dejara una entrada en el historial,
 // volver atrás obligaría a apretar diez veces para salir de la pantalla.
+//
+// Vive en la raíz del panel y no adentro de una pantalla porque lo usan dos —Profesionales y
+// Acceso a la app— y las dos hacen exactamente lo mismo: escribir en `?q=` y dejar que el
+// servidor filtre. Lo único que cambia entre ellas es el texto de ayuda y qué parámetros hay que
+// conservar, así que eso son props.
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -20,7 +25,18 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
  *  corto para que se sienta inmediato. */
 const ESPERA_MS = 220;
 
-export function Buscador({ inicial, verTodos }: { inicial: string; verTodos: boolean }) {
+export function Buscador({
+  inicial,
+  placeholder = "Buscar por nombre…",
+  etiqueta = "Buscar",
+  ocultos = {},
+}: {
+  inicial: string;
+  placeholder?: string;
+  etiqueta?: string;
+  /** Lo que el formulario de respaldo tiene que arrastrar (por ejemplo `ver=todos`). */
+  ocultos?: Record<string, string>;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   // `.toString()` y no el objeto: useSearchParams devuelve una instancia NUEVA en cada render, y
@@ -55,8 +71,8 @@ export function Buscador({ inicial, verTodos }: { inicial: string; verTodos: boo
         type="search"
         value={texto}
         onChange={(e) => setTexto(e.target.value)}
-        placeholder="Buscar por nombre o por quién abona…"
-        aria-label="Buscar profesional"
+        placeholder={placeholder}
+        aria-label={etiqueta}
         autoComplete="off"
         style={{ flex: 1 }}
       />
@@ -68,8 +84,10 @@ export function Buscador({ inicial, verTodos }: { inicial: string; verTodos: boo
       {/* Sin JavaScript el input no filtra, así que queda el form de siempre como respaldo. */}
       <noscript>
         <form method="get" style={{ display: "flex", gap: 8 }}>
-          {verTodos && <input type="hidden" name="ver" value="todos" />}
-          <input type="search" name="q" defaultValue={inicial} aria-label="Buscar profesional" />
+          {Object.entries(ocultos).map(([k, v]) => (
+            <input key={k} type="hidden" name={k} value={v} />
+          ))}
+          <input type="search" name="q" defaultValue={inicial} aria-label={etiqueta} />
           <button type="submit">Buscar</button>
         </form>
       </noscript>

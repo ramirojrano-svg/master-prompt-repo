@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
-import { Buscador } from "./Buscador.tsx";
+import { Buscador } from "../Buscador.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { Cabecera } from "../Cabecera.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
@@ -112,7 +112,12 @@ export default async function InquilinosPage({
     <>
       <Cabecera slug={slug} titulo="Profesionales" />
       <main style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>
-      <Buscador inicial={busca} verTodos={verTodos} />
+      <Buscador
+        inicial={busca}
+        placeholder="Buscar por nombre o por quién abona…"
+        etiqueta="Buscar profesional"
+        ocultos={verTodos ? { ver: "todos" } : {}}
+      />
 
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <p className="tenue" style={{ margin: 0 }}>

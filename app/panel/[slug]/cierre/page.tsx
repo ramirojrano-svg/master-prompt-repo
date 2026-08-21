@@ -70,17 +70,39 @@ export default async function CierrePage({
   // cobra en septiembre. Antes eran "diez días desde hoy", lo que corría el vencimiento según el
   // día en que uno se acordaba de cerrar — dos meses seguidos vencían en fechas distintas. Sigue
   // siendo un default: el campo se puede cambiar antes de emitir.
+  // Ya no es el valor de un campo: es lo que se le AVISA a quien cierra. La fecha sale de
+  // Configuración → Datos de cobro y se decide una vez, no en cada cierre.
   const venceDefault = venceElDelPeriodo(periodo, cobro.diaVencimiento);
+  const venceTexto = new Date(`${venceDefault}T12:00:00Z`).toLocaleDateString("es-AR", {
+    day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
+  });
   const volverA = `/panel/${slug}/cierre?periodo=${periodo}`;
+
+  /**
+   * La fecha de vencimiento del período, leída de Configuración → Datos de cobro.
+   *
+   * Se resuelve ACÁ y no en el formulario: el día lo decide una sola vez quien administra el
+   * centro, y repetirlo como un campo en cada cierre era pedir que se confirme algo que ya estaba
+   * decidido — con la puerta abierta a que dos meses seguidos venzan en fechas distintas por una
+   * tecla mal apretada.
+   *
+   * Se relee de la base dentro de la acción, y no se toma del render: lo que viaja en el
+   * formulario puede venir modificado desde el navegador.
+   */
+  async function vencimientoDe(operadorId: string, periodo: string) {
+    const c = await datosDeCobro(operadorId);
+    return venceElDelPeriodo(periodo, c.diaVencimiento);
+  }
 
   async function cerrarUno(formData: FormData) {
     "use server";
     const a = await actorDeSesion(slug);
     if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+    const per = String(formData.get("periodo") ?? "");
     const r = await cerrarMesDe(a, {
-      periodo: formData.get("periodo"),
+      periodo: per,
       inquilinoId: formData.get("inquilinoId"),
-      venceEl: formData.get("venceEl"),
+      venceEl: await vencimientoDe(a.operadorId, per),
     });
     revalidatePath(`/panel/${slug}/cierre`);
     const qs = !r.ok ? `&error=${r.error}` : r.data.ok ? `&ok=uno&n=${r.data.numero}` : `&error=${r.data.error}`;
@@ -91,7 +113,8 @@ export default async function CierrePage({
     "use server";
     const a = await actorDeSesion(slug);
     if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
-    const r = await cerrarMesTodos(a, { periodo: formData.get("periodo"), venceEl: formData.get("venceEl") });
+    const per = String(formData.get("periodo") ?? "");
+    const r = await cerrarMesTodos(a, { periodo: per, venceEl: await vencimientoDe(a.operadorId, per) });
     revalidatePath(`/panel/${slug}/cierre`);
     const qs = !r.ok ? `&error=${r.error}` : `&ok=todos&n=${r.data.cerradas}`;
     redirect(`${volverA}${qs}`);
@@ -189,15 +212,16 @@ export default async function CierrePage({
           {conPendiente.length > 0 && (
             <form action={cerrarTodos} style={{ marginTop: 18, display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
               <input type="hidden" name="periodo" value={periodo} />
-              <div>
-                <label htmlFor="venceEl" style={{ marginTop: 0 }}>Vence el</label>
-                <input id="venceEl" name="venceEl" type="date" required defaultValue={venceDefault} style={{ width: "auto" }} />
-              </div>
               <BotonEnviar enviando="Cerrando…">Cerrar el mes de todos</BotonEnviar>
             </form>
           )}
 
           <p className="tenue" style={{ margin: "14px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+            Las liquidaciones de {nombreDePeriodo(periodo)} vencen el <b>{venceTexto}</b>. El día
+            sale de <Link href={`/panel/${slug}/cobro`}>Datos de cobro</Link> y vale para todos:
+            así dos meses seguidos no vencen en fechas distintas.
+          </p>
+          <p className="tenue" style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.5 }}>
             Cerrar emite la liquidación de cada profesional con su número, y <b>congela</b> los
             importes: un mes cerrado da siempre el mismo total. Los pagos no entran —esto es lo que
             se cobra, no lo que se cobró—. Y no se puede cerrar dos veces el mismo mes.
@@ -265,7 +289,6 @@ export default async function CierrePage({
                         <form action={cerrarUno}>
                           <input type="hidden" name="periodo" value={periodo} />
                           <input type="hidden" name="inquilinoId" value={f.inquilinoId} />
-                          <input type="hidden" name="venceEl" value={venceDefault} />
                           <BotonEnviar enviando="…">Cerrar</BotonEnviar>
                         </form>
                       ) : null}
