@@ -41,6 +41,7 @@ import { describirConflictos, parsearConflictos, resumirConflictos, serializarCo
 import { SIN_SALA } from "../../../src/servicios/agenda/dia.ts";
 import { Grilla } from "./Grilla.tsx";
 import { VistaMes } from "./VistaMes.tsx";
+import { Deslizar } from "./Deslizar.tsx";
 import { MiniCalendario } from "./MiniCalendario.tsx";
 import { NuevaReserva } from "./NuevaReserva.tsx";
 import { DetalleTurno } from "./DetalleTurno.tsx";
@@ -509,7 +510,16 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           )}
 
           {vista === "mes" ? (
-<VistaMes dia={agenda} hoy={hoy} href={href} puedeCrear={puedeCargar || puedeCargarPropia} />
+            // Deslizar de costado pasa de mes, con las mismas URLs que las flechas de arriba: el
+            // gesto es un atajo a la misma navegación, no un camino paralelo que pueda quedar
+            // desincronizado. Solo envuelve la vista MES — en día y semana el gesto competiría
+            // con el arrastre de turnos entre consultorios.
+            <Deslizar
+              anterior={href(navegar(vista, agenda.fecha, -1))}
+              siguiente={href(navegar(vista, agenda.fecha, 1))}
+            >
+              <VistaMes dia={agenda} hoy={hoy} href={href} puedeCrear={puedeCargar || puedeCargarPropia} />
+            </Deslizar>
           ) : (
             // Sin permiso para editar turnos ajenos no se pasa la acción: la grilla no ofrece el
             // gesto en vez de ofrecerlo y que el servidor lo rechace después.

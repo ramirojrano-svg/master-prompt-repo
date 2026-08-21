@@ -15,6 +15,7 @@ import { Cabecera } from "../../Cabecera.tsx";
 import { Logo } from "../../../../Logo.tsx";
 import { BotonImprimir } from "./BotonImprimir.tsx";
 import { Copiar } from "./Copiar.tsx";
+import { Compartir } from "./Compartir.tsx";
 import { actorDeSesion } from "../../../../../src/lib/sesion.ts";
 import { puede } from "../../../../../src/lib/permisos.ts";
 import { detalleDeLiquidacion } from "../../../../../src/servicios/plata/detalle-liquidacion.ts";
@@ -98,10 +99,22 @@ export default async function LiquidacionPage({
           {/* Descargar es un <a> y no un <Link>: la respuesta es un archivo, no una pantalla.
               `download` es redundante con el Content-Disposition de la ruta, pero deja dicho en
               el markup qué hace el enlace. Imprimir queda al lado para el papel de verdad. */}
-          <a className="pastilla" href={`/panel/${slug}/liquidaciones/${liquidacionId}/pdf`} download>
+          <a className="pastilla oculta-mobile" href={`/panel/${slug}/liquidaciones/${liquidacionId}/pdf`} download>
             ↓ Descargar PDF
           </a>
-          <BotonImprimir />
+          {/* En el teléfono, compartir en lugar de imprimir: ahí no hay impresora cerca y lo que
+              se hace es mandárselo al profesional. En el escritorio al revés — el selector nativo
+              o no existe o abre aplicaciones que nadie usa para esto. */}
+          <span className="solo-mobile">
+            <Compartir
+              url={`/panel/${slug}/liquidaciones/${liquidacionId}/pdf`}
+              nombre={`liquidacion-${d.periodo}.pdf`}
+              titulo={`Liquidación de ${nombreDePeriodo(d.periodo)}`}
+            />
+          </span>
+          <span className="oculta-mobile">
+            <BotonImprimir />
+          </span>
         </div>
 
         {sp.ok === "enviado" && <p className="aviso-ok no-imprimir">Enviado a {emailDestino}.</p>}
