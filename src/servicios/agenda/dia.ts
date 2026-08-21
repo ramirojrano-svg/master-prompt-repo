@@ -36,6 +36,11 @@ export type EventoAgenda = ReservaDTO & {
   horaTexto: string; // "09:00 – 10:30", ya formateado en la zona de la SEDE
   esBloqueo: boolean; // el centro cerró la franja: se dibuja rayado y no cuenta como hora vendida
   titulo: string;
+  /** ¿El profesional de este turno está dado de baja? Dar de baja archiva a la persona pero NO le
+   *  toca la agenda: sus turnos siguen ocupando el consultorio. Sin decirlo acá, el turno queda
+   *  a nombre de alguien que ya no figura en la lista de profesionales — que es exactamente el
+   *  camino para creer que la app perdió datos. */
+  deBaja: boolean;
   /** ¿Este actor puede abrir el detalle? Falso para el turno del de al lado, que se proyecta sin
    *  identidad y por lo tanto no tiene detalle que mostrar. Sale de la PROYECCIÓN y no de mirar si
    *  el título dice "Ocupado": el día que ese texto cambie, la regla de privacidad seguiría
@@ -107,7 +112,7 @@ export async function cargarAgenda(
     select: {
       id: true, salaId: true, inquilinoId: true, tipo: true, estado: true, inicio: true, fin: true,
       motivo: true, notaInterna: true, importeCent: true, serieId: true,
-      inquilino: { select: { nombre: true } },
+      inquilino: { select: { nombre: true, estado: true } },
     },
     orderBy: { inicio: "asc" },
   });
@@ -191,6 +196,9 @@ export async function cargarAgenda(
       // ocupado y se dibuja igual que un bloqueo (§6.3).
       esBloqueo: conIdentidad?.tipo === "bloqueo",
       titulo: conIdentidad?.inquilinoNombre ?? conIdentidad?.motivo ?? "Ocupado",
+      // Solo con identidad: para quien ve un "Ocupado" anónimo, el estado del de al lado no es
+      // un dato que le corresponda (§6.3).
+      deBaja: Boolean(conIdentidad) && f.inquilino?.estado === "baja",
       abrible: Boolean(conIdentidad),
     };
   });

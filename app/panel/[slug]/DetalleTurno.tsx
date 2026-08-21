@@ -84,6 +84,14 @@ export function DetalleTurno({
           <p className="tenue" style={{ margin: "2px 0 0", fontSize: 13 }}>
             {turno.horaTexto} · {horasYMinutos(minutos)}
           </p>
+          {/* Dar de baja archiva a la persona pero NO le toca la agenda: sus turnos siguen
+              ocupando el consultorio. Sin este cartel, el turno queda a nombre de alguien que ya
+              no figura en Profesionales, y eso se lee como que la app perdió el dato. */}
+          {turno.deBaja && (
+            <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--error)" }}>
+              Este profesional está <b>dado de baja</b>. El turno sigue ocupando el consultorio.
+            </p>
+          )}
         </div>
         <Link href={cerrarHref} aria-label="Cerrar" className="nav-circ" style={{ marginTop: -4, marginRight: -6 }}>
           ×

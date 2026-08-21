@@ -15,6 +15,7 @@ import { actorDeSesion } from "../../../../../src/lib/sesion.ts";
 import { puede } from "../../../../../src/lib/permisos.ts";
 import { detalleProfesional } from "../../../../../src/servicios/reportes/mensual.ts";
 import { editarInquilino } from "../../../../../src/servicios/config/inquilinos.ts";
+import { despreciarInquilino, plataPendienteDe } from "../../../../../src/servicios/plata/despreciar.ts";
 import { accesoDeInquilino, crearAcceso, LARGO_MIN_CLAVE, restablecerClave } from "../../../../../src/servicios/config/accesos.ts";
 import { anularCobro, cobrosDelMes, ETIQUETA_MEDIO, MEDIOS, registrarCobro } from "../../../../../src/servicios/plata/cobros.ts";
 import { formatearPesos } from "../../../../../src/dominio/tarifa.ts";
@@ -56,9 +57,14 @@ export default async function DetalleProfesionalPage({
   const conUso = d.porDiaSemana.filter((x) => x.minutos > 0);
 
   const puedeCobrar = puede(actor.rol, "cobro.registrar");
+  // Sacar precios ya estampados es tocar tarifas, no cobrar: va con el permiso de precios.
+  const puedeTarifas = puede(actor.rol, "tarifa.administrar");
   const administraUsuarios = puede(actor.rol, "usuarios.administrar");
   const acceso = administraUsuarios ? await accesoDeInquilino({ operadorId: actor.operadorId, inquilinoId }) : null;
   const cobros = await cobrosDelMes({ operadorId: actor.operadorId, inquilinoId, periodo });
+  // Solo hace falta preguntarlo cuando la casilla está destildada: es el único caso en el que la
+  // plata pegada a las reservas es un resto a limpiar y no la operación normal.
+  const pegada = d.inquilino.facturable ? null : await plataPendienteDe({ operadorId: actor.operadorId, inquilinoId });
   const hoy = fechaEnZona(new Date(), sede.zonaHoraria);
   const volverA = `/panel/${slug}/inquilinos/${inquilinoId}?periodo=${periodo}`;
   // Sin la query: `revalidatePath` toma un path, y con "?periodo=..." no invalida nada — se
@@ -113,6 +119,18 @@ export default async function DetalleProfesionalPage({
     redirect(`${volverA}${r.ok && r.data.ok ? "&ok=datos" : "&error=DATOS"}`);
   }
 
+  // Sacarle el precio a lo ya cargado. Es EXPLÍCITO y aparte de la casilla: cambiar una marca de
+  // la ficha no puede borrar plata de meses anteriores sin que nadie lo pida.
+  async function sacarPrecios() {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+    const r = await despreciarInquilino(a, { inquilinoId });
+    revalidatePath(rutaDetalle);
+    const codigo = !r.ok ? r.error : r.data.ok ? null : r.data.error;
+    redirect(`${volverA}${codigo ? `&error=${codigo}` : `&ok=despreciado&n=${r.ok && r.data.ok ? r.data.reservas : 0}`}`);
+  }
+
   async function darAcceso(formData: FormData) {
     "use server";
     const a = await actorDeSesion(slug);
@@ -140,12 +158,17 @@ export default async function DetalleProfesionalPage({
     clave: "Contraseña cambiada. Si tenía la app abierta en algún lado, quedó afuera.",
     repetido: "Ese comprobante ya estaba cargado: no se asentó de nuevo (sigue siendo un solo cobro).",
     anulado: "Cobro anulado. Queda asentado, con el motivo, y el saldo volvió a incluir esa deuda.",
+    despreciado:
+      "Listo: sus reservas quedaron sin valor por hora y los cargos que no estaban liquidados se borraron. " +
+      "Ya no debería figurar en Cobranza ni en Cierre de mes.",
   };
   const FALLA: Record<string, string> = {
     DATOS: "No se pudieron guardar los datos. Revisá que el nombre no esté vacío.",
     YA_TIENE_ACCESO: "Este profesional ya tiene acceso.",
     EMAIL_DE_OTRO: "Ese email ya lo usa otro profesional de este centro.",
     SIN_ACCESO: "Todavía no tiene acceso: creáselo primero.",
+    SI_FACTURA: "A este profesional SÍ se le factura. Destildá la casilla primero si es un error.",
+    NO_ENCONTRADO: "Esa ficha ya no existe.",
     CUENTA_COMPARTIDA:
       "Esa persona usa el mismo email en otro centro, así que la contraseña es una sola para los dos. " +
       "Tiene que restablecerla desde allá, o darle acá un email distinto.",
@@ -246,6 +269,42 @@ export default async function DetalleProfesionalPage({
               puede tener deuda de ANTES de que se lo marcara sin facturar, y ahí el pago hay que
               poder registrarlo. Esconder el formulario en ese caso dejaría plata real sin forma de
               cobrarse — peor que un formulario de más. */}
+          {/* El resto de cuando SÍ se le facturaba. La reserva estampa su precio al nacer y no se
+              vuelve a tocar (§8.8), asi que destildar la casilla no alcanza: las horas ya cargadas
+              siguen con su valor y sus cargos, y el profesional sigue apareciendo en Cobranza con
+              plata que nadie le va a reclamar. Se ofrece la corrección, no se hace sola. */}
+          {pegada && puedeTarifas && (pegada.reservas > 0 || pegada.cargos > 0) && (
+            <div className="panel" style={{ padding: 16, marginBottom: 12, borderLeft: "4px solid var(--error)" }}>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Le quedaron precios de antes</p>
+              <p className="tenue" style={{ margin: "6px 0 0", fontSize: 13, lineHeight: 1.5 }}>
+                A este profesional no se le factura, pero{" "}
+                {pegada.reservas > 0 && (
+                  <><b>{pegada.reservas}</b> {pegada.reservas === 1 ? "reserva suya tiene" : "reservas suyas tienen"} valor por hora estampado</>
+                )}
+                {pegada.reservas > 0 && pegada.cargos > 0 && " y "}
+                {pegada.cargos > 0 && (
+                  <>
+                    quedan <b>{pegada.cargos}</b> {pegada.cargos === 1 ? "cargo" : "cargos"} por{" "}
+                    <b>{plata(pegada.cargosCent)}</b> en su cuenta
+                  </>
+                )}
+                . Por eso figura en Cobranza y en Cierre de mes.
+              </p>
+              {pegada.cargosSellados > 0 && (
+                <p className="tenue" style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+                  Otros <b>{pegada.cargosSellados}</b> por {plata(pegada.cargosSelladosCent)} ya salieron en una
+                  liquidación emitida y <b>no se tocan</b>: eso ya es un papel que recibió. Para deshacerlo va una
+                  nota de crédito.
+                </p>
+              )}
+              <form action={sacarPrecios} style={{ marginTop: 12 }}>
+                <button type="submit" className="pastilla pastilla-riesgo" style={{ padding: "7px 14px", fontSize: 13 }}>
+                  Sacarle el precio a sus reservas
+                </button>
+              </form>
+            </div>
+          )}
+
           {puedeCobrar && !d.inquilino.facturable && d.totales.facturadoCent === 0n && cobros.length === 0 && (
             <p className="tenue panel" style={{ padding: "12px 14px", margin: "0 0 12px", fontSize: 13, lineHeight: 1.5 }}>
               A este profesional no se le factura y no tiene movimientos en {nombreDePeriodo(periodo)},
