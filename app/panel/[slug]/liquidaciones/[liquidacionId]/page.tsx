@@ -95,6 +95,12 @@ export default async function LiquidacionPage({
         <div className="no-imprimir" style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
           <Link className="pastilla" href={`/panel/${slug}/cierre?periodo=${d.periodo}`}>‹ Cierre de mes</Link>
           <Link className="pastilla" href={`/panel/${slug}/inquilinos/${d.inquilinoId}?periodo=${d.periodo}`}>Ficha del profesional</Link>
+          {/* Descargar es un <a> y no un <Link>: la respuesta es un archivo, no una pantalla.
+              `download` es redundante con el Content-Disposition de la ruta, pero deja dicho en
+              el markup qué hace el enlace. Imprimir queda al lado para el papel de verdad. */}
+          <a className="pastilla" href={`/panel/${slug}/liquidaciones/${liquidacionId}/pdf`} download>
+            ↓ Descargar PDF
+          </a>
           <BotonImprimir />
         </div>
 
