@@ -118,7 +118,14 @@ export function diagnosticoEmail(): Diagnostico {
   };
 }
 
-export type Mensaje = { para: string; asunto: string; html: string; texto: string };
+/**
+ * Un archivo que viaja pegado al mail. El contenido va en base64 porque es lo que piden las dos
+ * vías: Resend lo manda como texto en el JSON, y a nodemailer se le pasa el buffer que sale de
+ * decodificarlo. Guardarlo así de un lado evita tener dos formas del mismo dato.
+ */
+export type Adjunto = { nombre: string; contenidoBase64: string; tipo?: string };
+
+export type Mensaje = { para: string; asunto: string; html: string; texto: string; adjuntos?: Adjunto[] };
 
 export async function enviarEmail(a: Mensaje): Promise<ResultadoEnvio> {
   const resend = configResend();
@@ -139,7 +146,18 @@ async function enviarPorResend(a: Mensaje, c: { clave: string; desde: string }):
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${c.clave}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: c.desde, to: [a.para], subject: a.asunto, html: a.html, text: a.texto }),
+      body: JSON.stringify({
+        from: c.desde,
+        to: [a.para],
+        subject: a.asunto,
+        html: a.html,
+        text: a.texto,
+        // Resend recibe el contenido ya en base64; se omite la clave entera si no hay adjuntos,
+        // para no mandar un `attachments: []` que algunos validadores miran de reojo.
+        ...(a.adjuntos?.length
+          ? { attachments: a.adjuntos.map((x) => ({ filename: x.nombre, content: x.contenidoBase64 })) }
+          : {}),
+      }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!r.ok) return { ok: false, motivo: "rechazado", detalle: `${r.status} ${await r.text()}` };
@@ -173,7 +191,19 @@ async function enviarPorSmtp(
       greetingTimeout: TIMEOUT_MS,
       socketTimeout: TIMEOUT_MS,
     });
-    await transporte.sendMail({ from: c.desde, to: a.para, subject: a.asunto, html: a.html, text: a.texto });
+    await transporte.sendMail({
+      from: c.desde,
+      to: a.para,
+      subject: a.asunto,
+      html: a.html,
+      text: a.texto,
+      // nodemailer quiere los bytes, no el base64: se decodifica acá, del lado que va a hablar SMTP.
+      attachments: a.adjuntos?.map((x) => ({
+        filename: x.nombre,
+        content: Buffer.from(x.contenidoBase64, "base64"),
+        contentType: x.tipo,
+      })),
+    });
     return { ok: true, via: "smtp" };
   } catch (e) {
     return { ok: false, motivo: "rechazado", detalle: sinSecretos(e) };
