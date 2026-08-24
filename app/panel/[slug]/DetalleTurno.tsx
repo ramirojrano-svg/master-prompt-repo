@@ -196,12 +196,7 @@ export function DetalleTurno({
 
               <button type="submit" style={{ width: "100%", background: "var(--error)" }}>
                 {esSerie ? "Cancelar" : "Cancelar turno"}
-              </button>
-              <p className="tenue" style={{ margin: "8px 0 0", fontSize: 12 }}>
-                Libera la hora y devuelve lo facturado. Queda registrado: el cargo no se borra, se
-                le suma una nota de crédito.
-              </p>
-            </form>
+              </button>            </form>
           )}
         </div>
       )}

@@ -56,11 +56,6 @@ export default async function CobroPage({
         {sp.ok && <p className="aviso-ok">Guardado. Va a salir en el pie de las próximas liquidaciones.</p>}
         {sp.error && <p className="aviso-error">No se pudo guardar. Revisá que el día de vencimiento esté entre 1 y 28.</p>}
 
-        <p className="tenue" style={{ margin: "6px 0 18px", fontSize: 13, lineHeight: 1.6 }}>
-          Esto se imprime al pie de cada liquidación, debajo del total. Se carga una vez y no se
-          vuelve a tocar. Lo que dejes vacío, no se imprime.
-        </p>
-
         <form action={guardar} className="panel" style={{ padding: 20, display: "grid", gap: 14 }}>
           <div>
             <label htmlFor="titular" style={{ marginTop: 0 }}>Titular de la cuenta</label>
@@ -93,11 +88,6 @@ export default async function CobroPage({
             <input id="diaVencimiento" name="diaVencimiento" type="number" min={1} max={28} required defaultValue={d.diaVencimiento} style={{ width: 90 }} />
             {/* El tope de 28 no es capricho: un vencimiento el 30 no existe en febrero, y una
                 fecha que algunos meses no existe es una fecha que algún mes falla. */}
-            <p className="tenue" style={{ margin: "6px 0 0", fontSize: 12, lineHeight: 1.5 }}>
-              Al cerrar un mes, el vencimiento se propone en ese día del mes siguiente: agosto vence
-              el {d.diaVencimiento} de septiembre. Se puede cambiar antes de emitir. Hasta 28, para
-              que la fecha exista también en febrero.
-            </p>
           </div>
           <BotonEnviar enviando="Guardando…">Guardar</BotonEnviar>
         </form>

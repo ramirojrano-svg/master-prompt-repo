@@ -166,13 +166,6 @@ export default async function TarifasPage({
     <>
       <Cabecera slug={slug} titulo="Precio de la hora" />
       <main style={{ padding: 20, maxWidth: 960, margin: "0 auto" }}>
-      <p className="tenue" style={{ marginTop: 4 }}>
-        El precio es del PROFESIONAL, no del consultorio: el mismo profesional paga lo mismo
-        alquile donde alquile. Manda el más específico: primero el suyo, y si no tiene, el general
-        del centro. Un precio no se edita: se pone uno nuevo y el anterior queda cerrado, así lo
-        que ya se reservó sigue valiendo lo que valía.
-      </p>
-
       {/* ── Lo que rige hoy ─────────────────────────────────────────────── */}
       <h2 style={{ fontSize: 16, marginTop: 20 }}>Precios cargados</h2>
       {vigentes.length === 0 ? (

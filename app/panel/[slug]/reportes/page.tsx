@@ -284,12 +284,6 @@ export default async function ReportesPage({
             </div>
           </section>
         )}
-
-        <p className="tenue" style={{ fontSize: 12, marginTop: 22 }}>
-          Un turno cuenta en el mes en que empieza, con la hora del centro ({r.tz}). Lo facturado
-          sale del libro de cuenta corriente, no de multiplicar horas por precio: si hubo un ajuste
-          o una nota de crédito, acá está.
-        </p>
       </main>
     </>
   );
