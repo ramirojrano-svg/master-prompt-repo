@@ -90,8 +90,20 @@ export async function pendientesDeCierre(
         liquidacion: l ? { id: l.id, numero: l.numero, totalCent: l.totalCent, estado: l.estado, emitidaAt: l.emitidaAt } : null,
       };
     })
-    // Primero lo que falta cerrar, y dentro de eso lo más grande: es el orden en que se trabaja.
-    .sort((x, y) => Number(y.pendienteCent - x.pendienteCent) || x.nombre.localeCompare(y.nombre, "es"));
+    // Lo más grande primero: es el orden en que se trabaja.
+    //
+    // El peso de la fila es lo que ese profesional representa en el mes, ESTÉ o no cerrado. Antes
+    // se ordenaba por lo pendiente a secas, y eso tenía un efecto molesto: al cerrar una fila su
+    // pendiente pasaba a cero y la fila se iba al fondo de la tabla — justo en el momento en que
+    // uno está mirando lo que acaba de cerrar, y con la lista entera moviéndose abajo del dedo.
+    // Como el total de la liquidación es exactamente lo que se acaba de reclamar, mirar uno u otro
+    // da el mismo número y la fila se queda donde estaba.
+    .sort((x, y) => Number(pesoDeFila(y) - pesoDeFila(x)) || x.nombre.localeCompare(y.nombre, "es"));
+}
+
+/** Cuánto pesa la fila en el orden: lo cerrado vale lo mismo que valía cuando estaba pendiente. */
+function pesoDeFila(f: FilaCierre): bigint {
+  return f.liquidacion?.totalCent ?? f.pendienteCent;
 }
 
 /**

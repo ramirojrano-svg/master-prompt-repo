@@ -264,32 +264,36 @@ export default async function CierrePage({
                       {f.pendientes ? plata(f.pendienteCent) : "—"}
                     </td>
                     <td>
+                      {/* El ESTADO en palabras, no el número del papel: parado frente a la lista lo
+                          que se busca es a quién ya le cerré y a quién no. El N° y el importe viven
+                          a un click, en el documento. */}
                       {f.liquidacion ? (
-                        // Una hoja y no un "N° 14": recién cerrado, lo que uno quiere es ABRIR el
-                        // papel para mirarlo antes de mandarlo, y un ícono de documento dice eso
-                        // de un vistazo. Bajarlo es una decisión aparte y se toma adentro: un
-                        // click que deja un archivo en Descargas sin haberlo pedido sorprende.
-                        <Link
-                          href={`/panel/${slug}/liquidaciones/${f.liquidacion.id}`}
-                          title={`Ver la liquidación N° ${f.liquidacion.numero} de ${f.nombre}`}
-                          style={{ display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}
-                        >
-                          {/* `flexShrink` en el ícono: sin eso, en una columna angosta el SVG se
-                              aplasta a un rectángulo antes de que el texto decida partirse. */}
-                          <span style={{ display: "flex", flexShrink: 0 }}><IconoDocumento tam={20} /></span>
-                          <span>
-                            <b>N° {f.liquidacion.numero}</b> · {plata(f.liquidacion.totalCent)}
-                          </span>
-                        </Link>
+                        <span style={{ color: "var(--ok)", fontWeight: 600 }}>cerrada</span>
                       ) : (
                         <span className="tenue">sin cerrar</span>
                       )}
+                      {/* Cerrada PERO con cargos que llegaron tarde: no entran en ninguna
+                          liquidación —solo hay una por mes y ya se emitió— así que es plata que
+                          nadie va a cobrar si no se la ve. */}
+                      {f.pendientes > 0 && f.liquidacion && (
+                        <span className="tenue" style={{ display: "block", fontSize: 12 }}>fuera del cierre</span>
+                      )}
                     </td>
                     <td className="num">
-                      {/* Con el mes ya cerrado el botón no se ofrece: apretarlo solo daría un error.
-                          En su lugar se dice qué pasó, que es lo que hace falta saber. */}
-                      {f.pendientes > 0 && f.liquidacion ? (
-                        <span className="tenue" style={{ fontSize: 12 }}>fuera del cierre</span>
+                      {/* Con el mes ya cerrado el botón no se ofrece —apretarlo solo daría un
+                          error— y en su lugar queda la hoja para abrir el papel. Es una hoja y no
+                          un "ver": recién cerrado, lo que uno quiere es MIRAR la liquidación antes
+                          de mandarla. Bajarla es una decisión aparte y se toma adentro: un click
+                          que deja un archivo en Descargas sin haberlo pedido sorprende. */}
+                      {f.liquidacion ? (
+                        <Link
+                          href={`/panel/${slug}/liquidaciones/${f.liquidacion.id}`}
+                          title={`Ver la liquidación N° ${f.liquidacion.numero} de ${f.nombre} · ${plata(f.liquidacion.totalCent)}`}
+                          aria-label={`Ver la liquidación N° ${f.liquidacion.numero} de ${f.nombre}`}
+                          style={{ display: "inline-flex", flexShrink: 0 }}
+                        >
+                          <IconoDocumento tam={22} />
+                        </Link>
                       ) : f.pendientes > 0 ? (
                         <form action={cerrarUno}>
                           <input type="hidden" name="periodo" value={periodo} />
