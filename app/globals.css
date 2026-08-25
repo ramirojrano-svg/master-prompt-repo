@@ -957,6 +957,35 @@ tfoot td {
     font-weight: 400;
     margin-right: 6px;
   }
+  /* Una celda sin dato ("—") apilada es una línea entera que no dice nada. En la tabla ancha el
+     guión SÍ sirve —marca el lugar de la columna—, pero acá abajo solo estira la fila: un mes ya
+     cerrado mostraba "Cargos: —" y "Pendiente: —" antes de lo único que importaba, el estado. */
+  .lista-personas td[data-vacio] {
+    display: none;
+  }
+
+  /* Cada fila apilada es una TARJETA, no un montón de renglones sueltos.
+     Sin esto cada celda dibujaba su propia línea inferior y la pantalla quedaba como una lista
+     continua de rayas: no se veía dónde terminaba una entrada y empezaba la siguiente. Se saca el
+     borde de las celdas y se lo pone alrededor de la fila, que es la unidad que uno lee. */
+  .lista-personas tbody td {
+    border-bottom: 0;
+  }
+  .lista-personas tbody tr {
+    display: block;
+    background: var(--panel);
+    border: 1px solid var(--borde);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .lista-personas tbody tr:last-child {
+    margin-bottom: 0;
+  }
+  /* El panel que la contiene ya pone su propio marco: dos marcos encimados se ven sucios. */
+  .panel > .lista-personas {
+    padding: 12px;
+  }
 }
 
 /* ── El dedo no es un mouse ───────────────────────────────────────────────── */

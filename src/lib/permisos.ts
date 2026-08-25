@@ -48,6 +48,40 @@ export type Permiso =
   | "auditoria.ver"
   | "datos.exportar";
 
+/**
+ * El permiso en castellano, para mostrárselo a una persona.
+ *
+ * El registro de actividad guarda el código (`periodo.cerrar`) porque es lo que no cambia si
+ * mañana se reescribe un texto. Pero una pantalla que le muestra "periodo.cerrar" al dueño del
+ * centro le está pidiendo que traduzca de un vocabulario que nunca vio: la lista se vuelve
+ * ilegible justo cuando hace falta leerla, que es cuando algo no cierra.
+ */
+export const ETIQUETA_PERMISO: Record<Permiso, string> = {
+  "agenda.ver.identidad": "Ver de quién es cada reserva",
+  "agenda.ver.disponibilidad": "Ver la disponibilidad",
+  "reserva.crear.propia": "Agendar un turno propio",
+  "perfil.propio.editar": "Editar el perfil propio",
+  "reserva.crear.ajena": "Agendar un turno",
+  "reserva.editar.propia": "Mover un turno propio",
+  "reserva.editar.ajena": "Mover un turno",
+  "reserva.forzar_solape": "Superponer dos turnos",
+  "bloqueo.crear": "Bloquear un horario",
+  "sala.administrar": "Administrar consultorios",
+  "inquilino.administrar": "Administrar profesionales",
+  "tarifa.administrar": "Cambiar precios",
+  "cobro.registrar": "Registrar un cobro",
+  "cuenta.ver.propia": "Ver la cuenta propia",
+  "cuenta.ver.todas": "Ver las cuentas",
+  "finanzas.ver.agregada": "Ver los números del centro",
+  "periodo.cerrar": "Cerrar el mes",
+  "acceso.codigo.ver": "Ver el código de acceso",
+  "acceso.codigo.rotar": "Cambiar el código de acceso",
+  "publica.configurar": "Cambiar la configuración",
+  "usuarios.administrar": "Administrar accesos",
+  "auditoria.ver": "Ver el registro de actividad",
+  "datos.exportar": "Exportar datos",
+};
+
 const TODOS: Permiso[] = [
   "agenda.ver.identidad",
   "agenda.ver.disponibilidad",

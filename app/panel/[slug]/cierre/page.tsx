@@ -259,8 +259,18 @@ export default async function CierrePage({
                       {/* A nombre de quién sale el papel: es el dato que se mira al momento de cobrar. */}
                       {f.pagador && <span className="tenue" style={{ fontSize: 12 }}> · abona {f.pagador}</span>}
                     </td>
-                    <td className="num">{f.pendientes || "—"}</td>
-                    <td className="num" style={f.pendientes > 0 && f.liquidacion ? { color: "var(--error)", fontWeight: 600 } : undefined}>
+                    {/* `data-rotulo` y `data-vacio` solo pintan en el teléfono, donde la fila se
+                        apila y la columna deja de decir qué es cada número. En la tabla ancha no
+                        cambian nada. */}
+                    <td className="num" data-rotulo="Cargos:" data-vacio={f.pendientes ? undefined : "1"}>
+                      {f.pendientes || "—"}
+                    </td>
+                    <td
+                      className="num"
+                      data-rotulo="Pendiente:"
+                      data-vacio={f.pendientes ? undefined : "1"}
+                      style={f.pendientes > 0 && f.liquidacion ? { color: "var(--error)", fontWeight: 600 } : undefined}
+                    >
                       {f.pendientes ? plata(f.pendienteCent) : "—"}
                     </td>
                     <td>

@@ -11,7 +11,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Cabecera } from "../Cabecera.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
-import { puede } from "../../../../src/lib/permisos.ts";
+import { ETIQUETA_PERMISO, puede, type Permiso } from "../../../../src/lib/permisos.ts";
+import { prisma } from "../../../../src/db/prisma.ts";
 import { MESES_RETENCION, ultimasEntradas } from "../../../../src/lib/auditoria.ts";
 
 /** El código crudo no se le muestra a nadie: se traduce a lo que pasó. */
@@ -37,6 +38,18 @@ export default async function AuditoriaPage({
 
   const todo = sp.ver === "todo";
   const filas = await ultimasEntradas({ operadorId: actor.operadorId, soloRechazos: !todo });
+
+  // El resumen se guarda con el id del profesional, que es lo correcto: un nombre cambia y el
+  // registro dejaría de coincidir con lo que pasó. Pero "cierre de 2026-07 para
+  // cmt2i42rp000y7dvvkjm7o9wv" no le dice nada a nadie, así que el id se cambia por el nombre AL
+  // MOSTRARLO. Lo guardado sigue intacto.
+  const fichas = await prisma.inquilino.findMany({
+    where: { operadorId: actor.operadorId },
+    select: { id: true, nombre: true },
+  });
+  const nombreDe = new Map(fichas.map((f) => [f.id, f.nombre]));
+  const legible = (resumen: string | null) =>
+    resumen?.replace(/\b[a-z0-9]{20,}\b/g, (id) => nombreDe.get(id) ?? id) ?? null;
 
   const cuando = (d: Date) =>
     d.toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -84,14 +97,19 @@ export default async function AuditoriaPage({
                         {cuando(f.creadoEl)}
                       </td>
                       <td data-rotulo="Qué:">
-                        {f.permiso}
+                        {ETIQUETA_PERMISO[f.permiso as Permiso] ?? f.permiso}
                         <span className="tenue" style={{ fontSize: 12 }}> · {f.rol}</span>
                       </td>
                       <td data-rotulo="Cómo salió:" style={rechazo ? { color: "var(--error)" } : undefined}>
                         {RESULTADO[f.resultado] ?? f.resultado}
                       </td>
-                      <td className="tenue" style={{ fontSize: 13 }} data-rotulo="Detalle:">
-                        {f.resumen ?? "—"}
+                      <td
+                        className="tenue"
+                        style={{ fontSize: 13 }}
+                        data-rotulo="Detalle:"
+                        data-vacio={f.resumen ? undefined : "1"}
+                      >
+                        {legible(f.resumen) ?? "—"}
                       </td>
                     </tr>
                   );
