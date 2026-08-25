@@ -1121,3 +1121,27 @@ tfoot td {
 .mes-agendar:active {
   background: var(--agua-clara);
 }
+
+/* ── La manito de arrastrar, nítida ───────────────────────────────────────── */
+/* `cursor: grab` usa el cursor que trae el navegador, y en Windows ese es un mapa de bits chico:
+   con el escalado de pantalla al 125% o 150% —lo normal en una notebook— el sistema lo agranda
+   estirando píxeles y la mano se ve dentada. No es un problema de la pantalla ni del zoom de la
+   página: el dibujo original no tiene los píxeles para agrandarse.
+
+   Un cursor en SVG no tiene ese techo: es una figura, no una foto, así que se dibuja limpio a
+   cualquier escala. Va como data URI para no pedir un archivo aparte —un cursor que llega tarde
+   parpadea— y con `grab` detrás como respaldo: Safari no acepta cursores SVG y ahí conviene el
+   del sistema antes que ninguno. Los números finales (12 12) son el punto exacto que "agarra",
+   el centro de la palma; sin eso el cursor apunta a su esquina y el turno se suelta corrido. */
+.agarrable {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23103040' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 11V5.5a1.5 1.5 0 0 1 3 0V11' fill='%23fff'/%3E%3Cpath d='M12 11V4.5a1.5 1.5 0 0 1 3 0V11' fill='%23fff'/%3E%3Cpath d='M15 11V6.5a1.5 1.5 0 0 1 3 0V13' fill='%23fff'/%3E%3Cpath d='M9 11V9.5a1.5 1.5 0 0 0-3 0v4.7c0 3.2 2.4 5.8 5.5 5.8h1.2c3 0 5.3-2.4 5.3-5.4V13' fill='%23fff'/%3E%3C/svg%3E")
+      12 12,
+    grab;
+}
+.agarrable:active {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23103040' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 12.5V11a1.5 1.5 0 0 1 3 0v1.2' fill='%23fff'/%3E%3Cpath d='M11 12.2V10a1.5 1.5 0 0 1 3 0v2.2' fill='%23fff'/%3E%3Cpath d='M14 12.2v-1.7a1.5 1.5 0 0 1 3 0V14' fill='%23fff'/%3E%3Cpath d='M8 12.5v-1a1.5 1.5 0 0 0-3 0v2.7c0 3.2 2.4 5.8 5.5 5.8h1.2c3 0 5.3-2.4 5.3-5.4V14' fill='%23fff'/%3E%3C/svg%3E")
+      12 12,
+    grabbing;
+}

@@ -24,7 +24,18 @@ import { minutosAHora } from "../../../src/dominio/motor/zona.ts";
 import { DIA_CORTO, nombreCorto } from "../../../src/dominio/calendario.ts";
 import { diaSemanaDeFecha } from "../../../src/dominio/motor/zona.ts";
 
-const ALTO_CELDA = 30; // px por paso (30')
+const ALTO_CELDA = 30; // px por paso (30'): el alto CÓMODO, y el techo
+/** Lo más flaca que puede quedar una franja antes de volverse impracticable con el mouse. */
+const ALTO_MIN = 16;
+/**
+ * Lo que ocupa, dentro del alto útil, todo lo que NO son franjas: el aire de abajo más la cabecera
+ * pegajosa de columnas. Medidos en pantalla, no estimados: la cabecera de la semana lleva el día
+ * Y el consultorio en dos renglones, así que mide 70px contra los 39 de la vista día. Con un solo
+ * número para las dos, la semana se pasaba de largo por treinta píxeles — que es exactamente la
+ * franja que quedaba escondida.
+ */
+const AIRE_PX = 58;
+const CABECERA_PX = { dia: 40, semana: 76, mes: 40 } as const;
 
 type Mover = (input: { ocupacionId: string; salaDestinoId: string; fecha: string; hora: string }) => Promise<{ ok: boolean; mensaje: string }>;
 
@@ -88,10 +99,34 @@ export function Grilla({
   const porId = new Map(dia.reservas.map((r) => [r.id, r]));
   const anchoEje = 56;
 
+  /**
+   * El alto de cada franja de 30'.
+   *
+   * Era fijo en 30px, y con eso un día de 07:00 a 23:00 mide 960px: en una pantalla de escritorio
+   * común quedaban ~170px abajo que solo se veían scrolleando, y encima sobraba blanco entre el
+   * final de la grilla y el borde. Un calendario que no se ve entero obliga a mover el mouse para
+   * saber si a las 21:00 hay algo, que es justo lo que uno quiere responder de un vistazo.
+   *
+   * Se resuelve en CSS y no en JS porque depende del alto de la ventana, que el servidor no conoce
+   * —calcularlo en el cliente haría que la grilla salte al cargar—. `clamp` la achica lo necesario
+   * para que entre, pero nunca por debajo de lo que se puede apuntar con el mouse: en una ventana
+   * muy baja vuelve a haber scroll, que es preferible a franjas de 6px.
+   */
+  const reservaPx = AIRE_PX + (CABECERA_PX[dia.vista as keyof typeof CABECERA_PX] ?? CABECERA_PX.dia);
+  const altoFila = `clamp(${ALTO_MIN}px, calc((100dvh - var(--barra) - ${reservaPx}px) / ${dia.filas}), ${ALTO_CELDA}px)`;
+
+  /** El alto REAL que terminó teniendo una franja, medido del DOM. Las cuentas del arrastre tienen
+   *  que usar esto y no la constante: desde que el alto es elástico, la constante es solo el techo. */
+  const ejeRef = useRef<HTMLDivElement>(null);
+  const altoCelda = () => {
+    const alto = ejeRef.current?.getBoundingClientRect().height;
+    return alto && dia.filas > 0 ? alto / dia.filas : ALTO_CELDA;
+  };
+
   /** La fila (franja de 30') sobre la que está el cursor dentro de una columna. */
   function filaDelCursor(e: React.DragEvent | React.MouseEvent, filasDeAgarre: number): number {
     const caja = e.currentTarget.getBoundingClientRect();
-    const cruda = Math.floor((e.clientY - caja.top) / ALTO_CELDA) - filasDeAgarre;
+    const cruda = Math.floor((e.clientY - caja.top) / (caja.height / dia.filas)) - filasDeAgarre;
     return Math.max(0, Math.min(dia.filas - 1, cruda));
   }
 
@@ -226,13 +261,14 @@ export function Grilla({
 
           {/* ── Eje horario (sticky a la izquierda) ────────────────────────── */}
           <div
+            ref={ejeRef}
             style={{
               position: "sticky",
               left: 0,
               zIndex: 2,
               background: "var(--panel)",
               display: "grid",
-              gridTemplateRows: `repeat(${dia.filas}, ${ALTO_CELDA}px)`,
+              gridTemplateRows: `repeat(${dia.filas}, ${altoFila})`,
             }}
           >
             {Array.from({ length: dia.filas }, (_, i) => {
@@ -299,12 +335,12 @@ export function Grilla({
                 style={{
                   cursor: baseNuevo ? "pointer" : undefined,
                   display: "grid",
-                  gridTemplateRows: `repeat(${dia.filas}, ${ALTO_CELDA}px)`,
+                  gridTemplateRows: `repeat(${dia.filas}, ${altoFila})`,
                   gridTemplateColumns: `repeat(${carriles}, 1fr)`,
                   // 2px y con el borde fuerte: en la vista de día cada columna es UN consultorio, y
                 // con la línea fina la grilla se leía como una tabla sola en vez de tres espacios.
                 borderLeft: "2px solid var(--borde-fuerte)",
-                  background: `repeating-linear-gradient(to bottom, transparent 0 ${ALTO_CELDA - 1}px, var(--borde) ${ALTO_CELDA - 1}px ${ALTO_CELDA}px)`,
+                  background: `repeating-linear-gradient(to bottom, transparent 0 calc(${altoFila} - 1px), var(--borde) calc(${altoFila} - 1px) ${altoFila})`,
                 }}
               >
                 {/* La franja bajo el cursor, con la hora escrita. Se apaga mientras se arrastra:
@@ -373,13 +409,13 @@ export function Grilla({
                     <Bloque
                       key={u.id}
                       href={destino}
-                      className="evento"
+                      className={movible ? "evento agarrable" : "evento"}
                       draggable={movible}
                       onDragStart={
                         movible
                           ? (e) => {
                               const caja = e.currentTarget.getBoundingClientRect();
-                              const a = { id: u.id, salaId: r.salaId, filasDeAgarre: Math.floor((e.clientY - caja.top) / ALTO_CELDA) };
+                              const a = { id: u.id, salaId: r.salaId, filasDeAgarre: Math.floor((e.clientY - caja.top) / altoCelda()) };
                               arrastreRef.current = a; // disponible YA, sin esperar el re-render
                               setArrastre(a);
                               e.dataTransfer.effectAllowed = "move";
@@ -417,7 +453,7 @@ export function Grilla({
                         borderTop: u.recortadoArriba ? "2px dotted #fff" : undefined,
                         // bloque corto dibujado más alto que su duración: borde punteado (§6.5)
                         borderBottom: u.recortadoAbajo || u.estirado ? "2px dotted #fff" : undefined,
-                        cursor: movible ? "grab" : undefined,
+                        // La manito la pone `.agarrable` en el CSS: en SVG, para que no se vea dentada.
                         opacity: seEstaMoviendo ? 0.4 : undefined,
                         // Con un arrastre en curso los bloques dejan de interceptar: el drop tiene
                         // que llegar a la columna, incluso soltando sobre otro turno.
