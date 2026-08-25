@@ -26,6 +26,27 @@ import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
 import { BotonEnviar } from "../BotonEnviar.tsx";
 import { IconoDocumento } from "../../../Iconos.tsx";
 
+/**
+ * La fecha de vencimiento del período, leída de Configuración → Datos de cobro.
+ *
+ * Se resuelve acá y no en el formulario: el día lo decide una sola vez quien administra el centro,
+ * y repetirlo como un campo en cada cierre era pedir que se confirme algo que ya estaba decidido —
+ * con la puerta abierta a que dos meses seguidos venzan en fechas distintas por una tecla mal
+ * apretada. Se relee de la base DENTRO de la acción y no se toma del render: lo que viaja en el
+ * formulario puede venir modificado desde el navegador.
+ *
+ * Vive a nivel de MÓDULO, y eso no es un detalle de estilo: las dos acciones de servidor la usan,
+ * y una acción de servidor serializa todo lo que captura de su entorno. Una función no se puede
+ * serializar, así que definida adentro del componente hacía explotar la pantalla entera con
+ * "Functions cannot be passed directly to Client Components" — el cierre de mes quedó inusable
+ * desde que el campo de vencimiento salió del formulario. Acá arriba no se captura nada: es una
+ * referencia del módulo.
+ */
+async function vencimientoDe(operadorId: string, periodo: string) {
+  const c = await datosDeCobro(operadorId);
+  return venceElDelPeriodo(periodo, c.diaVencimiento);
+}
+
 export default async function CierrePage({
   params,
   searchParams,
@@ -77,22 +98,6 @@ export default async function CierrePage({
     day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
   });
   const volverA = `/panel/${slug}/cierre?periodo=${periodo}`;
-
-  /**
-   * La fecha de vencimiento del período, leída de Configuración → Datos de cobro.
-   *
-   * Se resuelve ACÁ y no en el formulario: el día lo decide una sola vez quien administra el
-   * centro, y repetirlo como un campo en cada cierre era pedir que se confirme algo que ya estaba
-   * decidido — con la puerta abierta a que dos meses seguidos venzan en fechas distintas por una
-   * tecla mal apretada.
-   *
-   * Se relee de la base dentro de la acción, y no se toma del render: lo que viaja en el
-   * formulario puede venir modificado desde el navegador.
-   */
-  async function vencimientoDe(operadorId: string, periodo: string) {
-    const c = await datosDeCobro(operadorId);
-    return venceElDelPeriodo(periodo, c.diaVencimiento);
-  }
 
   async function cerrarUno(formData: FormData) {
     "use server";
