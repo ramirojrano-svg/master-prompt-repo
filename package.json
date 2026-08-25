@@ -8,7 +8,7 @@
   },
   "scripts": {
     "acceso": "node scripts/acceso.mjs",
-    "build": "next build",
+    "build": "node scripts/esquema.mjs && next build",
     "db:esquema": "node scripts/esquema.mjs",
     "db:reset": "node scripts/esquema.mjs --reset",
     "dev": "next dev",
