@@ -127,6 +127,19 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
     return `/panel/${slug}?${q.toString()}`;
   }
 
+  /**
+   * Ir a otra fecha de la AGENDA. A diferencia de `href`, NO arrastra `mes`.
+   *
+   * `mes` existe para poder hojear el calendarito del lateral sin mover la agenda. Pero cuando la
+   * que se mueve es la agenda, el lateral tiene que acompañarla: quedaba la agenda en octubre y el
+   * calendarito en agosto, dos meses distintos en la misma pantalla y ninguna pista de por qué.
+   * Al soltar el parámetro, `mesLateral` vuelve a su default, que es la fecha de la agenda.
+   */
+  function hrefFecha(fecha: string): string {
+    const q = new URLSearchParams({ fecha, vista, ...(sp.salas ? { salas: sp.salas } : {}) });
+    return `/panel/${slug}?${q.toString()}`;
+  }
+
   /** Link para prender/apagar una sala del filtro lateral. */
   function hrefSala(salaId: string): string {
     const actuales = new Set(agenda!.salasVisibles);
@@ -238,7 +251,7 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
             —qué estoy mirando y cómo me muevo—, mientras que "‹ › Agosto" son dos controles
             sueltos y hay que mirar dos veces para entender que las flechas mueven ESE mes. */}
         <span style={{ display: "flex", alignItems: "center", gap: 2, minWidth: 0, flexShrink: 1 }}>
-          <Link className="nav-circ" href={href(navegar(vista, agenda.fecha, -1))} aria-label="Anterior">
+          <Link className="nav-circ" href={hrefFecha(navegar(vista, agenda.fecha, -1))} aria-label="Anterior">
             ‹
           </Link>
           <h1
@@ -257,7 +270,7 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
           >
             {agenda.titulo}
           </h1>
-          <Link className="nav-circ" href={href(navegar(vista, agenda.fecha, 1))} aria-label="Siguiente">
+          <Link className="nav-circ" href={hrefFecha(navegar(vista, agenda.fecha, 1))} aria-label="Siguiente">
             ›
           </Link>
         </span>
@@ -401,8 +414,8 @@ export default async function PanelPage({ params, searchParams }: { params: Prom
             // desincronizado. Solo envuelve la vista MES — en día y semana el gesto competiría
             // con el arrastre de turnos entre consultorios.
             <Deslizar
-              anterior={href(navegar(vista, agenda.fecha, -1))}
-              siguiente={href(navegar(vista, agenda.fecha, 1))}
+              anterior={hrefFecha(navegar(vista, agenda.fecha, -1))}
+              siguiente={hrefFecha(navegar(vista, agenda.fecha, 1))}
             >
               <VistaMes dia={agenda} hoy={hoy} href={href} puedeCrear={puedeCargar || puedeCargarPropia} />
             </Deslizar>
