@@ -142,23 +142,40 @@ export function pdfDeLiquidacion(d: DetalleLiquidacion, cobro: DatosDeCobro): Ui
 
   // ── A dónde transferir ────────────────────────────────────────────────────
   if (d.totalCent > 0n && hayDatosDeCobro(cobro)) {
+    // `paraCopiar` marca los dos que no se leen sino que se PEGAN en el homebanking.
+    //
+    // Van en dos renglones —la etiqueta arriba, el valor solo abajo— y no en la misma línea que su
+    // rótulo. El motivo es de uso, no de estética: al tocar dos veces, el visor de PDF aplica su
+    // propia regla de qué es "una palabra" y corta el alias en el punto o se come el último dígito
+    // del CBU. Eso lo decide el visor y no se puede cambiar desde el archivo —está verificado: acá
+    // adentro cada valor viaja como UNA cadena entera—. Lo que sí se puede es dejar el valor solo
+    // en su renglón, para que arrastrar el dedo sobre esa línea lo tome completo sin pelearse con
+    // dónde el visor cree que termina la palabra.
     const filas = [
-      cobro.titular && ["Titular", cobro.titular],
-      cobro.cuit && ["CUIT", cobro.cuit],
-      cobro.banco && ["Banco", cobro.banco],
-      cobro.alias && ["Alias", cobro.alias],
-      cobro.cbu && ["CBU/CVU", cobro.cbu],
-    ].filter(Boolean) as [string, string][];
+      cobro.titular && { rotulo: "Titular", valor: cobro.titular, paraCopiar: false },
+      cobro.cuit && { rotulo: "CUIT", valor: cobro.cuit, paraCopiar: false },
+      cobro.banco && { rotulo: "Banco", valor: cobro.banco, paraCopiar: false },
+      cobro.alias && { rotulo: "Alias", valor: cobro.alias, paraCopiar: true },
+      cobro.cbu && { rotulo: "CBU/CVU", valor: cobro.cbu, paraCopiar: true },
+    ].filter(Boolean) as { rotulo: string; valor: string; paraCopiar: boolean }[];
 
     y += mm(10);
-    const alto = mm(12) + filas.length * mm(5.5) + (cobro.nota ? mm(6) : 0);
+    const altoFilas = filas.reduce((acc, f) => acc + (f.paraCopiar ? mm(9) : mm(5.5)), 0);
+    const alto = mm(12) + altoFilas + (cobro.nota ? mm(6) : 0);
     o.push({ tipo: "caja", x: IZQ, y, ancho: DER - IZQ, alto, color: SUAVE });
     y += mm(7);
     o.push({ tipo: "texto", x: IZQ + mm(5), y, texto: "Para transferir", tam: 10, fuente: "Helvetica-Bold", color: TEXTO });
-    for (const [rotulo, valor] of filas) {
-      y += mm(5.5);
-      o.push({ tipo: "texto", x: IZQ + mm(5), y, texto: rotulo, tam: 9, color: TENUE });
-      o.push({ tipo: "texto", x: IZQ + mm(28), y, texto: valor, tam: 9, fuente: "Helvetica-Bold", color: TEXTO });
+    for (const f of filas) {
+      if (f.paraCopiar) {
+        y += mm(4.5);
+        o.push({ tipo: "texto", x: IZQ + mm(5), y, texto: f.rotulo, tam: 8, color: TENUE });
+        y += mm(4.5);
+        o.push({ tipo: "texto", x: IZQ + mm(5), y, texto: f.valor, tam: 11, fuente: "Helvetica-Bold", color: TEXTO });
+      } else {
+        y += mm(5.5);
+        o.push({ tipo: "texto", x: IZQ + mm(5), y, texto: f.rotulo, tam: 9, color: TENUE });
+        o.push({ tipo: "texto", x: IZQ + mm(28), y, texto: f.valor, tam: 9, fuente: "Helvetica-Bold", color: TEXTO });
+      }
     }
     if (cobro.nota) {
       y += mm(5.5);

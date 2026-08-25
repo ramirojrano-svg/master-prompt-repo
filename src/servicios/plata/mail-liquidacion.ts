@@ -31,15 +31,29 @@ function esc(s: string): string {
 const dia = (d: Date) => d.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "2-digit" });
 const fechaLarga = (d: Date) => d.toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" });
 
-/** Las líneas "a dónde transferir", una por renglón. Se arma una vez y se usa en HTML y en texto. */
-function lineasDeCobro(c: DatosDeCobro): string[] {
-  const l: string[] = [];
-  if (c.titular) l.push(`Titular: ${c.titular}`);
-  if (c.cuit) l.push(`CUIT: ${c.cuit}`);
-  if (c.banco) l.push(`Banco: ${c.banco}`);
-  if (c.alias) l.push(`Alias: ${c.alias}`);
-  if (c.cbu) l.push(`CBU/CVU: ${c.cbu}`);
-  if (c.nota) l.push(c.nota);
+/**
+ * Los datos para transferir, con la marca de cuáles se COPIAN.
+ *
+ * El alias y el CBU no son datos para leer: son datos para pegar en el homebanking, y de ahí sale
+ * todo el problema. En el PDF adjunto el archivo trae cada uno como una cadena entera y correcta
+ * —está verificado leyendo el PDF por dentro—, pero al tocar dos veces el visor aplica SU regla de
+ * qué es "una palabra": corta el alias en el punto (`ramirorano` / `astropay`) y a veces deja
+ * afuera el último dígito del CBU. Eso lo decide el visor y no se puede cambiar desde el archivo.
+ *
+ * Lo que sí se puede es no obligar a nadie a pelearse con eso: en el mail estos dos van SOLOS en
+ * su renglón, grandes y en monoespaciada. Un valor solo en su línea se selecciona de una pasada
+ * con el dedo, sin depender de dónde el visor crea que termina la palabra.
+ */
+type DatoDeCobro = { rotulo: string; valor: string; paraCopiar: boolean };
+
+function datosParaTransferir(c: DatosDeCobro): DatoDeCobro[] {
+  const l: DatoDeCobro[] = [];
+  if (c.titular) l.push({ rotulo: "Titular", valor: c.titular, paraCopiar: false });
+  if (c.cuit) l.push({ rotulo: "CUIT", valor: c.cuit, paraCopiar: false });
+  if (c.banco) l.push({ rotulo: "Banco", valor: c.banco, paraCopiar: false });
+  if (c.alias) l.push({ rotulo: "Alias", valor: c.alias, paraCopiar: true });
+  if (c.cbu) l.push({ rotulo: "CBU/CVU", valor: c.cbu, paraCopiar: true });
+  if (c.nota) l.push({ rotulo: "", valor: c.nota, paraCopiar: false });
   return l;
 }
 
@@ -51,7 +65,7 @@ function lineasDeCobro(c: DatosDeCobro): string[] {
 export function mailDeLiquidacion(d: DetalleLiquidacion, cobro: DatosDeCobro, centro: string): Omit<Mensaje, "para"> {
   const plata = (n: bigint) => formatearPesos(n, d.moneda);
   const mes = nombreDePeriodo(d.periodo);
-  const cobroLineas = d.totalCent > 0n && hayDatosDeCobro(cobro) ? lineasDeCobro(cobro) : [];
+  const cobroDatos = d.totalCent > 0n && hayDatosDeCobro(cobro) ? datosParaTransferir(cobro) : [];
 
   const asunto = `${centro} · Consultorios de ${mes} · ${plata(d.totalCent)}`;
 
@@ -69,7 +83,17 @@ export function mailDeLiquidacion(d: DetalleLiquidacion, cobro: DatosDeCobro, ce
     `Total del mes: ${plata(d.totalCent)}`,
     `Vence el ${fechaLarga(d.venceEl)}.`,
     "",
-    ...(cobroLineas.length ? ["Para transferir:", ...cobroLineas.map((x) => `  ${x}`), ""] : []),
+    ...(cobroDatos.length
+      ? [
+          "Para transferir:",
+          // El que se copia va solo en su renglón: en la vista de texto del teléfono, mantener
+          // apretado sobre una línea que solo tiene el valor lo selecciona entero.
+          ...cobroDatos.flatMap((x) =>
+            x.paraCopiar ? [`  ${x.rotulo}:`, `  ${x.valor}`] : [`  ${x.rotulo ? `${x.rotulo}: ` : ""}${x.valor}`],
+          ),
+          "",
+        ]
+      : []),
     "Detalle:",
     ...filas.map((r) => `  ${r.f}  ${r.q}  ${r.i}`),
     "",
@@ -88,9 +112,14 @@ export function mailDeLiquidacion(d: DetalleLiquidacion, cobro: DatosDeCobro, ce
     <tr><td style="padding:6px 0;color:#5c7382">Vence el</td><td style="padding:6px 0;text-align:right">${esc(fechaLarga(d.venceEl))}</td></tr>
   </table>
 
-  ${cobroLineas.length ? `<div style="background:#f4f9fb;border:1px solid #dbe8ee;border-radius:10px;padding:14px 16px;margin:0 0 18px">
+  ${cobroDatos.length ? `<div style="background:#f4f9fb;border:1px solid #dbe8ee;border-radius:10px;padding:14px 16px;margin:0 0 18px">
     <p style="margin:0 0 8px;font-weight:600">Para transferir</p>
-    ${cobroLineas.map((x) => `<p style="margin:2px 0;font-size:14px">${esc(x)}</p>`).join("")}
+    ${cobroDatos.map((x) => x.paraCopiar
+      ? `<p style="margin:10px 0 0;font-size:12px;color:#5c7382">${esc(x.rotulo)}</p>
+         <p style="margin:1px 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,'Courier New',monospace;font-size:17px;font-weight:700;word-break:break-all;-webkit-user-select:all;user-select:all">${esc(x.valor)}</p>`
+      : `<p style="margin:2px 0;font-size:14px">${x.rotulo ? `${esc(x.rotulo)}: ` : ""}${esc(x.valor)}</p>`
+    ).join("")}
+    <p style="margin:12px 0 0;font-size:12px;color:#5c7382">Mantené apretado sobre el alias o el CBU para seleccionarlo entero.</p>
   </div>` : ""}
 
   <p style="margin:0 0 6px;font-weight:600">Detalle</p>
