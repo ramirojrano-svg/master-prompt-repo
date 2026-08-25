@@ -17,7 +17,7 @@ import { Cabecera } from "../Cabecera.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
-import { pendientesDeCierre, liquidacionesDeNoFacturables, cerrarMesDe, cerrarMesTodos } from "../../../../src/servicios/plata/cierre.ts";
+import { pendientesDeCierre, liquidacionesDeNoFacturables, cerrarMesDe, cerrarMesTodos, reabrirMes } from "../../../../src/servicios/plata/cierre.ts";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
 import { nombreDePeriodo, periodoAnterior, periodoSiguiente, venceElDelPeriodo } from "../../../../src/dominio/reporte.ts";
 import { periodoDeTrabajo } from "../../../../src/servicios/plata/periodo-trabajo.ts";
@@ -114,6 +114,20 @@ export default async function CierrePage({
     redirect(`${volverA}${qs}`);
   }
 
+  async function reabrir(formData: FormData) {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+    const r = await reabrirMes(a, { periodo: String(formData.get("periodo") ?? "") });
+    revalidatePath(`/panel/${slug}/cierre`);
+    const qs = !r.ok
+      ? `&error=${r.error}`
+      : r.data.ok
+        ? `&ok=reabierto&n=${r.data.liquidaciones}`
+        : `&error=${r.data.error}`;
+    redirect(`${volverA}${qs}`);
+  }
+
   async function cerrarTodos(formData: FormData) {
     "use server";
     const a = await actorDeSesion(slug);
@@ -157,6 +171,24 @@ export default async function CierrePage({
         )}
         {sp.error === "NADA_QUE_LIQUIDAR" && <p className="aviso-error">Ese profesional no tiene cargos sin liquidar en {nombreDePeriodo(periodo)}.</p>}
         {sp.error === "YA_LIQUIDADO" && <p className="aviso-error">Ese mes ya estaba cerrado para ese profesional. No se emitió nada nuevo.</p>}
+        {sp.ok === "reabierto" && (
+          <p className="aviso-ok">
+            Mes reabierto: se anularon {sp.n} {Number(sp.n) === 1 ? "liquidación" : "liquidaciones"}. Los cargos
+            volvieron a quedar pendientes, sin perderse nada.
+          </p>
+        )}
+        {sp.error === "YA_AVISADAS" && (
+          <p className="aviso-error">
+            No se reabrió: alguna liquidación de {nombreDePeriodo(periodo)} ya se le mandó por mail al
+            profesional. Borrarla acá lo dejaría con un papel que no existe.
+          </p>
+        )}
+        {sp.error === "CON_PAGOS" && (
+          <p className="aviso-error">
+            No se reabrió: ya entró un pago de {nombreDePeriodo(periodo)}. Anulá ese cobro primero.
+          </p>
+        )}
+        {sp.error === "NADA_QUE_REABRIR" && <p className="aviso-error">{nombreDePeriodo(periodo)} no tiene ninguna liquidación emitida.</p>}
         {sp.error === "SIN_PERMISO" && <p className="aviso-error">Tu rol no puede cerrar meses.</p>}
 
         {/* Un papel numerado no puede desaparecer sin que nadie se entere. */}
@@ -324,6 +356,37 @@ export default async function CierrePage({
             {yaCerradas.length} {yaCerradas.length === 1 ? "liquidación emitida" : "liquidaciones emitidas"} en{" "}
             {nombreDePeriodo(periodo)}, por {plata(yaCerradas.reduce((acc, f) => acc + (f.liquidacion?.totalCent ?? 0n), 0n))}.
           </p>
+        )}
+
+        {/* ── Deshacer el cierre ──────────────────────────────────────────────
+            Va acá abajo, cerrado y sin color de botón principal, y solo aparece si hay algo que
+            deshacer. Cerrar es de un click y equivocarse de mes también —pasó: se cerró septiembre
+            entero antes de que septiembre existiera—, así que la salida tiene que estar en la app
+            y no en un SQL escrito a mano contra la base. Pero es una salida de emergencia, no una
+            acción del día a día: si estuviera al lado de "Cerrar" se apretaría por error, que es
+            exactamente el problema que vino a resolver. */}
+        {yaCerradas.length > 0 && (
+          <details className="panel" style={{ marginTop: 22, padding: "14px 18px" }}>
+            <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--tenue)" }}>
+              Me equivoqué de mes: deshacer este cierre
+            </summary>
+            <p style={{ margin: "12px 0 0", fontSize: 13, lineHeight: 1.6 }}>
+              Se anulan las <b>{yaCerradas.length}</b>{" "}
+              {yaCerradas.length === 1 ? "liquidación emitida" : "liquidaciones emitidas"} de{" "}
+              <b>{nombreDePeriodo(periodo)}</b> y los cargos vuelven a quedar pendientes de cerrar.
+            </p>
+            <p className="tenue" style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+              No se borra plata: los cargos siguen enteros en el libro, solo dejan de estar dentro de
+              un papel numerado. Después podés volver a cerrar el mes cuando corresponda. Si alguna
+              liquidación ya se mandó por mail, o si ya entró un pago de este mes, no se deshace.
+            </p>
+            <form action={reabrir} style={{ marginTop: 14 }}>
+              <input type="hidden" name="periodo" value={periodo} />
+              <BotonEnviar enviando="Deshaciendo…" className="btn-suave">
+                Sí, deshacer el cierre de {nombreDePeriodo(periodo)}
+              </BotonEnviar>
+            </form>
+          </details>
         )}
       </main>
     </>
