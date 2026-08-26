@@ -91,7 +91,8 @@ HOSTING:             Vercel (funciones en gru1; la base en la región más cerca
 ```yaml
 PRODUCTOS:           # COMPLETAR  pan de miga blanco / integral / sin corteza, tamaños, pan rallado
                      # CERRADO: cada producto se vende en PAQUETE o como PAN ENTERO, y de la
-                     #          misma masa pueden salir los dos formatos (§4/M2)
+                     #          misma masa salen los dos formatos. El PAN ENTERO va SOLO
+                     #          por fábrica, nunca al reparto (§4/M2)
 UNIDAD_DE_VENTA:     PAQUETE      # CERRADO — "pesa siempre lo mismo, es un paquete y ya"
 VIDA_UTIL_DIAS:      # COMPLETAR  por producto
 REPARTIDORES:        # COMPLETAR
@@ -298,7 +299,8 @@ fábrica en la producción, el admin en el tablero.
 ### MÓDULO 1 — Reparto diario a la calle
 
 **Planilla de ruta.** El admin arma la hoja del día: qué clientes, en qué orden (arrastrables), y
-qué stock inicial sube a la camioneta por producto. La hoja del día siguiente se propone sola con
+qué stock inicial sube a la camioneta por producto. **Solo aparecen los productos habilitados para
+reparto**: el pan entero no está en esta pantalla, ni para cargar ni para entregar. La hoja del día siguiente se propone sola con
 la del último mismo día de semana.
 
 **Registro en la calle** (`/reparto`, celular, la pantalla más usada del sistema). Por cada cliente:
@@ -377,7 +379,10 @@ lote, a qué clientes fue y qué día**. Es requisito bromatológico y es la ún
 el día que hay que retirar mercadería.
 
 **Dos formatos de la misma masa.** De una tanda pueden salir **paquetes** y **panes enteros**, y
-son dos productos distintos: cada uno con su precio, su stock y su lote. La tanda registra **lo que
+son dos productos distintos: cada uno con su precio, su stock y su lote. **El pan entero se vende
+SOLO por fábrica** —mayorista y mostrador—: no sube a la camioneta, no se le deja a un cliente de
+reparto y no tiene precio de reparto. Cada producto declara en qué canales se vende, y eso lo hace
+cumplir la base, no la pantalla. La tanda registra **lo que
 realmente salió de cada formato**, no un solo número de paquetes. Para que el rendimiento siga
 siendo comparable, cada producto declara **a cuántos paquetes equivale** una de sus unidades (un
 paquete = 1): con un solo formato todo vale 1 y la métrica es la de siempre.
