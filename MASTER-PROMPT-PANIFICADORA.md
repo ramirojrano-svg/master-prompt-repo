@@ -1,406 +1,565 @@
-# MASTER PROMPT — PANIFICADORA (fábrica + reparto)
+# MASTER PROMPT — SaaS Panificadora (Gestión de Fábrica y Reparto)
 
-> **Qué es este documento.** Es el prompt maestro de un producto nuevo: un SaaS de gestión para
-> una panificadora de **pan de miga** que tiene dos brazos —una **fábrica** que produce y vende a
-> mayoristas, y un **reparto a la calle** que atiende clientes con planilla mensual—.
+> **Documento único de arranque.** Se le pega entero a la IA (Claude Code / Cursor) en la primera
+> sesión de un repositorio vacío. Es la fuente de verdad del proyecto: gana sobre cualquier
+> costumbre, tutorial, memoria de otro proyecto o sugerencia de librería.
 >
-> **Cómo se usa.** Pegá este documento entero como primer mensaje de una sesión nueva de Claude
-> Code, sobre un repositorio vacío (o una rama nueva). No lo resumas ni lo recortes: cada regla de
-> acá está para evitar una decisión mala que después cuesta una migración con plata adentro.
->
-> **Quién gana.** Lo que dice este documento gana sobre cualquier costumbre, tutorial, memoria de
-> otro proyecto o sugerencia de librería. Si algo acá te parece equivocado, **decilo antes de
-> escribir código**, no lo cambies por tu cuenta.
->
-> **Hermano mayor.** Este producto se construye con las mismas convenciones que EMOAPP (el SaaS de
-> alquiler de consultorios del mismo dueño): mismo stack, mismo español en el código, misma manera
-> de separar dominio puro / servicios / pantallas. Repo, base de datos y despliegue son **propios y
-> separados**: no comparten ni una tabla.
+> **Si algo de acá te parece mal, lo discutís antes de escribir la línea.** Una contradicción
+> encontrada ahora vale más que una semana de código.
 
 ---
 
-## §0 — Las cinco reglas que explican todo lo demás
+## §0 — DIRECTIVAS DE COMPORTAMIENTO (reglas duras)
 
-1. **La fila atómica es la entrega.** Un cliente, un producto, un día, una fila. Todo lo demás
-   —la planilla del mes, la deuda, la comisión del repartidor, el margen del negocio— se deriva
-   de esa fila. No hay una segunda tabla que "también" tenga la venta.
-2. **Nada de pan se pierde en el aire.** Lo que sube a la camioneta tiene que cerrar contra lo que
-   se entregó, lo que volvió y lo que se rompió. Lo que salió del horno tiene que cerrar contra lo
-   que se vendió, lo que volvió y lo que quedó en cámara. Son leyes de conservación (§5), y se
-   verifican en la base, no en el buen criterio del que carga.
-3. **El precio viaja con la entrega.** El importe se estampa el día que se entrega. Si mañana sube
-   la lista, la planilla de ayer no cambia. Los precios no se editan: se cierra el vigente y se
-   abre uno nuevo.
-4. **El mes cerrado es piedra.** Después del cierre, ninguna entrega ni ningún movimiento de ese
-   mes se toca. La corrección existe, pero es una nota de crédito o débito con fecha de hoy, que
-   apunta al original. El original nunca se borra.
-5. **Lo que se muestra y lo que decide salen de la misma función.** El número del tablero, el del
-   resumen que se le manda al cliente y el del PDF tienen que venir de la misma función pura. Si
-   la pantalla dice 148 paquetes y el resumen dice 147, el cliente deja de creerle al sistema —y
-   tiene razón—.
+**0.1 — Leé todo antes de codificar.** No abras el editor hasta procesar el documento entero. La
+§3 explica por qué la §6 está escrita así; leerlas en desorden te hace tomar la decisión mala.
+
+**0.2 — Paso a paso estricto.** Ejecutá el roadmap de la **§8** en orden. Al terminar cada fase,
+mostrá el entregable y **esperá aprobación explícita**. No te adelantes, no "aprovechás que estás
+ahí" para hacer la fase siguiente, no dejás pantallas a medias "para después".
+
+**0.3 — Ahorro de tokens: DRY y diffs.**
+- **NUNCA** vuelvas a imprimir un archivo entero si cambiaste tres líneas. Mostrá el bloque que
+  cambia y marcá el resto con `// ... código existente ...`.
+- Si un pedazo de UI aparece dos veces, extraelo a un componente **la segunda vez, no la tercera**.
+- No repitas en la respuesta lo que ya está en el archivo. No expliques lo obvio.
+- Al terminar una fase, el resumen son **5 líneas**: qué se hizo, qué archivos, qué falta, qué
+  decisión necesito, cómo lo pruebo.
+- Nada de preámbulos ("Excelente pregunta", "Voy a proceder a"). Empezá por el resultado.
+
+**0.4 — Español rioplatense.** Voseo en producto, mensajes de error, comentarios y nombres del
+código (`calcularConsumido`, `estaVencida`). Nada de lenguaje de consultor ("sinergia",
+"robusto", "escalable"). Los mensajes de error le hablan a un panadero o a un repartidor, no a un
+ingeniero: *"Ese día ya está cargado para este cliente"*, no *"Unique constraint violation"*.
+
+**0.5 — Cero dependencias innecesarias.** Antes de instalar algo, preguntate si son 40 líneas.
+- Fechas: `Intl` y `Temporal`/`Date` nativos. **No** moment, **no** dayjs, **no** date-fns.
+- Estado: `useState` + server actions. **No** Redux, **no** Zustand, hasta que duela.
+- Tablas: HTML + shadcn/ui. **No** ag-grid.
+- Gráficos: **uno solo** (§7.4). shadcn/ui ya trae el wrapper de Recharts: no sumes Tremor encima,
+  que es la misma librería envuelta de nuevo.
+- Toda dependencia nueva se justifica en una línea antes de instalarla.
+
+**0.6 — Cuándo frenar y cuándo decidir solo.**
+- **Frená y preguntá** si la decisión cambia el esquema de la base, toca plata, o está en la lista
+  de §11 sin responder.
+- **Decidí solo** el resto: nombres, orden de campos, estructura de carpetas, qué componente
+  extraer. No preguntes por cosas que podés revertir con un commit.
+- Si asumís algo, escribilo arriba del entregable con la palabra **ASUMÍ**.
+
+**0.7 — Cómo entregás cada fase.** Archivos tocados → qué probar a mano → `npm run verify` en
+verde → las 5 líneas de resumen. Si algo no anda, decilo con el error pegado. **Nunca reportes
+"listo" sobre algo que no corriste.**
 
 ---
 
-## §1 — Decisión 0: ¿para quién es este software?
+## §1 — VARIABLES DEL PROYECTO
 
-Antes de cualquier tabla, cerrá este fork. Cambia el esquema, no la pantalla.
-
-**RECOMENDADO: A — herramienta de una panificadora, con esquema listo para ser producto.**
-
-- El cliente es **la panificadora del dueño** (cliente cero). Se construye para su operación real,
-  con sus productos, sus clientes y sus precios.
-- Pero **cada tabla lleva `empresaId` desde la primera migración**, y ninguna pantalla dice la
-  palabra "empresa" mientras haya una sola. Agregar el `empresaId` después es una migración cara e
-  irreversible; tenerlo y no usarlo no cuesta nada.
-- Si algún día se le vende a otra panificadora, se enciende el alta de empresas y no se toca una
-  línea del motor.
-
-`[x] A — herramienta interna con esquema multi-empresa`  ·  `[ ] B — SaaS vendido a panificadoras desde el día 1`
-
-> Si el dueño elige **B**, agregá al roadmap: alta autogestionada de empresa, planes y cobro de la
-> suscripción, y aislamiento de tenant probado con un test que intenta leer datos de otra empresa y
-> tiene que fallar. Nada de eso cambia el motor.
-
----
-
-## §2 — Variables del proyecto
-
-Estas son las perillas. Los valores marcados `# default` los podés tomar como están; los marcados
-`# COMPLETAR` los tiene que responder el dueño antes de F1. Copiá este bloque a
-`docs/F0-modelo-de-negocio.md` con las respuestas puestas: ese archivo es la fuente de verdad
-del negocio, este prompt es la del software.
+### 1.1 — Identidad y entorno
 
 ```yaml
-PRODUCTO:              # COMPLETAR  nombre de la app (ej: MIGAPP)
-RAZON_SOCIAL:          # COMPLETAR
-DOMINIO:               # COMPLETAR  ej: app.lapanificadora.com
-EMAIL_SOPORTE:         # COMPLETAR
-IDIOMA:                es-AR (voseo)                          # default
-PAIS:                  AR                                     # default
-MONEDA:                ARS                                    # default
-TZ:                    America/Argentina/Buenos_Aires         # default
-
-# --- Operación ---
-SUCURSALES:            1                                      # default (esquema soporta N)
-CAMIONETAS:            # COMPLETAR  cuántas salen por día
-REPARTIDORES:          # COMPLETAR
-CLIENTES_REPARTO:      # COMPLETAR  cuántos clientes tiene el reparto hoy
-CLIENTES_MAYORISTAS:   # COMPLETAR
-DIAS_DE_REPARTO:       Lun a Sab                              # default — CONFIRMAR
-TURNOS_FABRICA:        # COMPLETAR  ej: noche 22-06 amasado, mañana 06-14 corte y empaque
-
-# --- Producto ---
-PRODUCTOS_V1:          # COMPLETAR  lista real: pan de miga blanco, integral, sin corteza,
-                       #            planchas, tamaños, pan lactal, pan rallado (subproducto)
-UNIDAD_DE_VENTA:       PAQUETE                                # default — CONFIRMAR (paquete/plancha/kg/bandeja)
-VIDA_UTIL_DIAS:        # COMPLETAR  días de vencimiento por producto
-MODALIDAD_REPARTO:     CONSIGNACION                           # default — ver §5.2
-MODALIDAD_MAYORISTA:   VENTA_EN_FIRME                         # default
-
-# --- Plata ---
-CANALES_DE_PRECIO:     REPARTO | MAYORISTA | MOSTRADOR        # default
-CICLO_DE_COBRO:        MENSUAL (cierre el último día del mes) # default — CONFIRMAR
-COMISION_REPARTIDOR:   10% sobre lo COBRADO                   # default — CONFIRMAR (§8.6)
-MEDIOS_DE_PAGO:        efectivo | transferencia | cheque      # default
-FACTURACION_FISCAL:    NO en v1 (comprobante interno + export contable, §13)  # default
-
-# --- Técnico ---
-STACK:                 Next.js 16 + TypeScript estricto + Prisma + Postgres 16
-PROVEEDOR_DB:          Supabase (Data API DESACTIVADA)        # default
-REGION_DB:             sa-east-1 (São Paulo)                  # default
-REGION_FUNCIONES:      gru1                                   # default
-PROVEEDOR_MAIL:        Resend                                 # default
-HOSTING:               Vercel                                 # default
-REPO:                  # COMPLETAR
+PRODUCTO:            PanSaaS            # COMPLETAR — nombre definitivo
+RAZON_SOCIAL:        # COMPLETAR
+DOMINIO:             # COMPLETAR        ej: app.lapanificadora.com
+EMAIL_SOPORTE:       # COMPLETAR
+MONEDA_DEFAULT:      ARS
+TZ_DEFAULT:          America/Argentina/Buenos_Aires
+IDIOMA:              es-AR (voseo)
 ```
 
-> **Los `# COMPLETAR` son bloqueantes de F1, no de F0.** Podés cerrar las decisiones de negocio y
-> dejar el modelo de datos escrito sin saber cuántos clientes hay. No podés cargar el seed sin eso.
+### 1.2 — Stack técnico innegociable
+
+```yaml
+FRAMEWORK:           Next.js 16 (App Router) + React 19
+LENGUAJE:            TypeScript estricto (front, back y tests). Sin `any`, sin `@ts-ignore`.
+BASE_DE_DATOS:       PostgreSQL (Neon) + Prisma ORM
+AUTENTICACIÓN:       NextAuth v5 (Auth.js) — credenciales propias, sin proveedores externos en v1
+VALIDACIÓN:          Zod (borde de TODA server action)
+ESTILOS:             Tailwind CSS + shadcn/ui
+GRÁFICOS:            Recharts vía el componente `chart` de shadcn/ui  (ver §7.4)
+IA (Advisor):        @anthropic-ai/sdk — modelo `claude-opus-5`      (ver §6)
+TESTING:             node:test (dominio + integración) + Playwright (E2E)
+MAIL:                Resend
+HOSTING:             Vercel (funciones en gru1; la base en la región más cercana)
+```
+
+> **Postgres es un requisito, no una preferencia.** Las invariantes de §5.6 usan `EXCLUDE USING
+> gist` con `btree_gist` y triggers en plpgsql. No es reemplazable por SQLite, Mongo ni Planetscale.
+
+### 1.3 — Datos del negocio (los completa el dueño, bloquean la Fase 5, no la Fase 1)
+
+```yaml
+PRODUCTOS:           # COMPLETAR  pan de miga blanco / integral / sin corteza, tamaños, pan rallado
+UNIDAD_DE_VENTA:     PAQUETE      # CONFIRMAR (paquete / plancha / kilo) — ver §11 #2
+VIDA_UTIL_DIAS:      # COMPLETAR  por producto
+REPARTIDORES:        # COMPLETAR
+CLIENTES_REPARTO:    # COMPLETAR
+CLIENTES_MAYORISTAS: # COMPLETAR
+DIAS_DE_REPARTO:     Lun a Sáb    # CONFIRMAR
+TURNOS_FABRICA:      # COMPLETAR  ej: noche 22-06 amasado / mañana 06-14 corte y empaque
+MODALIDAD_REPARTO:   CONSIGNACION # ver §3.2
+COMISION_REPARTIDOR: 10% sobre lo COBRADO   # CONFIRMAR — ver §11 #4
+```
 
 ---
 
-## §3 — El producto en una frase, y dónde termina
+## §2 — EL NEGOCIO EN UNA PÁGINA
 
-**En una frase:** el sistema donde la panificadora anota qué produjo, con qué insumos, qué le dejó
-a cada cliente cada día, cuánto le tiene que cobrar a fin de mes, y cuánta plata quedó.
+### 2.1 — Qué hace la empresa
 
-### Adentro de v1
+Una panificadora de **pan de miga** con dos brazos que comparten un solo stock y una sola caja:
 
-- Login propio, con el administrador decidiendo quién entra y con qué permisos.
-- **Planilla mensual de reparto**: clientes en las filas, días del mes en las columnas, paquetes en
-  las celdas, total y $ a fin de mes.
-- **Reparto del día en el celular**: hoja de ruta, carga de la camioneta, entrega y devolución por
-  cliente, cobranza en la calle, rendición al volver.
-- **Cuenta corriente por cliente**: cargos, pagos, saldo, antigüedad de la deuda.
-- **Fabricación**: recetas, amasadas, lotes, rendimiento, merma, stock de producto terminado.
-- **Insumos**: compras, stock, valorización, consumo por receta, inventario físico, alertas.
-- **Servicios** (luz, gas, agua) como gasto de período —no como stock, §7.7—.
-- **Costos**: costo por paquete, margen por producto, por canal y por cliente.
-- **Negocio**: tablero con facturado, cobrado, caja, deuda, a cobrar, margen; con los gráficos en
-  3D que pidió el dueño y la regla que los hace legibles (§10).
-- **Mayoristas**: venta desde la fábrica, con remito y cuenta corriente igual que el reparto.
+1. **La fábrica** amasa, hornea, descorteza, rebana y empaqueta. Vende directo a **mayoristas**
+   desde el mostrador.
+2. **El reparto** sale a la calle todos los días con camionetas cargadas, deja mercadería en
+   kioscos, rotiserías y bares, retira lo que no se vendió, cobra, y a fin de mes se le pasa a
+   cada cliente la cuenta de lo que consumió.
 
-### Afuera de v1 (decilo, no lo construyas)
+**El sistema existe para responder tres preguntas que hoy viven en un cuaderno:** cuánto me debe
+cada cliente, cuánto me cuesta cada paquete, y cuánta plata quedó.
+
+### 2.2 — Alcance
+
+**Adentro de v1:** login con accesos que da el dueño · planilla mensual de reparto · reparto del
+día en el celular · cuenta corriente y cobranza · caja · cierre de mes · producción por tandas con
+lote · insumos con stock y compras · servicios como gasto · costeo por paquete · tablero con
+AI Advisor · venta mayorista con remito.
+
+**Afuera de v1 — decilo, no lo construyas:**
 
 | Afuera | Por qué |
 |---|---|
-| Facturación electrónica ARCA | Se resuelve con un proveedor externo en v2 (§13). En v1: comprobante interno no fiscal + export para el contador + campo para pegar el CAE. |
-| Liquidación de sueldos | Esto no es un sistema de nómina. Sí liquida **comisiones y adelantos** de reparto, y los exporta para el estudio contable. |
-| Contabilidad por partida doble | Es un libro de cuenta corriente y caja, no un plan de cuentas. El contador recibe un CSV. |
-| Tienda online / venta al público | Otro producto. |
-| GPS y optimización de recorrido | v2. El orden de la hoja de ruta lo fija el humano, arrastrando. |
-| Códigos de barra y WMS | v2. El modelo de datos queda preparado (`codigo` en producto y lote), la lectora no. |
-| Balanza / PLC / horno conectado | Nunca en v1. Los datos los carga una persona. |
+| Factura electrónica ARCA | v2 vía proveedor externo. En v1: comprobante interno + campo para pegar el CAE + export para el contador (§10). |
+| Liquidación de sueldos | Esto no es un sistema de nómina. Sí liquida **comisiones y adelantos** de reparto. |
+| Contabilidad por partida doble | Es un libro de cuenta corriente y caja. El contador recibe un CSV. |
+| Venta al público / e-commerce | Otro producto. |
+| GPS, ruteo óptimo, códigos de barra | v2. El modelo deja el campo `codigo`; la lectora no. |
+| Balanza, horno o PLC conectados | Nunca en v1. Los datos los carga una persona. |
+
+### 2.3 — Los tres usuarios y su día
+
+- **Admin (el dueño).** A la mañana mira el tablero. A la tarde revisa las rendiciones. A fin de
+  mes cierra y manda los resúmenes. Es el único que ve costos, márgenes y accesos.
+- **Empleado_Fabrica.** Carga la tanda del día, dice cuánto salió y cuánta merma hubo, y anota las
+  compras de insumos. No ve la deuda de los clientes ni la caja.
+- **Repartidor.** Abre el celular en la calle, con una mano, bajo el sol. Ve **su** hoja de ruta y
+  nada más. Carga lo que dejó, lo que se llevó y lo que cobró. A la vuelta rinde.
 
 ---
 
-## §4 — Quién entra y qué ve
+## §3 — ARQUITECTURA DE DATOS Y REGLAS DE NEGOCIO
 
-El administrador es el único que da y saca accesos. **No hay auto-registro**: nadie se crea una
-cuenta solo. El admin invita por mail, elige el rol, y puede desactivar a alguien sin borrarle la
-historia (un repartidor que se va no borra sus entregas de marzo).
-
-| Rol | Entra a | Nunca ve |
-|---|---|---|
-| **admin** (dueño) | todo, incluidos costos, márgenes, sueldos de reparto y accesos | — |
-| **encargado** (jefe de fábrica) | fabricación, insumos, compras, stock, costos de producción | la deuda de los clientes, la caja, el margen del negocio (configurable) |
-| **repartidor** | **solo su hoja de ruta y sus clientes**: carga, entrega, devolución, cobranza, su rendición y su comisión | los clientes de otro repartidor, los precios de otro canal, cualquier número global del negocio, los costos |
-| **administracion** | clientes, planilla, cuenta corriente, cobranza, caja, cierre de mes | costos y recetas (configurable) |
-| **soporte** (opcional) | lectura de todo, sin poder escribir | — |
-
-### §4.1 — Reglas de privacidad que son de arquitectura, no preferencias
-
-1. **Un repartidor solo ve los clientes de su reparto.** El filtro va en el servidor, en la consulta,
-   no en la pantalla. Hay un test que entra como repartidor A y pide una entrega del repartidor B
-   por su id: tiene que devolver 404, no una fila con menos campos.
-2. **Los costos y los márgenes no salen del rol admin/encargado.** Nunca los mandes al cliente en
-   un payload "por las dudas": si el rol no los puede ver, no viajan por la red.
-3. **El precio de un cliente no se le muestra a otro cliente ni a otro repartidor.** La lista de
-   precios es información comercial: dos clientes de la misma cuadra pueden tener precios distintos
-   y enterarse es un problema del dueño, no un detalle.
-4. **Desactivar ≠ borrar.** Un usuario desactivado no entra más y sigue apareciendo como autor de
-   lo que cargó. Borrar de verdad es una acción del admin, con confirmación escrita, y solo si esa
-   persona no dejó movimientos de plata.
-
-### §4.2 — Pantalla de entrada
-
-La pantalla de inicio es el **login**, y nada más: logo, mail, contraseña, "olvidé mi contraseña".
-Sin carrusel, sin explicación del producto, sin link a registrarse.
-
-- Contraseñas con hash (bcrypt/argon2), nunca en texto plano, nunca en un log.
-- Bloqueo por intentos: 5 fallidos → 15 minutos de espera para ese mail. Contado en el servidor.
-- Sesión con expiración; "cerrar sesión en todos los dispositivos" en el perfil.
-- Recuperación por mail con token de un solo uso, vencimiento de 30 minutos.
-- Después del login, **cada rol cae en su pantalla**: el repartidor en el reparto de hoy, el
-  encargado en fabricación, el admin en el tablero. Nadie tiene que aprender a navegar hasta lo
-  suyo.
-
----
-
-## §5 — El motor: la unidad de verdad y las tres leyes de conservación
-
-Esta sección es el corazón. Escribila **primero, en dominio puro y con sus tests**, antes de la
-primera pantalla. Si el motor está bien, el resto es formulario; si está mal, no hay interfaz que
-lo salve.
-
-### §5.1 — La entrega es la fila atómica
+### 3.1 — La entrega es la fila atómica
 
 ```
 Entrega = (empresaId, fecha, clienteId, productoId) → { entregado, devuelto, precioUnitario, importe }
 ```
 
-- **Una sola fila** por esa combinación. Si el repartidor carga dos veces, es la misma fila
-  actualizada, no dos ventas. Esto es un `UNIQUE` en la base, no una validación en el formulario.
-- Corregir una entrega **antes del cierre** es editar la fila y dejar rastro en auditoría (quién,
-  cuándo, de qué valor a qué valor). Corregirla **después del cierre** es imposible: va nota de
-  crédito o débito (§5.7).
-- `fecha` es la **fecha de reparto** (un `date`, no un timestamp). El pan se entrega un día, no a
-  una hora. Todo lo que se agrupa por mes agrupa por esta fecha.
-- La entrega guarda **quién** la cargó y **desde dónde** (celular en la calle / escritorio), porque
-  la diferencia entre lo que anotó el repartidor y lo que corrigió administración es un dato del
-  negocio.
+Todo lo demás —la planilla del mes, la deuda, la comisión, el margen— **se deriva** de esta fila.
+No hay una segunda tabla que "también" tenga la venta.
 
-### §5.2 — Consignación: entregado − devuelto = consumido
+- **Una sola fila** por esa combinación, garantizado por un `UNIQUE` en la base (§5.6). Si el
+  repartidor carga dos veces, es la misma fila actualizada, no dos ventas.
+- `fecha` es un `date`, la **fecha de reparto**. El pan se entrega un día, no a una hora.
+- Guarda **quién** la cargó y **desde dónde** (celular en la calle / escritorio): la diferencia
+  entre lo que anotó el repartidor y lo que corrigió el admin es un dato del negocio.
+- Corregir antes del cierre = editar la fila y dejar rastro en auditoría. Después del cierre =
+  imposible, va nota de crédito (§3.6).
 
-El dueño lo dijo con la palabra exacta: la planilla dice cuántos paquetes el cliente **consumió**.
-Eso no es lo mismo que lo que se le dejó.
+### 3.2 — Consignación: entregado − devuelto = consumido
 
 ```
 consumido = entregado − devuelto          ← esto es lo que se cobra
-importe   = consumido × precioUnitario     ← estampado el día de la entrega
+importe   = consumido × precioUnitario    ← estampado el día de la entrega
 ```
 
-- En **consignación** (default del reparto), el repartidor deja 10 y se lleva 2 que no se
-  vendieron: el cliente debe 8. La devolución vuelve a la fábrica y entra en la ley 2 (§5.4).
-- En **venta en firme** (default de mayorista), `devuelto` siempre es 0 y lo entregado es lo
-  cobrado. Una devolución posterior es una **nota de crédito**, no una edición de la entrega.
-- La modalidad es un campo del **cliente**, no una configuración global: la misma panificadora
-  puede tener kioscos en consignación y una cadena que compra en firme.
-- `devuelto` nunca puede ser mayor que `entregado` (constraint duro). Si el cliente devuelve pan de
-  ayer, eso es una devolución de **la entrega de ayer** o una nota de crédito, no un número negativo
-  en la de hoy.
+En **consignación** (default del reparto) el repartidor deja 10 y se lleva 2 que no se vendieron:
+el cliente debe 8. En **venta en firme** (default de mayorista) `devuelto` es siempre 0 y una
+devolución posterior es una nota de crédito, no una edición.
 
-> **Ojo con esto, es el error clásico:** si modelás una sola columna "cantidad" ya neteada, perdés
-> para siempre el dato de cuánto se devolvió. Y el porcentaje de devolución es *la* métrica que te
-> dice si estás cargando de más la camioneta —que es plata tirada, porque el pan que vuelve se
-> vende como pan rallado o se pierde—.
+La modalidad es un campo del **cliente**, no una configuración global: el mismo negocio tiene
+kioscos en consignación y una cadena que compra en firme.
 
-### §5.3 — Ley 1: el reparto cuadra
+> **El error clásico:** guardar una sola columna "cantidad" ya neteada. Perdés para siempre cuánto
+> volvió — y el **% de devolución** es la métrica que te dice si estás cargando de más la
+> camioneta, que es la fuga de plata más grande y menos visible de un reparto de pan.
 
+`devuelto <= entregado`, siempre, por constraint.
+
+### 3.3 — El eje de la plata: ledger inmutable
+
+**La plata no se actualiza: se asienta.**
+
+- Todo cobro del repartidor, venta mayorista, cargo por entrega o ajuste es un **`Asiento`** en un
+  ledger **append-only**.
+- **NUNCA** un `UPDATE` a un saldo. El saldo de un cliente y la caja del día se **derivan**
+  sumando asientos (`aggregate`). Si necesitás velocidad, guardá un saldo **materializado y
+  recalculable**, con un test que verifique que recalcularlo desde cero da lo mismo.
+- Corregir un asiento = otro asiento (`NOTA_CREDITO` / `NOTA_DEBITO` / `AJUSTE`) que **referencia
+  al original**. El original no se borra nunca.
+- La base lo hace cumplir con un trigger que rechaza `UPDATE` y `DELETE` sobre `Asiento` (§5.6).
+
+### 3.4 — El precio se estampa, no se recalcula
+
+- Un `Precio` tiene **vigencia** (`daterange`). Cambiarlo es **cerrar el vigente y abrir uno
+  nuevo**. No existe el botón "editar precio".
+- Al crear una entrega o una venta mayorista, el importe se **estampa**. Si mañana sube la harina y
+  subís la lista, la planilla de ayer no cambia y el resumen del mes pasado no se mueve solo.
+- Lo mismo con los insumos: el costo de una tanda queda estampado con el costo del insumo **de ese
+  día**. El costo de la semana pasada no se altera porque hoy compraste harina más cara.
+- Jerarquía al buscar el precio de una entrega, en este orden:
+  1. Precio especial de **ese cliente** para ese producto, vigente ese día.
+  2. Precio de lista del **canal** del cliente (REPARTO / MAYORISTA / MOSTRADOR), vigente ese día.
+  3. Si no hay ninguno: **la entrega se rechaza con un error claro**. Nunca `precio = 0`. Un cero
+     silencioso es plata que no se cobra y nadie se entera hasta fin de mes.
+
+### 3.5 — Las tres leyes de conservación
+
+Nada de pan ni de harina se pierde en el aire. Estas tres ecuaciones se verifican en el sistema, y
+la interfaz muestra la diferencia **antes** de dejar cerrar.
+
+**Ley 1 — el reparto cuadra**
 ```
 carga_inicial + recarga = (Σ entregado − Σ devuelto_por_cliente) + vuelve_a_fabrica + roto + obsequio
 ```
+`vuelve_a_fabrica` es todo lo que baja de la camioneta a la noche: lo que nunca se entregó más lo
+que los clientes devolvieron. Cuadra **por producto**, no por total: 3 de blanco de menos y 3 de
+integral de más no es cero, son dos errores.
 
-Donde `vuelve_a_fabrica` es **todo lo que baja de la camioneta a la noche**: lo que nunca se
-entregó más lo que los clientes devolvieron. Por eso las devoluciones de cliente se restan de un
-lado y están adentro del otro: son el mismo pan, contado una sola vez.
-
-Dicho en criollo: cada paquete que subió a la camioneta a la mañana tiene que estar, a la noche, en
-un cliente, de vuelta en la fábrica, o en la lista de rotos con su motivo. No hay cuarta opción.
-
-- La **rendición del día** (por repartidor y fecha) calcula esa diferencia y la muestra en la
-  pantalla del repartidor **antes** de que cierre.
-- Una rendición **no se cierra con diferencia ≠ 0** salvo que se escriba un motivo. El motivo queda
-  guardado, es visible para el admin, y es el insumo de una métrica: "diferencias por repartidor,
-  últimos 90 días".
-- La rendición cuadra **por producto**, no por total: 3 paquetes de blanco de menos y 3 de integral
-  de más no es cero, son dos errores.
-- La misma rendición cuadra la **plata**: cobrado en efectivo declarado vs. cobros registrados.
-
-### §5.4 — Ley 2: el producto terminado cuadra
-
+**Ley 2 — el producto terminado cuadra**
 ```
 stock_inicial + producido + devuelto_de_reparto = vendido + merma + stock_final
 ```
+`producido` sale de una tanda confirmada, no de un número suelto. Cada merma lleva **motivo de una
+lista cerrada** (si es texto libre no se puede graficar). El pan devuelto que se convierte en pan
+rallado **no es merma**: es una conversión de un producto a otro, con su propio rendimiento.
 
-- `producido` sale de una **amasada confirmada** (§7.6), no de que alguien escriba un número suelto.
-- `vendido` es Σ consumido de reparto + Σ mayorista + mostrador.
-- `merma` de producto terminado es: vencido, roto, mal cortado, muestra. **Cada merma lleva motivo**,
-  y el motivo es una lista cerrada, no texto libre —si es texto libre no se puede graficar—.
-- El pan devuelto que se transforma en **pan rallado** no es merma: es una **conversión** de un
-  producto a otro, con su propio rendimiento. Modelalo así desde el día 1 si el dueño lo hace; si
-  no lo hace, dejá el tipo de movimiento definido y sin uso.
-- El stock de producto terminado se lleva **por lote**, con su fecha de elaboración y vencimiento.
-
-### §5.5 — Ley 3: el insumo cuadra
-
+**Ley 3 — el insumo cuadra**
 ```
 stock_inicial + comprado = consumido_por_recetas + merma + ajustes + stock_final
 ```
+El consumo se descuenta al **confirmar la tanda**, por receta, y se puede corregir a mano con
+motivo. El inventario físico genera un ajuste con la diferencia **visible**, nunca pisada en
+silencio.
 
-- El consumo se descuenta **al confirmar la amasada**, por receta, y se puede corregir a mano con
-  motivo (el panadero tiró 2 kg de masa; pasa).
-- El **inventario físico** (recuento) genera un ajuste con su diferencia visible. La diferencia
-  entre teórico y contado es una métrica, no un dato que se pisa en silencio.
-- Los **servicios** (luz, gas, agua) **no son stock**: son gasto de período (§7.7). No inventes un
-  "stock de electricidad".
+### 3.6 — El mes cerrado es piedra
 
-### §5.6 — Idempotencia: escribir dos veces no cobra dos veces
+- **Cerrar un mes** (acción del admin) congela entregas y asientos con fecha adentro. Lo hace
+  cumplir un **trigger**, no el código (§5.6).
+- El resumen que se le mandó al cliente **no puede cambiar solo**. Si lo reabre en noviembre, dice
+  lo mismo que en agosto. Ese es el contrato.
+- **Reabrir** existe, es solo del admin, pide motivo escrito y queda en auditoría.
+- El cierre es **idempotente**: apretarlo dos veces no genera dos juegos de cargos ni dos
+  comisiones.
 
-El repartidor carga desde el celular, en la calle, con señal mala. Va a apretar dos veces. El colectivo
-va a cortar la conexión a la mitad.
+### 3.7 — Roles y accesos: revalidación fresca en la base
 
-- Cada escritura de entrega lleva una **clave de idempotencia generada en el cliente** (UUID por
-  operación). El servidor hace `INSERT ... ON CONFLICT DO UPDATE` contra la clave natural, y guarda
-  la clave de idempotencia para descartar el reintento repetido.
-- La pantalla es **optimista**: muestra el número cargado y reintenta sola. Si falla definitivo,
-  lo dice fuerte y en rojo, y el número queda marcado como "sin guardar".
-- **Esto se construye desde F1 aunque el modo offline sea F5.** El día que se agregue la cola
-  offline, no hace falta migrar nada. Al revés, agregar idempotencia después de tener seis meses
-  de datos es una pesadilla.
+Tres roles: **`Admin`** · **`Empleado_Fabrica`** · **`Repartidor`**.
 
-### §5.7 — El mes cerrado es piedra
+**La regla:** el rol se revalida en **cada server action** buscando fresco en la base, nunca
+leyendo el rol de un JWT viejo. Si el dueño le saca el acceso a alguien a las 10:05, a las 10:06
+esa persona no escribe más — sin esperar a que le venza la sesión.
 
-- **Cerrar un mes** (acción del admin) congela todas las entregas, cargos y pagos con fecha adentro
-  de ese mes. La base lo hace cumplir con un trigger, no el código.
-- Después del cierre, el resumen que se le manda al cliente **no puede cambiar solo**. Ese es el
-  contrato: si el cliente vuelve a abrir el PDF en noviembre, dice lo mismo que en agosto.
-- Corregir algo de un mes cerrado = **nota de crédito o débito** con fecha de hoy que referencia el
-  cargo original. El original queda.
-- **Reabrir un mes** existe, es solo del admin, pide motivo escrito y queda en auditoría. (En EMOAPP
-  esto ya se construyó: "botón para deshacer el cierre de un mes, solo para el administrador".)
-- El cierre es **idempotente**: apretarlo dos veces no genera dos juegos de cargos.
+```ts
+// src/lib/auth/guard.ts  — TODA server action empieza acá
+export async function exigir(roles: Rol[]) {
+  const sesion = await auth();
+  if (!sesion?.user?.id) throw new NoAutorizado("Iniciá sesión de nuevo");
+  const acceso = await db.acceso.findFirst({           // lectura FRESCA, sin caché
+    where: { usuarioId: sesion.user.id, activo: true },
+    select: { rol: true, empresaId: true, usuarioId: true },
+  });
+  if (!acceso || !roles.includes(acceso.rol)) throw new NoAutorizado("No tenés permiso para esto");
+  return acceso;                                        // { rol, empresaId, usuarioId }
+}
+```
+
+Y tres reglas de privacidad que son de **arquitectura, no preferencia**:
+
+1. **Un repartidor solo ve sus clientes.** El filtro va en la consulta del servidor, no en la
+   pantalla. Hay un test que entra como repartidor A, pide por id una entrega del repartidor B, y
+   tiene que recibir 404 — no una fila con menos campos.
+2. **Los costos y los márgenes no salen del rol Admin.** Si el rol no los puede ver, **no viajan
+   por la red**. Nada de mandarlos en el payload "por las dudas".
+3. **Desactivar ≠ borrar.** El repartidor que se fue no entra más y sigue siendo el autor de sus
+   entregas de marzo.
+
+**Pantalla de entrada:** la home es el **login** y nada más — logo, mail, contraseña, "olvidé mi
+contraseña". Sin auto-registro: al empleado lo da de alta el dueño. Hash con bcrypt/argon2, bloqueo
+a los 5 intentos fallidos contado en el servidor, recupero por mail con token de un solo uso.
+Después de entrar, **cada rol cae en su pantalla**: el repartidor en el reparto de hoy, el de
+fábrica en la producción, el admin en el tablero.
 
 ---
 
-## §6 — Modelo de datos
+## §4 — LOS 5 MÓDULOS DEL SISTEMA
 
-Nombres en español, como el resto del código. Todo lleva `empresaId`. Todo lleva `creadoEn`,
-`actualizadoEn`, y las tablas que deciden plata llevan además `creadoPor`.
+### MÓDULO 1 — Reparto diario a la calle
 
-### §6.1 — Las tablas
+**Planilla de ruta.** El admin arma la hoja del día: qué clientes, en qué orden (arrastrables), y
+qué stock inicial sube a la camioneta por producto. La hoja del día siguiente se propone sola con
+la del último mismo día de semana.
 
-**Identidad y acceso**
-- `Empresa` — tenant. `nombre`, `razonSocial`, `cuit`, `zonaHoraria`, `logo`.
-- `Sucursal` — fábrica y/o depósito. Desde F1 aunque haya una sola.
-- `Usuario` — `email` único, `hashClave`, `nombre`, `activo`.
-- `Acceso` — `usuarioId` × `empresaId` × `rol` × `activo`. El rol vive acá, no en el usuario: la
-  misma persona puede ser repartidor en una empresa y admin en otra.
-- `Invitacion` — token, mail, rol propuesto, vencimiento, quién invitó.
-- `Auditoria` — append-only: quién, cuándo, qué tabla, qué fila, valor anterior → valor nuevo.
+**Registro en la calle** (`/reparto`, celular, la pantalla más usada del sistema). Por cada cliente:
 
-**Comercial**
-- `Cliente` — `nombre`, `nombreFantasia`, `direccion`, `zona`, `telefono`, `cuit`, `condicionIva`,
-  `modalidad` (CONSIGNACION | FIRME), `canal` (REPARTO | MAYORISTA | MOSTRADOR), `repartidorId`,
-  `ordenEnRuta`, `diasDeVisita`, `limiteCredito`, `activo`, `notas`.
-- `Repartidor` — es un `Usuario` con rol repartidor + `Reparto` (la ruta). Un repartidor tiene una
-  ruta; una ruta tiene N clientes ordenados.
-- `Reparto` (ruta) — `nombre` ("Zona Sur"), `usuarioId`, `vehiculo`, `activo`.
-- `Producto` — `nombre`, `codigo`, `tipo` (TERMINADO | SUBPRODUCTO), `unidadDeVenta`,
-  `pesoUnitarioG`, `vidaUtilDias`, `activo`.
-- `Precio` — `productoId`, `canal`, `clienteId` (NULL = precio de lista del canal), `importe`,
-  `vigencia` (`daterange`). **Sin solapamiento** (§6.2). Nunca se edita: se cierra y se abre otro.
+| Campo | Detalle |
+|---|---|
+| Entregado | teclado numérico grande, botones +1 / −1 |
+| Devuelto | vencidos y rotos que retira. No aparece si el cliente es de venta en firme |
+| Cobrado | efectivo / transferencia (con foto del comprobante) / cheque |
 
-**Reparto**
-- `HojaDeRuta` — `repartoId`, `fecha`, `estado` (planificada | en_calle | cerrada), `usuarioId`.
-- `Carga` — `hojaDeRutaId`, `productoId`, `cantidad`, `momento` (inicial | recarga).
-- `Entrega` — la fila atómica del §5.1. `hojaDeRutaId`, `clienteId`, `productoId`, `fecha`,
-  `entregado`, `devuelto`, `precioUnitario`, `importe`, `claveIdempotencia`, `origen`.
-- `Rendicion` — `repartoId`, `fecha`, por producto: cargado, entregado, devuelto por clientes,
-  devuelto a fábrica, roto; y la plata: cobrado declarado vs. registrado. `diferencia`, `motivo`,
-  `estado`.
+Arriba, siempre visible: **el saldo del cliente**, con la deuda vencida en rojo. Y lo que **suele
+llevar** (promedio de las últimas 4 visitas del mismo día de semana) ya escrito como sugerencia,
+que se confirma con un toque o se corrige.
 
-**Fabricación**
-- `Receta` — `productoId`, `version`, `rindeEsperado`, `activa`. **Versionada, nunca editada.**
-- `RecetaItem` — `insumoId`, `cantidad`, `porcentajePanadero`.
-- `Amasada` (producción) — `fecha`, `turno`, `recetaId`+`version`, `kgHarina`, `responsableId`,
-  `estado` (borrador | confirmada), `loteId`.
-- `AmasadaConsumo` — insumo, cantidad teórica, cantidad real, motivo del desvío.
-- `Lote` — `codigo`, `fechaElaboracion`, `fechaVencimiento`, `productoId`, `cantidadProducida`.
-- `MovimientoProducto` — append-only: producción, venta, devolución, merma, conversión, ajuste.
+**Cierre de caja diario (rendición).** Al volver a la fábrica, el sistema ya sabe la carga y las
+entregas. Le pide al repartidor lo que trae de vuelta y la plata que rinde, y muestra **las dos
+diferencias antes de dejar cerrar**:
 
-**Insumos y compras**
-- `Insumo` — `nombre`, `tipo` (MATERIA_PRIMA | PAQUETERIA | LIMPIEZA | MANTENIMIENTO),
-  `unidad` (kg | l | un | m), `stockMinimo`, `activo`.
-- `Proveedor` — `nombre`, `cuit`, `contacto`, `condicionesDePago`.
-- `Compra` / `CompraItem` — remito/factura, fecha, proveedor, insumo, cantidad, precio unitario,
-  IVA, total. **Toda compra mueve stock y mueve plata.**
-- `MovimientoInsumo` — append-only: compra, consumo, merma, ajuste por inventario, devolución.
-- `Inventario` / `InventarioItem` — recuento físico con fecha, contado vs. teórico, diferencia.
-- `Gasto` — servicios y gastos de período: `tipo` (LUZ | GAS | AGUA | ALQUILER | COMBUSTIBLE |
-  MANTENIMIENTO | IMPUESTOS | SUELDOS | OTRO), `periodo`, `importe`, `medidorAnterior`,
-  `medidorActual`, `comprobante`.
+- **Mercadería** (Ley 1 de §3.5), por producto.
+- **Plata**: cobrado declarado vs. cobros registrados.
 
-**Plata**
-- `Movimiento` — el ledger de cuenta corriente, **append-only**: `clienteId`, `tipo` (CARGO |
-  PAGO | NOTA_CREDITO | NOTA_DEBITO | AJUSTE), `fecha`, `importe`, `periodo`, `referencia`
-  (entregaId / cobroId / movimientoId original), `detalle`.
-- `Cobro` — `clienteId`, `fecha`, `medio` (EFECTIVO | TRANSFERENCIA | CHEQUE), `importe`,
-  `recibidoPor`, `chequeId`.
-- `Cheque` — `numero`, `banco`, `fechaCobro`, `importe`, `estado` (en_cartera | depositado |
-  acreditado | rechazado).
-- `MovimientoCaja` — ingresos y egresos de caja/banco con su origen.
-- `CierreMes` — `periodo`, `cerradoEn`, `cerradoPor`, `reabiertoEn`, `motivoReapertura`.
-- `Liquidacion` — la comisión del repartidor del mes: base, porcentaje, adelantos, neto, estado.
+Si cuadra, botón verde. Si no cuadra, **el motivo es obligatorio** y queda visible para el admin.
+Una rendición no se cierra descuadrada y en silencio, nunca.
 
-### §6.2 — Las invariantes que van en Postgres, no en el código
+**Cuenta corriente.** Lo que el cliente no paga en el momento se acumula como saldo deudor. La
+ficha del cliente muestra saldo, **deuda con antigüedad** (0-30 / 31-60 / 61-90 / +90), promedio de
+consumo mensual y última visita. Resumen de cuenta en PDF con logo, para mandar por mail o por
+WhatsApp (botón `wa.me` con el texto ya armado).
+
+**Bloqueo por mora:** por default **no corta automático**. Avisa en la pantalla del repartidor
+("este cliente debe 45 días") y, si el admin lo activa, bloquea entregas nuevas a partir de N días.
+Dejar o no dejar el pan es decisión del dueño, no del software.
+
+**La planilla del mes** (`/planilla?mes=2026-08`) es la vista que reemplaza el cuaderno:
+
+```
+                      1   2   3   4   5   6  ...  30  31   TOTAL      $
+  Kiosco El Sol      12   -  10  12   -  14  ...  12   -     286   $ ...
+  Rotisería Doña Tita 8   8   8   -   8   8  ...   8   8     214   $ ...
+  ─────────────────────────────────────────────────────────────────────
+  TOTAL DEL DÍA      20  14  18  12   8  22  ...                 $ ...
+```
+
+- Filas = clientes, columnas = días, celda = **paquetes consumidos**.
+- **Se edita en la celda**: click, escribo, Enter, guardado. Tab y flechas se mueven como en Excel.
+  El que carga un mes atrasado no puede abrir un modal por celda.
+- **Día sin visita ≠ día con 0 paquetes.** Se ven distinto: "no pasé" y "pasé y no llevó" son dos
+  hechos distintos.
+- Totales vivos por cliente, por día y del mes, en paquetes y en $ (con el precio estampado).
+- Un mes cerrado se ve en gris y sin lápiz, con el cartel que explica la nota de crédito.
+- **En el celular la planilla no es una grilla de 31 columnas**: es la lista de clientes con su
+  total, y adentro el detalle por día.
+
+### MÓDULO 2 — Fábrica: producción y mayoristas
+
+**Recetas.** Por producto, con **porcentaje panadero** (harina = 100%) y el rinde esperado en
+paquetes por cada 100 kg de harina. **Versionadas, nunca editadas**: cambiar una receta crea la
+versión 2 y la 1 queda cerrada, para que una tanda de marzo siga explicando su costo de marzo.
+
+**Tandas de producción (amasijos).** La unidad de producción.
+
+1. Nueva tanda: receta + kg de harina → el sistema calcula el resto de los insumos y los muestra
+   para confirmar o corregir (con motivo si difiere).
+2. Al **confirmar**: descuenta insumos (Ley 3), genera el **lote**, suma stock de producto
+   terminado y calcula el **rendimiento real vs. esperado**. Si el desvío pasa el 5%, avisa.
+3. Estados: `borrador` (se edita) → `confirmada` (movió stock, ya no se edita; se corrige con
+   ajuste).
+
+**Merma de producción** con motivo de lista cerrada: descortezado, mal cortado, quemado, mal
+fermentado, vencido, muestra. El **descortezado del pan de miga es merma esperada y grande**: se
+controla contra su objetivo, no contra cero, y si se convierte en pan rallado se registra como
+conversión.
+
+**Lotes y trazabilidad.** Cada lote con fecha de elaboración y vencimiento. Pantalla: **dado un
+lote, a qué clientes fue y qué día**. Es requisito bromatológico y es la única pantalla que sirve
+el día que hay que retirar mercadería.
+
+**Venta mayorista.** Mostrador rápido: cliente, productos, cantidades, contado o cuenta corriente.
+Descuenta stock de producto terminado igual que una entrega, sale con **remito numerado** y con
+lote, y afecta la caja general — **no** el stock del repartidor.
+
+**Plan de producción.** Cuánto amasar mañana, sobre el promedio de consumo de los últimos N días,
+más el stock actual, menos lo que vence. Empezá con promedio simple y a mano; el pronóstico fino es
+otra fase.
+
+### MÓDULO 3 — Insumos y servicios
+
+Tres cosas distintas viven acá y **no se modelan igual**:
+
+| Grupo | Ejemplos | Cómo se modela |
+|---|---|---|
+| **Materias primas** | harina, levadura, sal, agua de proceso, azúcar, grasa/margarina, leche en polvo, mejorador, conservante | Stock con unidad y lote. Se consume **por receta**. |
+| **Paquetería** | bolsas, cintas, fibrones, etiquetas, cajas, bandejas | Stock. Se consume **por unidad empaquetada**, no por kg de harina. |
+| **Servicios** | luz, gas, agua de red, alquiler, combustible, mantenimiento, impuestos | **NO son stock.** Son `Gasto` de período, con lectura de medidor opcional, y entran al costo por prorrateo (§4/M4). |
+
+> El dueño los nombra a todos juntos ("harina, levadura, sal, agua, luz, gas…") y desde el negocio
+> está bien: todo eso lo paga él. Pero un **"stock de electricidad" es una tabla que nunca cierra**.
+> La pantalla los puede mostrar juntos en un resumen "lo que gasté este mes"; el modelo los tiene
+> separados. **El agua entra dos veces y no es contradicción:** el agua de la masa es materia prima
+> de la receta, el agua de red que se factura es gasto de período.
+
+Lo que hay que poder hacer:
+
+- **Compras**: proveedor, remito/factura, insumos, cantidad, precio unitario, IVA. Mueve stock y
+  mueve plata (cuenta corriente con el proveedor).
+- **Stock actual** por insumo, con mínimo y **días de cobertura** — *"harina para 3 días"* es más
+  útil que *"1.240 kg"*.
+- **Valorización a costo promedio ponderado móvil**:
+  `costo = (stock × costo_viejo + compra × precio_nuevo) / (stock + compra)`.
+  Mostrá también el **último costo**, que es el que sirve para decidir si hay que subir el precio.
+- **Inventario físico**: recuento con fecha, teórico vs. contado, diferencia visible, ajuste con
+  motivo.
+- **Alertas**: bajo mínimo · cobertura menor a N días · precio de un insumo que subió más de X%
+  desde la última compra · insumo por vencer.
+- **Evolución del precio de la harina** (y de cada insumo). Es la variable que se come el margen de
+  una panificadora y el dueño la mira todas las semanas.
+
+### MÓDULO 4 — Costeo algorítmico
+
+El sistema cruza el consumo del M3 con la producción del M2 y las ventas del M1. Método: **costeo
+por absorción simple, mensual**. Que quede **una sola definición** y que todas las pantallas la usen.
+
+**Costo directo (por unidad, desde la receta)**
+```
+costo_materia_prima = Σ (cantidad_insumo_por_paquete × costo_promedio_ponderado)
+costo_paqueteria    = bolsa + cinta + etiqueta + (fibrón, tinta) por unidad empaquetada
+COSTO_DIRECTO       = costo_materia_prima + costo_paqueteria
+```
+La cantidad por paquete sale de la receta **y del rendimiento real**, no del esperado: si la receta
+dice que 100 kg rinden 400 paquetes pero rindieron 380, el costo real es más alto. Usá el
+rendimiento real del mes.
+
+**Costo indirecto — son dos bolsas, nunca una sola**
+```
+INDIRECTOS_FABRICA = mano_de_obra_fabrica + luz + gas + agua + alquiler
+                   + mantenimiento y limpieza + amortización de maquinaria
+
+INDIRECTOS_COMERCIALIZACION = combustible + mantenimiento de vehículos
+                            + sueldos de reparto y administración + gastos de cobranza
+
+COSTO_INDIRECTO_FABRICA_PAQUETE = INDIRECTOS_FABRICA / paquetes_producidos_en_el_mes
+costo_comercializacion_del_canal = INDIRECTOS_COMERCIALIZACION_del_canal
+                                 / paquetes_vendidos_por_ese_canal
+```
+
+> **Por qué dos bolsas.** El costo de *producir* un paquete no cambia porque el reparto gaste más
+> nafta. Si las mezclás, el margen por canal miente y no vas a poder responder *"¿me conviene el
+> reparto o el mayorista?"* — que es exactamente la pregunta del negocio.
+
+**Costo total y margen**
+```
+COSTO_PAQUETE     = COSTO_DIRECTO + COSTO_INDIRECTO_FABRICA_PAQUETE
+MARGEN_BRUTO      = precio_venta − COSTO_PAQUETE
+MARGEN_NETO_CANAL = MARGEN_BRUTO − costo_comercializacion_del_canal − comisión_repartidor
+MARGEN_%          = MARGEN_NETO_CANAL / precio_venta
+
+COSTO_DE_LA_MERMA = (unidades_merma + devueltas_no_recuperadas) × COSTO_PAQUETE
+```
+
+El costo de la merma va como **tarjeta propia** en el tablero: en una panificadora con reparto suele
+ser la pérdida más grande y la que nadie mira.
+
+**Pantalla de costos** (`/costos`, solo Admin y Empleado_Fabrica): composición del costo por
+paquete · comparación contra el precio de cada canal · **serie histórica del costo vs. el precio de
+venta** (el día que las dos líneas se tocan, el dueño lo tiene que ver antes de que pase) ·
+**simulador** ("si la harina sube 20%, ¿cuánto tengo que aumentar?") · **punto de equilibrio** en
+paquetes por mes.
+
+### MÓDULO 5 — Tablero de negocio y AI Advisor (solo Admin)
+
+**Las tarjetas**, cada una con su definición sin ambigüedad (§4/M5.1):
+
+| Tarjeta | Qué dice exactamente |
+|---|---|
+| **Facturado** | Σ cargos del período (devengado). Aclarar en la tarjeta si es con o sin IVA. |
+| **Cobrado** | Σ pagos recibidos en el período, sea de la deuda que sea. |
+| **Caja** | ingresos − egresos, con saldo de apertura y cierre, separando efectivo / banco / cheques. |
+| **Deuda en la calle** | saldo total a cobrar hoy, con su antigüedad. |
+| **A cobrar del mes** | facturado del mes − cobrado imputable a ese mes. **No** es lo mismo que deuda. |
+| **Deuda a proveedores** | saldo de cuentas por pagar, con vencimientos. |
+| **Margen** | facturado − costo de lo vendido (M4). |
+| **Devolución %** | Σ devuelto / Σ entregado. |
+| **Merma %** | merma / producido. |
+| **Rendimiento** | paquetes por cada 100 kg de harina. |
+
+**Cortes obligatorios:** por canal (reparto vs. mayorista) · por repartidor · por zona · por
+producto · por cliente (top 20 y **los que bajaron su consumo**).
+
+**M5.1 — Las diez palabras que no pueden ser ambiguas.** Escribilas en un solo archivo
+(`src/dominio/definiciones.ts`), con un comentario arriba de cada una, y usalas en todos lados —
+el tablero, el PDF del cliente, el CSV del contador y el JSON del Advisor salen de ahí:
+
+`producido` · `entregado` · `consumido` (= entregado − devuelto, lo que se cobra) · `facturado`
+(devengado) · `cobrado` (caja del período) · `caja` (un cheque entra recién cuando se acredita) ·
+`deuda` (saldo a hoy, todos los períodos) · `a_cobrar_del_mes` · `merma` (con motivo, no llegó a
+ningún cliente) · `margen`.
+
+**AI Business Advisor:** su propia sección, la §6. Es la parte más fácil de hacer mal.
+
+---
+
+## §5 — INVARIANTES (prohibido romper esto)
+
+### 5.1 — Zonas horarias
+
+- Todo timestamp se guarda en **UTC** y se formatea con `Intl.DateTimeFormat` a
+  `America/Argentina/Buenos_Aires`. Nunca `new Date().toLocaleString()` sin timezone explícita.
+- **El día del repartidor corta a la medianoche local, no a la UTC.** Una entrega cargada a las
+  22:30 del 31 de agosto en Buenos Aires es del 31 de agosto, aunque en UTC ya sea 1 de septiembre.
+  Si esto se rompe, el cierre de mes factura mal y el error aparece una vez al mes, de noche.
+- `Entrega.fecha` y todo lo que se agrupa por día es `date` (día calendario local ya resuelto), no
+  `timestamp`. La conversión se hace **una sola vez, en el borde**, y de ahí para adentro es un día.
+- **Ninguna función de dominio llama a `new Date()`.** El "ahora" **entra por parámetro**. Así se
+  puede testear el 31 de agosto, febrero y el cambio de año sin levantar nada.
+
+### 5.2 — Plata en centavos
+
+- Todo monto en Postgres es **`BigInt` (centavos)**. **NUNCA** `Float`, **nunca** `Decimal`, nunca
+  un `number` de JS para plata.
+- El redondeo se hace **una sola vez**, al estampar el importe de la entrega. De ahí en adelante se
+  suman enteros. Sumar redondeos es cómo aparecen las diferencias de un peso que el cliente
+  encuentra y vos no podés explicar.
+- Las cantidades de paquetes son enteros; las de insumo (kg, litros) van en `numeric(12,3)`.
+- Se formatea **solo al mostrar**, con `Intl.NumberFormat('es-AR', {style:'currency', currency:'ARS'})`.
+
+### 5.3 — Validación pura
+
+- **Zod para TODO lo que entra.** Las server actions **no confían en el frontend**: ni en los
+  tipos, ni en los ids, ni en que el número sea positivo, ni en que el cliente sea del repartidor.
+- Un esquema por acción, en `src/dominio/esquemas/`, reusado por el formulario y por el servidor.
+- El error de Zod se traduce a un mensaje que entiende un repartidor antes de llegar a la pantalla.
+
+### 5.4 — Idempotencia
+
+Toda server action que mueva inventario o plata lleva una **clave de idempotencia generada en el
+cliente** (UUID por operación).
+
+- El servidor hace `INSERT ... ON CONFLICT DO UPDATE` contra la clave natural y guarda la clave de
+  idempotencia para descartar el reintento repetido.
+- La pantalla es **optimista** y reintenta sola. Si falla definitivo lo dice fuerte y en rojo, y el
+  número queda marcado como "sin guardar".
+- **Esto se construye desde la Fase 1**, aunque el modo offline sea de otra fase. Agregar
+  idempotencia después de tener seis meses de datos es una pesadilla; el repartidor va a apretar
+  dos veces y el colectivo le va a cortar la conexión a la mitad.
+
+### 5.5 — Autorización server-side
+
+- **Ninguna server action confía en la sesión sola**: `exigir([...roles])` (§3.7) es la primera
+  línea de todas, sin excepción.
+- El `empresaId` y el `usuarioId` **se leen del acceso**, nunca vienen del cliente. Si un
+  parámetro trae un id de empresa, es un intento de ataque.
+- Un repartidor solo escribe sobre clientes de su ruta: se verifica **en la consulta**, con el
+  `where`, no con un `if` después de traer la fila.
+
+### 5.6 — Las invariantes que van en Postgres, no en el código
 
 La base es la última red. Un bug futuro, una importación de Excel o un `psql` a mano tienen que
-rebotar contra la base. Escribí esto a mano en la migración (Prisma no lo sabe expresar) y **nunca
-uses `prisma db push`**: te las borra en silencio.
+rebotar contra la base. Esto se escribe **a mano** en la migración —Prisma no lo sabe expresar— y
+**nunca uses `prisma db push`**: las borra en silencio.
 
 ```sql
--- 1) Una sola entrega por cliente/producto/día. El doble cobro se vuelve imposible.
+-- 1) Una sola entrega por cliente/producto/día: el doble cobro se vuelve imposible.
 CREATE UNIQUE INDEX entrega_unica
   ON "Entrega" ("empresaId", "fecha", "clienteId", "productoId");
 
@@ -408,8 +567,7 @@ CREATE UNIQUE INDEX entrega_unica
 ALTER TABLE "Entrega" ADD CONSTRAINT entrega_coherente
   CHECK (entregado >= 0 AND devuelto >= 0 AND devuelto <= entregado);
 
--- 3) Un solo precio vigente por (producto, canal, cliente) en cada fecha. Sin solapes, sin huecos
---    silenciosos. Es el mismo mecanismo que impide vender dos veces la misma sala en EMOAPP.
+-- 3) Un solo precio vigente por (producto, canal, cliente) en cada fecha. Sin solapes.
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 ALTER TABLE "Precio" ADD CONSTRAINT precio_sin_solape
   EXCLUDE USING gist (
@@ -420,16 +578,16 @@ ALTER TABLE "Precio" ADD CONSTRAINT precio_sin_solape
     "vigencia" WITH &&
   );
 
--- 4) El mes cerrado es piedra: ninguna escritura con fecha adentro de un período cerrado.
+-- 4) El mes cerrado es piedra.
 CREATE OR REPLACE FUNCTION mes_cerrado_rechaza() RETURNS trigger AS $fn$
 DECLARE periodo_fila text;
 BEGIN
   periodo_fila := to_char(COALESCE(NEW.fecha, OLD.fecha), 'YYYY-MM');
   IF EXISTS (
     SELECT 1 FROM "CierreMes" c
-    WHERE c."empresaId" = COALESCE(NEW."empresaId", OLD."empresaId")
-      AND c.periodo = periodo_fila
-      AND c."reabiertoEn" IS NULL
+     WHERE c."empresaId" = COALESCE(NEW."empresaId", OLD."empresaId")
+       AND c.periodo = periodo_fila
+       AND c."reabiertoEn" IS NULL
   ) THEN
     RAISE EXCEPTION 'El período % está cerrado: usá una nota de crédito o débito', periodo_fila
       USING ERRCODE = 'check_violation';
@@ -440,10 +598,10 @@ $fn$ LANGUAGE plpgsql;
 
 CREATE TRIGGER entrega_mes_cerrado BEFORE INSERT OR UPDATE OR DELETE ON "Entrega"
   FOR EACH ROW EXECUTE FUNCTION mes_cerrado_rechaza();
-CREATE TRIGGER movimiento_mes_cerrado BEFORE INSERT OR UPDATE OR DELETE ON "Movimiento"
+CREATE TRIGGER asiento_mes_cerrado BEFORE INSERT OR UPDATE OR DELETE ON "Asiento"
   FOR EACH ROW EXECUTE FUNCTION mes_cerrado_rechaza();
 
--- 5) El ledger no se edita ni se borra. Se corrige con otro movimiento que lo referencia.
+-- 5) El ledger es append-only. Se corrige con otro asiento que referencia al original.
 CREATE OR REPLACE FUNCTION ledger_append_only() RETURNS trigger AS $fn$
 BEGIN
   RAISE EXCEPTION 'El ledger es append-only: corregí con NOTA_CREDITO / NOTA_DEBITO'
@@ -451,7 +609,7 @@ BEGIN
 END;
 $fn$ LANGUAGE plpgsql;
 
-CREATE TRIGGER movimiento_inmutable BEFORE UPDATE OR DELETE ON "Movimiento"
+CREATE TRIGGER asiento_inmutable BEFORE UPDATE OR DELETE ON "Asiento"
   FOR EACH ROW EXECUTE FUNCTION ledger_append_only();
 
 -- 6) Una rendición no se cierra descuadrada sin motivo escrito.
@@ -461,679 +619,472 @@ ALTER TABLE "Rendicion" ADD CONSTRAINT rendicion_cuadra
 -- 7) El stock no queda negativo.
 ALTER TABLE "Stock" ADD CONSTRAINT stock_no_negativo CHECK (cantidad >= 0);
 
--- 8) Una hoja de ruta por reparto y día.
-CREATE UNIQUE INDEX hoja_unica ON "HojaDeRuta" ("empresaId", "repartoId", "fecha");
-
--- 9) Un cierre vigente por período.
-CREATE UNIQUE INDEX cierre_unico ON "CierreMes" ("empresaId", "periodo");
+-- 8) Una hoja de ruta por reparto y día; un cierre vigente por período.
+CREATE UNIQUE INDEX hoja_unica   ON "HojaDeRuta" ("empresaId", "repartoId", "fecha");
+CREATE UNIQUE INDEX cierre_unico ON "CierreMes"  ("empresaId", "periodo");
 ```
 
-> **Escribí un test que meta un `INSERT` crudo saltándose la aplicación y verifique que la base lo
+> **Escribí un test que meta un `INSERT` crudo salteándose la aplicación y verifique que la base lo
 > rechaza.** Es el test más importante del proyecto: prueba que la red existe.
 
-### §6.3 — Plata: enteros, no decimales
+### 5.7 — Neon: dos URLs y un lock que no es el que creés
 
-Guardá todo importe en **centavos, como entero** (`BigInt`/`bigint`). Nunca `float`. Las cantidades
-de paquetes son enteros; las cantidades de insumo (kg, litros) van en `numeric(12,3)`.
-
-El redondeo se hace **una sola vez, al estampar el importe de la entrega**, y de ahí en adelante se
-suman enteros. Sumar redondeos es cómo aparecen las diferencias de un peso que el cliente encuentra
-y vos no podés explicar.
-
----
-
-## §7 — Las pantallas, una por una
-
-Ruta base: `/panel/<slug-empresa>/...`. El estado que importa vive en la URL (mes, cliente, zona,
-producto), para que el botón "atrás" funcione y un link se pueda mandar por WhatsApp.
-
-### §7.1 — Login, olvidé, restablecer
-
-Ya descrito en §4.2. Tres pantallas chicas, sin menú, sin barra lateral.
-
-### §7.2 — Accesos — *"el dueño decide quién entra"*
-
-`…/accesos` — solo admin.
-
-- Tabla de personas: nombre, mail, rol, último ingreso, estado.
-- **Invitar**: mail + rol → se manda un link de alta con vencimiento. Mientras no lo usa, figura
-  "invitado, pendiente".
-- **Cambiar rol** sin recrear la persona. Queda en auditoría.
-- **Activar / desactivar** con un interruptor. Desactivar cierra sus sesiones abiertas.
-- **Restablecer contraseña** (le manda el mail; el admin nunca ve ni elige la contraseña de otro).
-- Buscador, porque a los 40 empleados la lista no se lee.
-
-### §7.3 — Planilla del mes — **la pantalla estrella**
-
-`…/planilla?mes=2026-08&reparto=<id>` — admin, administración y (solo la suya) el repartidor.
-
-Es la planilla de papel que hoy vive en un cuaderno, y tiene que ganarle al cuaderno el primer día.
-
-```
-                     1   2   3   4   5   6   7  ...  30  31   TOTAL     $
-  Kiosco El Sol      12   -  10  12   -  14  10  ...  12   -    286   $ ...
-  Rotisería Doña Tita 8   8   8   -   8   8   8  ...   8   8    214   $ ...
-  Bar La Esquina      -   6   -   6   -   6   -  ...   6   -     84   $ ...
-  ──────────────────────────────────────────────────────────────────────
-  TOTAL DEL DÍA      20  14  18  18   8  28  18  ...                $ ...
-```
-
-- **Filas = clientes** (de un reparto, o de todos si es el admin). **Columnas = días del mes.**
-  **Celda = paquetes consumidos** (§5.2: entregado − devuelto).
-- Si hay más de un producto, hay un **selector de producto** arriba, y una vista "todos los
-  productos" que muestra el total en paquetes equivalentes **y aclara que está sumando peras con
-  manzanas**. La celda con varios productos se abre en un detalle.
-- **Se edita en la celda**: click, escribo, Enter, y ya está guardado (optimista, §5.6). Tab y las
-  flechas se mueven como en una planilla de cálculo. El que carga el mes atrasado no puede estar
-  abriendo un modal por celda.
-- Los **días sin visita** se ven distintos de los días con 0 paquetes. "No pasé" y "pasé y no
-  llevó" son dos hechos distintos y el dueño los quiere distinguir.
-- **Totales vivos**: por cliente (paquetes y $), por día, y del mes. El total en $ usa el precio
-  estampado en cada entrega, no el precio de hoy.
-- **Cerrar el mes** desde acá, con el resumen de lo que se va a congelar y cuánto se va a facturar.
-- **Exportar a CSV y a PDF**, con el mismo número que muestra la pantalla.
-- Un mes cerrado se ve **en gris y sin lápiz**, con un cartel que explica que se corrige con nota
-  de crédito.
-- **En el celular** la planilla no es una grilla de 31 columnas: es la lista de clientes con su
-  total del mes, y adentro el detalle por día. No intentes meter la tabla entera en 390 px.
-
-### §7.4 — Reparto de hoy — la pantalla del celular
-
-`…/reparto?fecha=2026-08-26` — el repartidor entra acá directo al loguearse.
-
-Está pensada para una mano, con la otra sosteniendo una caja, bajo el sol, con guantes.
-
-1. **Carga**: qué sube a la camioneta, por producto. Un teclado numérico grande. Se puede sumar una
-   **recarga** al mediodía.
-2. **Hoja de ruta**: los clientes en orden, arrastrables. Cada uno muestra lo que **suele llevar**
-   (promedio de las últimas 4 visitas del mismo día de semana) como sugerencia ya escrita, que se
-   confirma con un toque o se corrige.
-3. **En el cliente**: dejé ___ / me llevé ___ / cobré $___. Tres campos, botones de +1 y −1, nada
-   más. Si el cliente es de venta en firme, el campo "me llevé" no aparece.
-4. **Botones grandes** (mínimo 44 px), números en tipografía tabular, contraste alto. Nada de
-   celeste sobre blanco.
-5. **Cobranza en la calle**: efectivo / transferencia (con foto del comprobante) / cheque. El saldo
-   del cliente se ve arriba, en grande, con la deuda vencida en rojo.
-6. **Al volver: la rendición** (§5.3). El sistema ya sabe la carga y las entregas: le pide al
-   repartidor lo que trae de vuelta y la plata, y muestra la diferencia **antes** de cerrar. Si
-   cuadra, un botón verde. Si no, el motivo es obligatorio.
-7. **Sin señal**: la pantalla no se rompe. Guarda lo cargado y reintenta. Un cartel dice cuántas
-   cosas faltan subir, y no deja cerrar la rendición hasta que suben todas.
-
-### §7.5 — Clientes y cuenta corriente
-
-`…/clientes` y `…/clientes/<id>`
-
-- Alta con: nombre, fantasía, dirección, zona, teléfono, CUIT y condición de IVA, reparto asignado,
-  días de visita, modalidad (consignación/firme), límite de crédito, notas.
-- La ficha del cliente muestra, arriba: **saldo, deuda vencida, promedio de consumo mensual, última
-  visita**. Abajo: la cuenta corriente completa (cargos, pagos, notas), su planilla del mes, y su
-  historial de precios.
-- **Deuda con antigüedad**: 0-30 / 31-60 / 61-90 / +90 días. Es la tabla que decide a quién se le
-  deja de dejar mercadería.
-- **Bloqueo por mora**: por default **no corta automático**. Avisa en la pantalla del repartidor
-  ("este cliente debe 45 días") y, si el admin lo activa, bloquea entregas nuevas a partir de N días
-  (default 60). La decisión de dejar o no dejar el pan es del dueño, no del software.
-- **Resumen de cuenta** en PDF, con logo, para mandar por mail o WhatsApp (botón `wa.me` con el
-  texto ya armado).
-- Baja = desactivar. La historia queda.
-
-### §7.6 — Fabricación
-
-`…/fabricacion`
-
-- **Recetas** (`…/fabricacion/recetas`): por producto, con **porcentaje panadero** (harina = 100%)
-  y el rinde esperado en paquetes por cada 100 kg de harina. **Versionadas**: cambiar una receta
-  crea la versión 2 y la 1 queda cerrada, para que una amasada de marzo siga explicando su costo de
-  marzo.
-- **Amasadas** (`…/fabricacion/amasadas`): la producción del día.
-  - Nueva amasada: receta + kg de harina → el sistema calcula el resto de los insumos y los muestra
-    para confirmar o corregir (con motivo si difiere).
-  - Al **confirmar**: descuenta insumos, genera el **lote**, suma stock de producto terminado y
-    calcula el **rendimiento real vs. esperado**. Si el desvío supera el 5%, avisa.
-  - Estados: borrador (se edita) → confirmada (mueve stock, ya no se edita; se corrige con ajuste).
-- **Rendimiento**: kg de harina → paquetes. Es el número que le dice al panadero si algo cambió
-  (harina distinta, horno mal calibrado, corte grueso).
-- **Merma de producción**, por motivo cerrado: descortezado, mal cortado, quemado, mal fermentado,
-  vencido, muestra. El **descortezado del pan de miga es una merma esperada y grande**; se controla
-  contra su propio objetivo, no contra cero, y si se transforma en pan rallado se registra como
-  conversión (§5.4), no como pérdida.
-- **Lotes y trazabilidad** (`…/fabricacion/lotes`): dado un lote, **a qué clientes fue** y en qué
-  fecha. Es un requisito bromatológico y es la pantalla que se usa el día que hay que retirar
-  mercadería. Que exista desde temprano no es opcional en una fábrica de alimentos.
-- **Plan de producción**: cuánto hay que amasar mañana, calculado sobre el consumo promedio de los
-  últimos N días por producto, más el stock actual, menos lo que vence. Empezá simple —promedio y
-  a mano—; el pronóstico fino es una fase posterior.
-
-### §7.7 — Insumos
-
-`…/insumos`
-
-Tres cosas distintas viven acá, y **no se modelan igual**:
-
-| Grupo | Ejemplos | Cómo se modela |
-|---|---|---|
-| **Materia prima** | harina, levadura, sal, azúcar, grasa/margarina, leche en polvo, mejorador, conservante, agua de proceso | Stock con unidad y lote. Se consume por receta. |
-| **Paquetería** | bolsas, bobinas de film, etiquetas, tinta de fechadora, broches/precintos, cajas, bandejas | Stock. Se consume **por unidad empaquetada**, no por kg de harina. |
-| **Servicios y gastos** | electricidad, gas, agua de red, alquiler, combustible, mantenimiento, ABL/impuestos | **NO son stock.** Son `Gasto` de período, con lectura de medidor opcional, y entran al costo por prorrateo (§9). |
-
-> El dueño los nombró todos juntos en la misma frase ("harina, levadura, sal, agua, electricidad,
-> gas…") y es correcto desde el negocio: todo eso lo paga él. Pero un "stock de electricidad" es
-> una tabla que nunca cierra. La pantalla los puede mostrar juntos en un resumen "lo que gasté este
-> mes"; el modelo los tiene separados.
-
-Lo que hay que poder hacer:
-
-- **Compras**: proveedor, remito/factura, insumos, cantidad, precio unitario, IVA. Mueve stock y
-  mueve plata (cuenta corriente con el proveedor).
-- **Stock actual** por insumo, con mínimo y **días de cobertura** ("harina para 3 días" es más útil
-  que "1.240 kg").
-- **Valorización a costo promedio ponderado móvil.** Al comprar: `costo = (stock×costo_viejo +
-  compra×precio_nuevo) / (stock + compra)`. Mostrá también el **último costo**, que es el que sirve
-  para decidir si hay que subir el precio de venta.
-- **Inventario físico**: recuento con fecha, teórico vs. contado, diferencia visible, ajuste con
-  motivo.
-- **Alertas**: bajo mínimo, cobertura menor a N días, precio de un insumo que subió más de X% desde
-  la última compra, insumo por vencer.
-- **Evolución del precio de la harina** (y de cada insumo) en un gráfico: es la variable que se
-  come el margen de una panificadora y el dueño la mira todas las semanas.
-
-### §7.8 — Costos
-
-`…/costos` — admin y encargado. La fórmula está en §9; esta pantalla la muestra y deja jugar.
-
-- **Costo por paquete**, abierto en: materia prima, paquetería, mano de obra, energía y servicios,
-  otros indirectos. Un gráfico de composición y la tabla con los números.
-- **Comparación** contra el precio de venta de cada canal → **margen bruto y margen neto por
-  producto y por canal**.
-- **Serie histórica**: cómo se movió el costo por paquete mes a mes, con el precio de venta encima.
-  El día que las dos líneas se tocan, el dueño lo tiene que ver antes de que pase.
-- **Simulador**: "si la harina sube 20%, ¿cuánto tengo que aumentar para mantener el margen?".
-  Es una pantalla de cálculo, no guarda nada.
-- **Punto de equilibrio**: cuántos paquetes por mes hay que vender para cubrir los costos fijos.
-- **Los costos no se muestran nunca en pantallas de repartidor.**
-
-### §7.9 — Negocio — el tablero
-
-`…/negocio?mes=2026-08` — solo admin (y administración, según configuración).
-
-Los números que pidió el dueño, cada uno definido sin ambigüedad (§9.4):
-
-| Tarjeta | Qué dice exactamente |
-|---|---|
-| **Facturado** | Σ importes de entregas + ventas mayoristas del período. Devengado, con IVA o sin IVA — elegí uno y aclaralo en la tarjeta. |
-| **Cobrado** | Σ pagos recibidos en el período, sin importar de qué mes era la deuda. |
-| **Caja** | ingresos − egresos del período, con saldo de apertura y de cierre, separando efectivo / banco / cheques en cartera. |
-| **Deuda** | saldo total a cobrar a hoy, con su antigüedad. |
-| **A cobrar del mes** | facturado del mes − cobrado del mes. No es lo mismo que "deuda". |
-| **Margen** | facturado − costo de lo vendido (§9). |
-| **Devolución %** | Σ devuelto / Σ entregado. La métrica que le dice si está cargando de más. |
-| **Merma %** | merma / producido. |
-| **Rendimiento** | paquetes por cada 100 kg de harina. |
-
-Cortes obligatorios: **por canal** (reparto vs. mayorista), **por repartidor**, **por zona**, **por
-producto**, **por cliente** (top 20 y los que bajaron su consumo).
-
-### §7.10 — Configuración
-
-`…/config` — empresa, sucursales, productos, precios, repartos y zonas, motivos de merma, feriados,
-plantillas de mail y WhatsApp, y **el cierre de mes**.
+- `DATABASE_URL` = la conexión **pooled** (host con `-pooler`), para la app.
+  `DIRECT_URL` = la **directa**, para las migraciones. Las dos declaradas en el `datasource` de
+  Prisma. Migrar por el pooler falla de maneras raras y a destiempo.
+- El pooler de Neon es **PgBouncer en modo transacción**. Consecuencia concreta: usá
+  **`pg_advisory_xact_lock`** (nivel transacción), **nunca `pg_advisory_lock`** (nivel sesión), o el
+  lock te queda colgado en una conexión que ya no es tuya.
+- El cierre de mes y la confirmación de una tanda corren dentro de **una transacción interactiva**,
+  no en tres llamadas sueltas.
 
 ---
 
-## §8 — Plata: precios, cuenta corriente, caja y cierre
+## §6 — EL AI ADVISOR, EN SERIO
 
-### §8.1 — Los precios no se editan
+Es el módulo con más chances de quedar lindo y estar mal. Estas reglas no son opcionales.
 
-Un precio tiene **vigencia** (`daterange`). Cambiar el precio de un producto es **cerrar el vigente
-y abrir uno nuevo desde mañana**. No hay botón "editar precio".
+### 6.1 — La regla madre: el modelo no calcula
 
-Por eso una entrega de ayer sigue valiendo lo que valía aunque hoy aumentes, y el resumen del mes
-pasado no cambia solo. Es la misma regla que en EMOAPP (§8.8 de aquel master): **el pasado no se
-recotiza**.
+**El LLM nunca hace una cuenta.** Recibe métricas **ya calculadas** por las funciones puras del
+dominio (las mismas que alimentan el tablero, §4/M5.1) y su trabajo es **priorizar, explicar y
+recomendar**. Todo número que aparezca en su respuesta tiene que estar **copiado textual del JSON
+de entrada**.
 
-Jerarquía al buscar el precio de una entrega, en este orden:
-1. Precio especial de **ese cliente** para ese producto, vigente ese día.
-2. Precio de lista del **canal** del cliente (reparto / mayorista / mostrador), vigente ese día.
-3. Si no hay ninguno: **la entrega se rechaza con un error claro**. Nunca `precio = 0`. Un cero
-   silencioso es plata que no se cobra y nadie se entera hasta fin de mes.
+Un advisor que suma, promedia o proyecta a ojo te va a dar un número que no coincide con el
+tablero, y el día que eso pase el dueño deja de creerle al sistema entero.
 
-**Aumento masivo**: una acción que cierra los precios vigentes y abre los nuevos con un % o un
-importe, con vista previa de "estos 34 productos pasan de X a Y" antes de confirmar. Es idempotente
-y queda en auditoría.
+### 6.2 — Arquitectura en tres capas
 
-### §8.2 — Cuenta corriente
+```
+1. MÉTRICAS   src/dominio/metricas.ts   → funciones puras, testeadas. Devuelven números.
+2. ALERTAS    src/dominio/alertas.ts    → reglas deterministas con umbrales. Devuelven hechos.
+                                          "devolucion_alta: 15.2% vs objetivo 8%"
+3. NARRATIVA  src/servicios/advisor.ts  → el LLM. Ordena por impacto, explica y sugiere.
+```
 
-- **Cargo** por cada entrega, a la fecha de la entrega, con su `importe` estampado.
-- **Pago** por cada cobro. El pago **no se aplica a una factura puntual**: baja el saldo. (Aplicar
-  pagos a comprobantes específicos es contabilidad; acá alcanza con saldo y antigüedad. Si el dueño
-  lo pide, se agrega después sin romper nada, porque el ledger ya tiene `referencia`.)
-- **Nota de crédito**: devolución posterior, error de un mes cerrado, bonificación. Siempre apunta
-  al movimiento original.
-- **Saldo = Σ movimientos.** No guardes un saldo mutable como fuente de verdad. Si necesitás
-  velocidad, guardá un saldo **materializado y recalculable**, con un test que verifique que
-  recalcularlo desde cero da lo mismo.
+Las capas 1 y 2 **funcionan sin la API prendida**. Si el Advisor se cae, se queda sin crédito o el
+dueño lo apaga, el tablero sigue mostrando todo y las alertas siguen saltando. La IA agrega
+criterio, no es el cableado.
 
-### §8.3 — Caja
+### 6.3 — El JSON de entrada
 
-- Ingresos: cobranzas del reparto, ventas de mostrador, ventas mayoristas cobradas.
-- Egresos: compras de insumos, gastos y servicios, combustible, adelantos a empleados, retiros.
-- **Arqueo diario**: lo que el sistema dice que hay vs. lo que el que cierra la caja cuenta. La
-  diferencia se registra con motivo, no se ajusta en silencio.
-- **Cheques en cartera** con su fecha de cobro. Un cheque **no es caja hasta que se acredita**, y
-  el tablero tiene que mostrarlos aparte. En el mayoreo argentino esto no es un detalle.
+Lo arma una función pura, `construirContexto(periodo, empresaId)`. Chico, agregado y estable:
 
-### §8.4 — Cierre de mes
+```jsonc
+{
+  "periodo": "2026-08", "generado": "2026-08-26", "moneda": "ARS",
+  "ventas":   { "facturado": 4820000, "cobrado": 3910000, "a_cobrar": 910000,
+                "por_canal": { "reparto": 3120000, "mayorista": 1700000 } },
+  "deuda":    { "total": 1840000, "vencida_mas_60": 420000, "clientes_en_mora": 7 },
+  "caja":     { "apertura": 210000, "ingresos": 3910000, "egresos": 3480000,
+                "cierre": 640000, "cheques_en_cartera": 380000 },
+  "costos":   { "costo_paquete": 412, "variacion_vs_mes_anterior": 0.083,
+                "insumo_que_mas_subio": { "nombre": "harina 000", "variacion": 0.19 } },
+  "operacion":{ "devolucion_pct": 0.152, "merma_pct": 0.031, "rendimiento_100kg": 384 },
+  "alertas":  [ { "codigo": "devolucion_alta", "valor": 0.152, "objetivo": 0.08,
+                  "detalle": "Zona Sur, repartidor R-3, últimas 2 semanas" } ],
+  "top_caidas": [ { "cliente": "C-118", "consumo_actual": 40, "consumo_previo": 120 } ]
+}
+```
 
-Una acción, del admin, que en una sola transacción:
-1. Verifica que **todas las rendiciones del mes estén cerradas**. Si falta una, no cierra y dice
-   cuál.
-2. Congela el período (§5.7).
-3. Genera el **resumen por cliente**: paquetes por día, total del mes, cargos, pagos, saldo.
-4. Genera el **PDF** de cada resumen y lo deja disponible para descargar o mandar.
-5. Genera las **liquidaciones de comisión** de cada repartidor.
-6. Deja una foto de los números del mes (facturado, cobrado, costo, margen) que **no se recalcula
-   nunca más**.
+**Reglas del JSON:**
+- **Sin PII.** Clientes y repartidores viajan como **códigos** (`C-118`, `R-3`). Los nombres se
+  vuelven a poner **en la pantalla**, cruzando el código localmente. No mandes nombres, teléfonos
+  ni direcciones a un servicio externo si no hace falta — y no hace falta.
+- **Chico**: agregados, no filas. Nunca 50.000 entregas.
+- **Estable**: mismas claves siempre, en el mismo orden. Es lo que hace que el prompt cachee.
+- Los importes van en la unidad ya formateada como número (pesos, no centavos) **y el prompt lo
+  aclara**, para que el modelo no divida por 100 por su cuenta.
 
-Es **idempotente**: apretar dos veces no duplica cargos ni comisiones.
+### 6.4 — El prompt del analista
 
-### §8.5 — Mayoristas
+Va en `src/servicios/advisor/prompt.ts`, como constante congelada. Va **primero** en el request y
+marcado para cachear: es lo estable, el JSON es lo volátil.
 
-Mismo motor, otra puerta: la venta mayorista sale de la fábrica, no de una camioneta.
+```ts
+export const PROMPT_ANALISTA = `
+Sos el analista de negocio de una panificadora de pan de miga en Argentina, con fábrica y reparto
+a la calle. Le hablás al dueño, en español rioplatense, de vos.
 
-- **Remito** con número, productos y lote (trazabilidad, §7.6).
-- Puede ser al contado (entra a caja) o a cuenta corriente (entra al ledger).
-- Precio del canal MAYORISTA, con la misma regla del §8.1.
-- Descuenta stock de producto terminado igual que una entrega de reparto.
+QUÉ RECIBÍS
+Un JSON con las métricas del período, ya calculadas por el sistema. Los importes están en pesos.
 
-### §8.6 — La comisión del repartidor
+REGLAS QUE NO SE ROMPEN
+1. NO calcules. Todo número que escribas tiene que estar en el JSON, copiado tal cual.
+2. Si un dato no está en el JSON, decí "no tengo ese dato". Jamás lo estimes.
+3. Nada de proyecciones que el JSON no traiga ya calculadas.
+4. Máximo 4 recomendaciones. Ordenadas por PLATA EN JUEGO, no por lo fácil que son.
+5. Cada recomendación: qué pasa, cuánto cuesta o cuánto vale, y qué hacer esta semana.
+6. Frases cortas. Sin "sinergia", "optimizar procesos" ni "robusto". Hablás como un contador
+   que conoce el oficio, no como un consultor.
+7. Si algo está bien, decilo en una línea y seguí. No inventes problemas para llenar espacio.
 
-- Base recomendada: **porcentaje sobre lo COBRADO**, no sobre lo entregado. Si la comisión se paga
-  sobre lo entregado, el repartidor no tiene ningún incentivo en cobrar, y la deuda se vuelve
-  problema del dueño.
-- Configurable por repartidor: % general, % por producto, o monto por paquete.
-- **Adelantos** registrados, que se descuentan de la liquidación.
-- **Los faltantes de rendición NO se descuentan automáticamente del sueldo.** Se muestran, se
-  informan y se discuten. En Argentina el descuento unilateral sobre la remuneración tiene límites
-  legales (LCT arts. 131-133): el software informa, la decisión y su instrumentación son del dueño
-  con su abogado.
+CONTEXTO DEL OFICIO
+- La devolución alta significa que se está cargando de más la camioneta: ese pan vuelve y se
+  pierde o se vende como pan rallado a una fracción del precio.
+- La harina es el insumo que define el margen. Si sube, o sube el precio o se come la ganancia.
+- La deuda en la calle a más de 60 días rara vez se cobra entera.
+- El pan de miga tiene vencimiento corto: el stock viejo es pérdida, no inventario.
+`;
+```
+
+### 6.5 — La llamada
+
+TypeScript, SDK oficial, **salida estructurada con Zod** (que ya está en el stack) para que la
+respuesta entre tipada y no haya que parsear texto:
+
+```ts
+import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { z } from "zod";
+import { PROMPT_ANALISTA } from "./prompt";
+
+const Consejo = z.object({
+  resumen: z.string(),                    // dos líneas, lo primero que lee el dueño
+  recomendaciones: z.array(z.object({
+    titulo: z.string(),
+    que_pasa: z.string(),
+    plata_en_juego: z.number().nullable(), // null si el JSON no lo trae
+    que_hacer: z.string(),
+    urgencia: z.enum(["alta", "media", "baja"]),
+  })).max(4),
+  esta_bien: z.array(z.string()),          // lo que va bien, una línea cada uno
+});
+
+const anthropic = new Anthropic();         // toma ANTHROPIC_API_KEY del entorno
+
+export async function pedirConsejo(contexto: ContextoNegocio) {
+  const r = await anthropic.messages.parse({
+    model: "claude-opus-5",
+    max_tokens: 16000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high", format: zodOutputFormat(Consejo) },
+    system: [{ type: "text", text: PROMPT_ANALISTA, cache_control: { type: "ephemeral" } }],
+    messages: [{ role: "user", content: JSON.stringify(contexto) }],
+  });
+  if (!r.parsed_output) throw new Error("El analista no devolvió un informe válido");
+  return { informe: r.parsed_output, uso: r.usage };
+}
+```
+
+Detalles que importan y que se olvidan:
+- **`max_tokens` generoso** (16000). Quedarse corto trunca el informe a la mitad y hay que
+  reintentar, que sale más caro que el margen.
+- **Caché de prompt**: el `system` va marcado con `cache_control` y **no cambia entre llamadas**
+  (nada de fechas ni ids adentro). Verificá que funciona mirando
+  `usage.cache_read_input_tokens` — si da 0 llamada tras llamada, algo del prefijo está cambiando.
+- **Errores tipados**, en cadena de más específico a más general: `RateLimitError` →
+  `APIError` → conexión. Y el fallback siempre es el mismo: **mostrar las alertas deterministas**
+  con un cartel que dice que el analista no está disponible.
+- No uses `budget_tokens` (está removido en este modelo) ni prefill de la respuesta del asistente
+  (devuelve 400).
+
+### 6.6 — Guardarraíles
+
+1. **El Advisor NO escribe en la base.** Nunca. No tiene tools, no tiene acciones, no cambia
+   precios. Recomienda; el dueño decide y ejecuta a mano.
+2. **Todo informe se guarda con su JSON de entrada.** Tabla `Informe`: período, contexto,
+   respuesta, tokens, costo, modelo. Sirve para auditar ("¿de dónde sacó ese número?") y para
+   comparar informes viejos.
+3. **La pantalla muestra la fecha de corte** ("datos al 26/08"). Un consejo sobre datos de hace dos
+   semanas es peor que ninguno.
+4. **Solo Admin.** El Advisor lee toda la plata del negocio: no aparece para ningún otro rol, ni
+   siquiera en gris.
+5. **Botón de apagado.** Un flag por empresa. Apagado, el tablero funciona igual (§6.2).
+
+### 6.7 — Costo y cadencia
+
+- **No se llama en cada carga de página.** Se genera **una vez por día** (job programado) y
+  **a pedido** con un botón que tiene enfriamiento de unos minutos.
+- Con el JSON de §6.3 la llamada son unos pocos miles de tokens: centavos por informe. Lo que sale
+  caro es llamarlo 400 veces por día porque quedó en un `useEffect`.
+- **Preguntas de seguimiento**: el dueño puede repreguntar sobre el mismo contexto. Se reusa el
+  mismo `system` cacheado y se agrega el turno; no se rearma el contexto.
 
 ---
 
-## §9 — Costos: la fórmula, escrita de una vez
+## §7 — INTERFAZ
 
-Que quede una sola definición y que todas las pantallas la usen. Método: **costeo por absorción
-simple**, mensual.
+### 7.1 — Reglas generales
 
-### §9.1 — Costo directo (se calcula por unidad, desde la receta)
+- **shadcn/ui + Tailwind**, sin librería de componentes encima. Los componentes se copian al repo y
+  se editan: son tuyos, no una dependencia.
+- **Mobile-first de verdad en el reparto**, escritorio en la fábrica y la administración. No es lo
+  mismo: la planilla del mes en 390 px no es una grilla de 31 columnas (§4/M1).
+- **Ninguna pantalla hace una cuenta.** Los componentes reciben números ya calculados. Un
+  `.reduce()` con plata adentro de un `.tsx` es un bug esperando su turno.
+- El estado que importa vive en la **URL** (mes, cliente, zona, producto): el botón "atrás"
+  funciona y el link de un día se manda por WhatsApp.
+- Números con `font-variant-numeric: tabular-nums`, siempre, en toda columna que se lea vertical.
+- Estados vacíos que dicen qué hacer, no "no hay datos".
 
-```
-costo_materia_prima_paquete = Σ (cantidad_insumo_por_paquete × costo_promedio_ponderado_insumo)
-costo_paqueteria_paquete    = Σ (bolsa + etiqueta + broche + film + tinta) por unidad empaquetada
-COSTO_DIRECTO = costo_materia_prima_paquete + costo_paqueteria_paquete
-```
+### 7.2 — La pantalla del repartidor
 
-La cantidad de insumo por paquete sale de la receta **y del rendimiento real**, no del esperado:
-si la receta dice que 100 kg de harina rinden 400 paquetes pero rinden 380, el costo real por
-paquete es más alto. Usá el rendimiento real del mes.
+La usa una persona con una mano ocupada, bajo el sol, a veces con guantes.
 
-### §9.2 — Costo indirecto (se prorratea por período)
+- Botones de **44 px como mínimo**. Teclado numérico grande. Contraste alto: nada de gris claro
+  sobre blanco.
+- Tres campos por cliente y nada más: dejé / me llevé / cobré.
+- **Sin señal, no se rompe**: guarda, reintenta, y un cartel dice cuántas cosas faltan subir. No
+  deja cerrar la rendición hasta que suben todas.
+- El saldo del cliente arriba, grande, con la deuda vencida en rojo.
 
-**Son dos bolsas, no una.** Nunca las sumes en un solo número:
+### 7.3 — La planilla del mes
 
-```
-INDIRECTOS_FABRICA = mano_de_obra_fabrica
-                   + energia (luz + gas del horno, amasadora, camara, cortadora)
-                   + agua de red
-                   + alquiler y expensas de la planta
-                   + mantenimiento y limpieza
-                   + amortizacion de maquinaria (si el dueño la carga)
+Le tiene que ganar al cuaderno **el primer día**. Edición en celda, Tab y flechas como en Excel,
+totales vivos, guardado optimista. Si para cargar un mes atrasado hay que abrir un modal por celda,
+la pantalla fracasó aunque funcione.
 
-INDIRECTOS_COMERCIALIZACION = combustible y mantenimiento de vehiculos
-                            + sueldos de reparto y administracion
-                            + telefonia y sistemas
-                            + gastos de cobranza
+### 7.4 — El tablero y el "3D"
 
-COSTO_INDIRECTO_FABRICA_PAQUETE = INDIRECTOS_FABRICA / paquetes_producidos_en_el_mes
-costo_comercializacion_paquete_del_canal =
-    INDIRECTOS_COMERCIALIZACION_del_canal / paquetes_vendidos_por_ese_canal_en_el_mes
-```
+El dueño pidió gráficos modernos, fluidos, con sensación de volumen. Se hace, con una regla:
 
-> **Por qué dos bolsas.** Separá **indirectos de fábrica** (los que hacen el pan) de
-> **indirectos de comercialización** (los que lo llevan a la calle). El costo de producir un
-> paquete no cambia porque el reparto gaste más nafta. Prorrateá los de fábrica sobre paquetes
-> producidos, y los de comercialización sobre paquetes vendidos por canal. Si mezclás las dos
-> bolsas, el margen por canal miente y no vas a poder responder "¿me conviene el reparto o el
-> mayorista?", que es exactamente la pregunta del negocio.
+> **El 3D es piel; el dato es hueso.** La profundidad, el gradiente y la animación son para que la
+> pantalla se entienda de un vistazo. **El valor nunca se lee de una dimensión en perspectiva.**
 
-### §9.3 — Costo total y margen
+Reglas concretas:
 
-```
-COSTO_PAQUETE      = COSTO_DIRECTO + COSTO_INDIRECTO_FABRICA_PAQUETE
-MARGEN_BRUTO       = precio_venta − COSTO_PAQUETE
-MARGEN_NETO_CANAL  = MARGEN_BRUTO − costo_comercializacion_paquete_del_canal − comision_repartidor
-MARGEN_%           = MARGEN_NETO_CANAL / precio_venta
-```
-
-Y el costo de la merma, que es real y se olvida siempre:
-
-```
-COSTO_DE_LA_MERMA = (unidades_merma + unidades_devueltas_no_recuperadas) × COSTO_PAQUETE
-```
-
-Mostralo como una tarjeta propia en el tablero. En una panificadora con reparto, la devolución que
-no se recupera suele ser la fuga de plata más grande y la menos visible.
-
-### §9.4 — Las nueve palabras que no pueden ser ambiguas
-
-Escribí estas definiciones en el código, en un solo archivo (`src/dominio/definiciones.ts`), con
-un comentario arriba de cada una, y usalas en todos lados:
-
-| Palabra | Definición exacta |
-|---|---|
-| **Producido** | unidades que salieron de amasadas confirmadas en el período. |
-| **Entregado** | unidades que salieron a un cliente (antes de devoluciones). |
-| **Consumido / vendido** | entregado − devuelto. Es lo que se cobra. |
-| **Facturado** | Σ importes de cargos del período (devengado). |
-| **Cobrado** | Σ pagos recibidos en el período, sea de la deuda que sea. |
-| **Caja** | movimientos de efectivo y banco. Un cheque entra recién cuando se acredita. |
-| **Deuda** | saldo total a cobrar hoy, de todos los períodos. |
-| **A cobrar del mes** | facturado del mes − cobrado imputable a ese mes. |
-| **Merma** | unidades perdidas, con motivo, que no llegaron a ningún cliente. |
-
----
-
-## §10 — El tablero y los gráficos 3D
-
-El dueño pidió métricas gráficas en 3D. Se hacen, y se hacen bien. La regla que las hace útiles:
-
-> **El 3D es piel; el dato es hueso.** El volumen, la profundidad y la luz son para que la pantalla
-> impresione y se entienda de un vistazo. **El valor nunca se lee de una dimensión en perspectiva.**
-
-Reglas concretas, no negociables:
-
-1. **Todo gráfico 3D tiene el número escrito.** Encima de la barra, en la tarjeta, o en la etiqueta.
-   Si para saber cuánto facturaste hay que estimar la altura de un prisma girado, el gráfico falló.
+1. **Todo gráfico tiene el número escrito.** Si para saber cuánto facturaste hay que estimar la
+   altura de un prisma girado, el gráfico falló.
 2. **Botón "ver como tabla"** en cada gráfico. Los mismos números, en filas. Es lo que el dueño le
    manda al contador.
 3. **Nada de torta en 3D.** Una torta en perspectiva miente sobre las proporciones. Para partes de
-   un total: barras apiladas o barras horizontales.
-4. **Una sola fuente.** El gráfico, la tabla, el PDF y el resumen del cliente llaman a la misma
-   función pura del dominio. Prohibido que el componente del gráfico haga su propia cuenta.
-5. **Rendimiento**: el tablero abre en menos de 2 segundos en un Android de gama media. La librería
-   3D se carga **solo en la ruta del tablero** (import dinámico), nunca en el bundle general, y
-   nunca en la pantalla del repartidor.
-6. **Si no hay WebGL, cae a 2D** sin romperse y sin pedir disculpas.
-7. **Los datos se calculan en el servidor.** Al cliente le llega un JSON chico y ya agregado, no
-   50.000 entregas para que las sume el navegador.
+   un total: barras apiladas u horizontales.
+4. **Una sola fuente**: el gráfico, la tabla, el PDF y el JSON del Advisor llaman a la misma función
+   pura de `src/dominio/metricas.ts`. Prohibido que el componente del gráfico haga su propia cuenta.
+5. **Los datos se agregan en el servidor.** Al cliente le llega un JSON chico, no 50.000 filas.
 
-**Librería recomendada:** ECharts con `echarts-gl` (barras 3D, superficie, dispersión 3D) — una sola
-dependencia, funciona en canvas, degrada bien. Alternativa si se quiere algo más artesanal:
-Three.js para dos o tres piezas de impacto y gráficos 2D nítidos para el resto.
+**Con qué se construye.** Recharts (vía el componente `chart` de shadcn/ui) **es 2D**, y con eso
+alcanza: la sensación de profundidad y fluidez sale de gradientes en las áreas, sombras suaves,
+transiciones animadas al cambiar de período, y micro-interacciones en el hover. **Eso es lo que hay
+que hacer primero.** Si después del tablero terminado el dueño insiste con volumen real, se agrega
+**una sola** pieza 3D (barras `producto × mes × facturación`, que es el único caso con tres ejes de
+verdad) con una librería cargada por `dynamic import` **solo en esa ruta**, con caída a 2D si no hay
+WebGL. Nunca en el bundle general y nunca en la pantalla del repartidor.
 
-**Qué gráfico va bien en 3D acá** (donde hay de verdad tres ejes):
-- **Barras 3D: producto × mes × facturación.** Doce meses por seis productos es exactamente el caso
-  donde el 3D suma.
-- **Barras 3D: zona × día de semana × paquetes.** Muestra el patrón de la semana por zona.
-- **Superficie: consumo por cliente a lo largo del mes.** Los pozos se ven a simple vista.
-- **Mapa de calor 3D del mes** (semanas × días): dónde está el pico de producción.
-
-**Qué NO va en 3D:** la evolución del costo por paquete (línea 2D), la antigüedad de la deuda (barras
-2D), el % de devolución (línea 2D con su objetivo), la composición del costo (barra apilada 2D).
-
-**Estética:** oscuro, con vidrio y profundidad, números en tipografía tabular, y **contraste alto**:
-esta pantalla se mira en una oficina de fábrica con luz mala, y a veces desde el celular en la
-calle. Nada de gris claro sobre gris.
+**Qué NO va en 3D, nunca:** la evolución del costo por paquete (línea), la antigüedad de la deuda
+(barras), el % de devolución (línea con su objetivo), la composición del costo (barra apilada).
 
 ---
 
-## §11 — Stack y arquitectura innegociable
+## §8 — ROADMAP DE EJECUCIÓN
 
-### §11.1 — El stack
+Una fase termina cuando **pasa su criterio de aceptación**, no cuando "está el código". **No
+avances a la siguiente sin mi OK** (§0.2).
 
-| Pieza | Elección | Por qué |
-|---|---|---|
-| Framework | **Next.js 16** (App Router, server actions) | Es el que ya conoce el dueño y el que ya está desplegado en el producto hermano. |
-| Lenguaje | **TypeScript estricto** (`strict: true`, sin `any`) | — |
-| Base | **Postgres 16** (Supabase, **Data API desactivada**) | Los `EXCLUDE USING gist`, los triggers y los advisory locks del §6.2 necesitan Postgres de verdad. No es reemplazable por otra base. |
-| ORM | **Prisma**, con guard de tenant | Y la migración escrita a mano para las invariantes. |
-| Sesión | **NextAuth v5**, credenciales propias | Sin proveedores externos en v1. |
-| Validación | **Zod** en el borde de cada server action | Nada entra al servicio sin validar. |
-| Mail | **Resend** | Resúmenes, invitaciones, recupero de clave. |
-| PDF | generación en el servidor | El resumen del cliente y la liquidación. |
-| Tests | `node --test` para dominio, Postgres real para integración, **Playwright** para humo | — |
-| Hosting | **Vercel**, funciones en `gru1` | Base en `sa-east-1`: la base y las funciones, cerca. |
+### FASE 1 — Modelado de datos
 
-### §11.2 — Las carpetas
+**Entregable, y tu primera respuesta a este prompt: EXCLUSIVAMENTE el código de `schema.prisma`.**
+Sin explicaciones largas, sin pantallas, sin `package.json`.
 
-```
-src/dominio/     lógica PURA. No importa Prisma. No llama a new Date() sin argumento. No hace I/O.
-                 Todo lo que DECIDE algo vive acá y tiene su test al lado.
-                 → entregas.ts, precios.ts, rendicion.ts, receta.ts, costos.ts, planilla.ts,
-                   cuenta-corriente.ts, definiciones.ts
-src/db/          cliente Prisma + guard de empresa + traducción de errores de Postgres a mensajes
-                 que un humano entiende ("ese día ya está cargado para este cliente").
-src/servicios/   casos de uso: orquestan dominio + base. Reciben el usuarioId y el empresaId,
-                 NUNCA los adivinan ni los leen de un global.
-                 → reparto/, fabricacion/, insumos/, plata/, config/, reportes/
-src/lib/         sesión, permisos, formato de plata y fechas.
-app/             Next: páginas y server actions. Dueñas de la sesión. CERO lógica de negocio.
-prisma/          schema + migración (baseline generado + invariantes del §6.2 escritas a mano).
-scripts/         setup, doctor, seed, acceso — ver §11.4.
-```
+Entidades mínimas: `Empresa` · `Usuario` · `Acceso` (rol) · `Invitacion` · `Auditoria` · `Cliente` ·
+`Reparto` · `Producto` · `Precio` · `HojaDeRuta` · `Carga` · `Entrega` · `Rendicion` · `Receta` ·
+`RecetaItem` · `TandaProduccion` · `TandaConsumo` · `Lote` · `MovimientoProducto` · `Insumo` ·
+`Proveedor` · `Compra` · `CompraItem` · `MovimientoInsumo` · `Inventario` · `InventarioItem` ·
+`Gasto` · `Asiento` · `Cobro` · `Cheque` · `MovimientoCaja` · `CierreMes` · `Liquidacion` ·
+`Informe` (§6.6).
 
-### §11.3 — Las cuatro reglas de código
+Todas con `empresaId`, `creadoEn`, `actualizadoEn`; las que deciden plata, además `creadoPor`.
+Plata en `BigInt`. Cantidades de insumo en `Decimal(12,3)`.
 
-1. **El "ahora" entra por parámetro.** Ninguna función de dominio llama a `new Date()`. Así se puede
-   testear el cierre del 31 de agosto, el mes de febrero y el cambio de horario sin levantar nada.
-2. **La base es la última red, no el código.** Las invariantes del §6.2 existen aunque el código
-   tenga un bug. Y hay un test que lo prueba metiendo un `INSERT` crudo.
-3. **Lo que se muestra y lo que decide salen de la misma función.** Si la planilla muestra un total
-   y el PDF muestra otro, el sistema perdió la única cosa que tenía que ganar: que le crean.
-4. **Ninguna pantalla hace una cuenta.** Los componentes reciben números ya calculados. Un `.reduce()`
-   con plata adentro de un `.tsx` es un bug esperando su turno.
+Inmediatamente después, en el mismo turno de la fase: **`prisma/migrations/0001_invariantes/migration.sql`**
+con las 8 invariantes de §5.6 escritas a mano.
 
-### §11.4 — Scripts obligatorios (lo que aprendió el producto hermano)
+**Criterio de aceptación:** el dueño mira una planilla de papel de un mes real y confirma que el
+modelo la representa entera, sin "eso lo anotamos aparte".
 
-Estos cuatro comandos existen **desde F1**, no al final. Son los que hacen que el dueño pueda
-levantar el sistema sin llamarte:
+### FASE 2 — Dominio y Zod
 
-| Comando | Qué hace |
-|---|---|
-| `npm run instalar` | esquema + datos de ejemplo + revisión, todo con Node, sin depender de `psql`. |
-| `npm run doctor` | revisa la cadena entera —variables de entorno, conexión, tablas **y columnas**, constraints, datos, y que la contraseña del admin ABRA de verdad— y se frena en el primer eslabón roto **diciendo qué comando lo arregla**. |
-| `npm run acceso` | repara los usuarios y su acceso, sin tocar datos de negocio. Para el día que el login rechaza una contraseña que sabés que está bien. |
-| `npm run seed` | carga (o **recarga**) los datos de ejemplo. Avisa fuerte que rehace todo. |
+Validadores de entrada y **lógica de cálculo sin tocar la base**: `entregas.ts` (consumido,
+importe), `precios.ts` (vigencia y jerarquía), `rendicion.ts` (Ley 1), `receta.ts` (porcentaje
+panadero, rendimiento), `costos.ts` (§4/M4 completo), `planilla.ts`, `cuenta-corriente.ts`,
+`definiciones.ts`, `metricas.ts`, `alertas.ts`.
 
-Y `npm run verify` (typecheck + tests puros) tiene que pasar antes de cada commit.
+**Criterio:** los tests de §9 (bloque dominio) en verde, incluido **un caso numérico de costo por
+paquete escrito a mano por el dueño** que da exactamente lo mismo que el sistema.
+
+### FASE 3 — Autenticación y roles
+
+NextAuth v5, login, olvidé/restablecer, pantalla de **Accesos** (invitar, cambiar rol, activar,
+desactivar, resetear clave), y el wrapper `exigir()` de §3.7 con la revalidación fresca.
+
+**Criterio:** el test de aislamiento pasa —repartidor A pidiendo datos de B recibe 404— y desactivar
+a alguien lo saca en la acción siguiente, sin esperar vencimiento de sesión.
+
+### FASE 4 — El core del reparto
+
+Clientes, productos, precios. Hoja de ruta, carga, entrega/devolución/cobro en el celular,
+rendición del día, y **la planilla del mes**. Cuenta corriente y cierre de mes con PDF.
+
+**Criterio:** se carga **un mes real completo** desde el cuaderno y los totales coinciden con lo que
+el dueño cobró de verdad ese mes. Ese es el examen del proyecto entero.
+
+### FASE 5 — Fábrica e insumos
+
+Recetas versionadas, tandas, lotes, trazabilidad, merma, stock de producto terminado. Venta
+mayorista con remito. Insumos: compras, stock, valorización, inventario físico, gastos de servicios,
+alertas.
+
+**Criterio:** las Leyes 2 y 3 de §3.5 cierran sobre una semana real de producción, y el inventario
+físico explica su diferencia.
+
+### FASE 6 — Tablero y AI Advisor
+
+Métricas, cortes, gráficos (§7.4), y el Advisor completo de §6 con sus tres capas, su tabla de
+informes y su botón de apagado.
+
+**Criterio:** el dueño responde *"¿me conviene el reparto o el mayorista?"* mirando una sola
+pantalla; y el informe del Advisor no tiene **ni un número** que no esté en el JSON de entrada.
+
+> **El tablero crece por capas.** No esperes a la Fase 6 para mostrar números: desde la Fase 4 hay
+> una versión chica con facturado, cobrado y deuda. Un dueño que no ve un número hasta la última
+> fase abandona el sistema en la segunda.
 
 ---
 
-## §12 — Calidad: qué tests son obligatorios
+## §9 — TESTS OBLIGATORIOS
 
-No se pide cobertura del 90%. Se piden **estos** tests, y sin ellos una fase no está terminada:
+No se pide cobertura del 90%. Se piden **estos**, y sin ellos una fase no está terminada.
 
-**Dominio (puros, sin base, corren en segundos)**
-- `consumido = entregado − devuelto`, incluidos los bordes: devuelto = entregado, devuelto = 0.
-- El precio vigente al día de la entrega, con las tres jerarquías del §8.1 y el error cuando no hay.
-- La planilla del mes de un cliente: días sin visita ≠ días con cero, total en paquetes y en $.
-- El cuadre de la rendición, por producto, con y sin diferencia.
-- El rendimiento de una amasada y el consumo teórico por receta con porcentaje panadero.
-- El costo por paquete completo del §9, con un caso numérico escrito a mano por el dueño.
-- Meses: 28, 29, 30 y 31 días; el 31 de un mes que cierra; año nuevo.
+**Dominio** (puros, sin base, corren en segundos)
+- `consumido = entregado − devuelto`, con los bordes: devuelto = entregado, devuelto = 0.
+- Precio vigente al día de la entrega, con las tres jerarquías de §3.4 y el **error** cuando no hay.
+- Planilla del mes de un cliente: día sin visita ≠ día con cero; total en paquetes y en $.
+- Cuadre de la rendición, por producto, con y sin diferencia.
+- Rendimiento de una tanda y consumo teórico por receta con porcentaje panadero.
+- Costo por paquete completo de §4/M4, contra el caso numérico del dueño.
+- Meses de 28, 29, 30 y 31 días; el 31 que cierra; año nuevo.
+- **La medianoche local**: entrega a las 22:30 del último día del mes cae en ese mes, no en el
+  siguiente.
 
-**Integración (contra Postgres real, en su propia base que se borra en cada corrida)**
-- El `UNIQUE` de entrega: dos inserts compitiendo, uno gana, el otro recibe un error traducido.
+**Integración** (contra Postgres real, en su propia base que se borra en cada corrida)
+- El `UNIQUE` de entrega: dos inserts compitiendo, uno gana, el otro recibe el error **traducido**.
 - El `EXCLUDE` de precios: dos precios que se solapan, el segundo rebota.
 - El trigger de mes cerrado: un `UPDATE` a una entrega de un mes cerrado rebota.
-- El trigger del ledger: un `UPDATE` y un `DELETE` a `Movimiento` rebotan.
-- **Aislamiento de empresa**: un usuario de la empresa A pidiendo una fila de la empresa B no la
-  recibe. Nunca.
-- **Aislamiento de repartidor**: el repartidor A pidiendo un cliente del repartidor B recibe 404.
-- El cierre de mes apretado dos veces genera un solo juego de cargos.
-- Reintento con la misma clave de idempotencia: una sola entrega.
+- El trigger del ledger: `UPDATE` y `DELETE` sobre `Asiento` rebotan.
+- Aislamiento de empresa y de repartidor (§5.5).
+- Cierre de mes apretado dos veces = un solo juego de cargos y comisiones.
+- Reintento con la misma clave de idempotencia = una sola entrega.
 
-**Humo (navegador real, deja capturas)**
+**E2E con Playwright**
 - Login → planilla → cargar una celda → aparece el total.
-- Reparto en el celular: carga → dos entregas → rendición que cuadra → cerrada.
-- Cierre de mes → PDF que descarga y tiene el mismo total que la pantalla.
+- Reparto en celular: carga → dos entregas → rendición que cuadra → cerrada.
+- Cierre de mes → PDF descargado con el mismo total que la pantalla.
+
+**Advisor**
+- Con la API mockeada: el informe se guarda con su contexto.
+- Con la API caída: el tablero sigue mostrando alertas deterministas y el cartel correcto.
+- **Test de fidelidad**: todo número del informe existe en el JSON de entrada.
 
 ---
 
-## §13 — Legal, fiscal y bromatológico (Argentina)
+## §10 — LEGAL Y FISCAL (Argentina)
 
-**Esto no lo decide el software. Lo decide un contador y un abogado.** El software tiene que:
+**Esto no lo decide el software: lo deciden un contador y un abogado.** El software tiene que:
 
-1. **No emitir factura fiscal en v1.** Emite un **comprobante interno no fiscal** (remito/resumen),
-   guarda un campo para pegar el CAE del comprobante emitido por fuera, y **exporta el libro de
-   ventas en CSV** para el estudio contable. La facturación electrónica ARCA entra en v2 vía
-   proveedor externo (TusFacturas, Facturante o similar), nunca contra el webservice de ARCA a mano.
-2. **Remito de traslado.** La mercadería que sale a la calle o a un mayorista va con su remito
-   numerado. Verificá con el contador la forma exigida antes de imprimir el primero.
-3. **Trazabilidad de lote.** Fecha de elaboración, vencimiento y lote en el paquete y en el sistema,
-   con la consulta "este lote fue a estos clientes" (§7.6). Es requisito bromatológico y es lo único
-   que sirve el día de un retiro de mercadería.
-4. **Documentos con vencimiento**: habilitación municipal, RNE/RNPA de los productos, libreta
-   sanitaria de cada empleado, control de plagas, análisis de agua. Guardalos con su fecha de
-   vencimiento y **avisá 30 días antes**. La opción "ignorar el vencimiento" no existe.
-5. **Datos personales** (Ley 25.326): los datos de clientes y empleados se guardan cifrados en
-   tránsito, con acceso por rol, y hay una acción de exportación y borrado a pedido.
-6. **Comisiones y descuentos** (§8.6): informar, no descontar solo.
+1. **No emitir factura fiscal en v1.** Comprobante interno no fiscal, campo para pegar el CAE del
+   comprobante emitido por fuera, y **export del libro de ventas en CSV**. La facturación
+   electrónica ARCA entra en v2 vía proveedor externo (TusFacturas, Facturante o similar), nunca
+   contra el webservice a mano.
+2. **Remito numerado** para la mercadería que sale a la calle o a un mayorista. Confirmá la forma
+   exigida con el contador antes de imprimir el primero.
+3. **Trazabilidad de lote**: elaboración, vencimiento y lote en el paquete y en el sistema, con la
+   consulta "este lote fue a estos clientes". Requisito bromatológico y lo único que sirve el día de
+   un retiro de mercadería.
+4. **Documentos con vencimiento**: habilitación municipal, RNE/RNPA, libreta sanitaria de cada
+   empleado, control de plagas, análisis de agua. Con su fecha y **aviso 30 días antes**. La opción
+   "ignorar el vencimiento" no existe.
+5. **Datos personales** (Ley 25.326): acceso por rol, cifrado en tránsito, exportación y borrado a
+   pedido. Y lo de §6.3: al servicio de IA no le mandes nombres si podés mandarle códigos.
+6. **Faltantes de rendición**: se informan y se discuten, **no se descuentan solos del sueldo**. El
+   descuento unilateral sobre la remuneración tiene límites legales (LCT arts. 131-133). El software
+   informa; la decisión y su instrumentación son del dueño con su abogado.
 7. **Términos y política de privacidad** revisados antes de que entre el primer usuario que no sea
    el dueño.
 
-> Poné todo esto en un `docs/legal.md` con el estado de cada punto y quién lo tiene que responder.
-> No lo dejes como comentario en el código.
+Todo esto va en `docs/legal.md` con el estado de cada punto y quién lo tiene que responder. No como
+comentario en el código.
 
 ---
 
-## §14 — Las fases: en qué orden se construye
+## §11 — DECISIONES ABIERTAS
 
-Una fase termina cuando **su criterio de aceptación pasa**, no cuando "está el código". No adelantes
-fases: cada una vive de la anterior.
-
-| Fase | Qué se construye | Termina cuando… |
-|---|---|---|
-| **F0** | **Cero código.** Las 12 decisiones del §15 respondidas y escritas en `docs/F0-modelo-de-negocio.md`. Las variables del §2 completas. | El dueño mira la planilla de papel de un mes real y confirma que el modelo la representa entera. |
-| **F1** | **La planilla que no se puede cobrar dos veces.** Login, accesos, clientes, productos, precios, entregas, planilla mensual con totales. El motor del §5 con sus tests. | Se carga un mes real completo desde el cuaderno y los totales coinciden con lo que el dueño cobró de verdad ese mes. Ese es el examen. |
-| **F2** | **El reparto del día en el celular.** Hoja de ruta, carga, entrega/devolución, cobranza, rendición que cuadra. | Un repartidor real hace un día entero de reparto con el celular y la rendición cierra en cero. |
-| **F3** | **Cierre de mes y cuenta corriente.** Cargos, pagos, saldo, antigüedad, cierre congelado, resumen en PDF, envío por mail/WhatsApp, cheques, caja. | El resumen que se le manda a un cliente coincide con la planilla, y reabrir el PDF un mes después dice lo mismo. |
-| **F4** | **Fabricación.** Recetas versionadas, amasadas, lotes, rendimiento, merma, stock de producto terminado, trazabilidad. | La ley 2 del §5.4 cierra sobre una semana real de producción. |
-| **F5** | **Insumos y compras.** Stock, valorización, consumo por receta, inventario físico, gastos de servicios, alertas. + **cola offline** del reparto. | La ley 3 del §5.5 cierra sobre un mes real, y el inventario físico explica su diferencia. |
-| **F6** | **Costos.** La fórmula del §9 completa, con simulador y punto de equilibrio. | El costo por paquete calculado por el sistema coincide con el que el dueño calcula a mano, con la misma apertura. |
-| **F7** | **Negocio.** El tablero con todos los cortes y los gráficos 3D del §10. | El dueño responde "¿me conviene el reparto o el mayorista?" mirando una sola pantalla. |
-| **F8** | **Mayoristas completo + portal del cliente** (ve su cuenta y sus resúmenes) + facturación externa + retiro de lote. | — |
-| **F9** | Pronóstico de producción, ruta sugerida, códigos de barra, multi-sucursal real. | — |
-
-> **El tablero crece por capas.** No esperes a F7 para mostrar números: desde F3 hay una versión
-> chica del tablero con facturado, cobrado y deuda. Lo que llega en F7 es el margen, los cortes
-> finos y el 3D. Un dueño que no ve un número hasta la fase 7 abandona el sistema en la 2.
-
----
-
-## §15 — Decisiones abiertas: contestá estas 12 antes de escribir una tabla
-
-Cada una viene con una recomendación. **Si el dueño no contesta, tomá la recomendación, dejala
-escrita en `docs/F0-modelo-de-negocio.md` y seguí.** Lo que no se puede hacer es empezar sin
-decidir y descubrirlo a mitad de camino.
+Contestá estas 12 **antes de escribir una tabla**. Cada una viene con recomendación: **si el dueño
+no contesta, tomá la recomendación, dejala escrita en `docs/decisiones.md` y seguí.** Lo que no se
+puede es empezar sin decidir y descubrirlo a mitad de camino.
 
 | # | Decisión | Recomendación | Qué cambia si se decide al revés |
 |---|---|---|---|
-| 1 | ¿El reparto es **consignación** o venta en firme? | **Consignación** (el dueño dijo "consumió"), configurable por cliente. | Si es en firme, `devuelto` desaparece de la pantalla y toda devolución es nota de crédito. Cambia la planilla, no el esquema. |
+| 1 | ¿El reparto es **consignación** o venta en firme? | **Consignación**, configurable por cliente. | Si es en firme, `devuelto` desaparece de la pantalla y toda devolución es nota de crédito. Cambia la planilla, no el esquema. |
 | 2 | ¿La unidad es **paquete**, plancha o kilo? | **Paquete**, con `pesoUnitarioG` guardado para poder convertir. | Si es kilo, las cantidades dejan de ser enteras y hay que revisar cada `CHECK`. **Decidilo ahora.** |
-| 3 | ¿Cuántos **productos** distintos tiene el reparto? | Si son 1 o 2, la planilla muestra un producto por vez. Si son más de 5, el selector de producto es obligatorio desde F1. | Cambia el diseño de la pantalla estrella. |
-| 4 | ¿El repartidor es **empleado a comisión** o **revendedor** que compra y revende? | **Empleado a comisión**, y el cliente es de la empresa. | Si es revendedor, el "cliente" del sistema pasa a ser el repartidor, la planilla es de él, y la panificadora no ve al kiosco. Es **otro producto**: decidilo en F0 o vas a reescribir. |
-| 5 | ¿El precio es **por cliente** o hay una lista pareja? | Lista por canal + excepciones por cliente. Ya está en el esquema, se usa o no. | Ninguno. Por eso se construye así. |
-| 6 | ¿Se cobra **mensual** o hay clientes de contado diario? | **Los dos**: `modalidadDeCobro` en el cliente. La planilla es igual; cambia si genera saldo o entra a caja. | Ninguno si se contempla desde el día 1; caro si se agrega después. |
-| 7 | ¿Corta el reparto por **deuda**? | **No automático.** Avisa siempre; el bloqueo lo activa el admin y arranca a los 60 días. | Un corte automático mal calibrado le hace perder un cliente al dueño. La decisión es humana. |
-| 8 | ¿**Cheques**? | **Sí, cartera simple desde F3** (número, banco, fecha de cobro, estado). | Sin esto, la caja del tablero miente en un negocio mayorista. |
-| 9 | ¿**Offline** en el celular del repartidor? | Idempotencia y cola en memoria desde F1; cola persistente **en F5**. | Nada si la idempotencia está desde el día 1. Todo si no está. |
-| 10 | ¿Se controlan **lotes y vencimientos**? | **Sí, desde F4.** Es una fábrica de alimentos. | Sin lote no hay trazabilidad ni retiro de mercadería posible. |
-| 11 | ¿El sistema toca **plata online** (cobros con link/QR)? | **No en v1.** Efectivo, transferencia y cheque, registrados a mano. | Meterse con una pasarela en v1 agrega una integración crítica antes de tener el negocio modelado. |
-| 12 | ¿**Multi-empresa** ya (fork del §1)? | **A**: una empresa en pantalla, `empresaId` en el esquema. | Agregar el tenant después es una migración con plata adentro. |
-
-### §15.1 — Cosas del audio del dueño que hay que confirmar antes de F1
-
-- **"Bibrones"** en paquetería: se interpreta como **bobinas de film**. Si eran otra cosa
-  (broches, precintos), corregí el nombre del insumo. No cambia nada del modelo.
-- **"Tintas"**: se interpreta como **tinta de la fechadora** (la que imprime elaboración y
-  vencimiento en la bolsa). Si eran **cintas** de cierre, es igual de válido: ambos son paquetería
-  que se consume por unidad empaquetada.
-- **"Garantía final del mes"**: se interpreta como el **cierre y el total del mes** de la planilla
-  (§7.3 + §8.4). Si el dueño quiso decir otra cosa —una garantía o depósito del cliente—, avisá,
-  porque eso sí es una tabla nueva.
-- **El agua**: entra dos veces y no es contradicción. El **agua de proceso** que va a la masa es
-  materia prima de la receta; el **agua de red que se factura** es un gasto de período. Las dos
-  cosas conviven.
+| 3 | ¿Cuántos **productos** distintos tiene el reparto? | 1 o 2 → la planilla muestra uno por vez. Más de 5 → selector de producto obligatorio desde la Fase 4. | Cambia el diseño de la pantalla estrella. |
+| 4 | ¿El repartidor es **empleado a comisión** o **revendedor** que compra y revende? | **Empleado a comisión sobre lo COBRADO**, y el cliente es de la empresa. | Si es revendedor, el "cliente" del sistema pasa a ser el repartidor, la planilla es de él y la panificadora no ve al kiosco. Es **otro producto**: decidilo ahora o vas a reescribir. |
+| 5 | ¿Comisión sobre lo **cobrado** o sobre lo entregado? | **Cobrado.** Sobre lo entregado, el repartidor no tiene ningún incentivo en cobrar y la deuda se vuelve problema del dueño. | Cambia la liquidación, no el esquema. |
+| 6 | ¿Se cobra **mensual** o hay clientes de contado diario? | **Los dos**: `modalidadDeCobro` en el cliente. La planilla es igual; cambia si genera saldo o entra a caja. | Nada si se contempla desde el día 1; caro si se agrega después. |
+| 7 | ¿Corta el reparto por **deuda**? | **No automático.** Avisa siempre; el bloqueo lo activa el admin, default 60 días. | Un corte automático mal calibrado le hace perder un cliente al dueño. La decisión es humana. |
+| 8 | ¿**Cheques**? | **Sí, cartera simple desde la Fase 4** (número, banco, fecha de cobro, estado). | Sin esto, la caja del tablero miente en un negocio mayorista. |
+| 9 | ¿**Offline** en el celular del repartidor? | Idempotencia desde la Fase 1 (§5.4); cola persistente cuando el reparto ya esté en uso. | Nada si la idempotencia está desde el día 1. Todo si no está. |
+| 10 | ¿**Multi-empresa**? | Una empresa en pantalla, **`empresaId` en el esquema desde la primera migración**. | Agregar el tenant después es una migración con plata adentro. |
+| 11 | ¿El sistema toca **plata online** (link de pago, QR)? | **No en v1.** Efectivo, transferencia y cheque, registrados a mano. | Meterse con una pasarela agrega una integración crítica antes de tener el negocio modelado. |
+| 12 | ¿El **Advisor** arranca en la Fase 6 o antes? | **Fase 6.** Necesita costos y ventas reales; con datos de mentira da consejos de mentira. | Adelantarlo produce una demo linda que no se puede usar. |
 
 ---
 
-## §16 — Definición de terminado
+## §12 — GLOSARIO DEL OFICIO
 
-Una funcionalidad está terminada cuando las cinco cosas pasan:
-
-1. **Los tests obligatorios de su fase (§12) pasan**, incluido el de integración contra Postgres.
-2. **`npm run verify` pasa** (typecheck estricto + tests puros).
-3. **Funciona en el celular**, no solo en el monitor de 27 pulgadas. Probado en un ancho de 390 px.
-4. **Un número que aparece en pantalla aparece igual en el PDF y en el CSV.**
-5. **El dueño la usó una vez con datos reales** y no volvió al cuaderno.
-
-Y el criterio que manda sobre todos: **el sistema no puede cobrarle de más ni de menos a un
-cliente.** Si hay que elegir entre una pantalla linda y un total confiable, gana el total.
-
----
-
-## §17 — Anexo: el oficio, para que el que codea entienda lo que modela
+Para que los nombres del código sean los de la panadería, no los de un ERP genérico.
 
 **Cómo se hace el pan de miga** (el flujo que el sistema refleja):
 
 `amasado` (harina + agua + levadura + sal + azúcar + grasa + leche en polvo + mejorador) →
 `fermentación` en cámara → `horneado en molde cerrado` (por eso no tiene corteza dorada arriba) →
-`enfriado` (varias horas, y es obligatorio: pan caliente no se puede cortar) → `descortezado` →
+`enfriado` (horas, y es obligatorio: el pan caliente no se puede cortar) → `descortezado` →
 `rebanado` → `empaquetado` (bolsa + cierre + etiqueta con lote, elaboración y vencimiento) →
-`despacho` (camioneta de reparto o mayorista).
+`despacho` (camioneta de reparto o mostrador mayorista).
 
-**Los números que un panadero mira** y que el sistema tiene que darle sin que los pida:
+| Palabra | Qué es |
+|---|---|
+| **Tanda / amasijo / bacha** | una hornada de masa. La unidad de producción. |
+| **Porcentaje panadero** | todos los ingredientes expresados como % de la harina, que es 100%. Así está escrita toda receta de panadería. |
+| **Plancha** | el pan de miga entero, sin cortar en paquetes. |
+| **Descortezado** | sacarle la corteza a la plancha. Merma grande y esperada; suele volverse pan rallado. |
+| **Hoja de ruta** | la lista ordenada de clientes de un reparto en un día. |
+| **Rendición** | la cuenta que hace el repartidor al volver: lo que llevó vs. lo que trae y lo que cobró. |
+| **Consignación** | dejar mercadería y cobrar solo lo que se consumió, retirando el resto. |
+| **Canje / devolución** | el pan que vuelve sin venderse. |
+| **Merma** | lo que se perdió y no llegó a ningún cliente. Siempre con motivo. |
+| **Remito** | el papel que acompaña la mercadería cuando se mueve. |
+
+**Los números que un panadero mira**, y que el sistema le da sin que los pida:
 
 | Número | Por qué le importa |
 |---|---|
 | Paquetes por cada 100 kg de harina | Es el rendimiento. Si baja, algo cambió: la harina, el corte, el horno. |
-| % de descortezado | Es merma grande y esperada en pan de miga. Se controla contra su objetivo, no contra cero. |
+| % de descortezado | Merma grande y esperada. Se controla contra su objetivo, no contra cero. |
 | % de devolución del reparto | Si sube, está cargando de más la camioneta y regalando pan. |
 | Costo de la harina, semana a semana | Es la variable que se come el margen. |
 | Consumo promedio por cliente | Es lo que sugiere cuánto dejarle mañana. |
 | Días de cobertura de insumos | "Harina para 3 días" es lo que evita parar la producción. |
 
-**Glosario** para que los nombres del código sean los del oficio:
-
-| Palabra | Qué es |
-|---|---|
-| **Amasada / bacha** | una tanda de masa. La unidad de producción. |
-| **Porcentaje panadero** | todos los ingredientes expresados como % de la harina, que es 100%. Es como está escrita toda receta de panadería. |
-| **Plancha** | el pan de miga entero, sin cortar en paquetes. |
-| **Descortezado** | sacarle la corteza a la plancha. Genera merma que suele volverse pan rallado. |
-| **Rendición** | la cuenta que hace el repartidor al volver: lo que llevó vs. lo que trae y lo que cobró. |
-| **Hoja de ruta** | la lista ordenada de clientes de un reparto en un día. |
-| **Consignación** | dejar mercadería y cobrar solo lo que se consumió, retirando el resto. |
-| **Canje / devolución** | el pan que vuelve sin venderse. |
-| **Merma** | lo que se perdió y no llegó a ningún cliente. |
-| **Remito** | el papel que acompaña la mercadería cuando se mueve. |
-
 ---
 
-## §18 — Lo primero que tenés que hacer
+## §13 — ARRANQUE
 
 **No abras el editor todavía.**
 
-1. Leé este documento entero y **decime qué de acá no cierra** con lo que ves. Una contradicción
-   encontrada ahora vale más que una semana de código.
-2. Escribí `docs/F0-modelo-de-negocio.md` con las 12 decisiones del §15 respondidas (con la
-   recomendación si no hay respuesta del dueño) y las variables del §2 completas hasta donde se
-   pueda.
-3. Hacé **una sola pantalla estática**, sin base, sin login: la planilla del §7.3 con un mes real
-   cargado a mano desde el cuaderno del dueño. Mostrásela y hacé **una sola pregunta**:
-   *"¿esto te reemplaza el cuaderno?"*
-4. Recién cuando la respuesta sea que sí: `src/dominio/entregas.ts` y `src/dominio/precios.ts`,
-   **con sus tests, antes que cualquier pantalla**.
+Tu primera respuesta a este documento tiene que ser, en este orden y nada más:
 
-El orden importa. La planilla que no cuadra no se arregla con un tablero en 3D.
+1. **Confirmación en 5 líneas** de que entendiste: (a) las directivas de ahorro de tokens y el
+   paso a paso con aprobación de §0; (b) que la entrega es la fila atómica y que
+   `consumido = entregado − devuelto`; (c) que el ledger es append-only y los saldos se derivan;
+   (d) que el rol se revalida fresco en la base en cada server action; (e) que el Advisor no calcula.
+2. **Las contradicciones o huecos que encontraste** en este documento, si los hay. Si no hay,
+   decilo en una línea. Esta es la última oportunidad barata de encontrarlos.
+3. **Las decisiones de §11 que necesitás cerradas** para escribir el esquema, con tu recomendación
+   al lado. Si el dueño no está, tomá la recomendación y marcala como **ASUMÍ**.
+4. **El `schema.prisma` de la FASE 1**, completo, sin explicaciones alrededor.
+
+Después de eso frenás y esperás el OK.
+
+> El orden importa: la planilla que no cuadra no se arregla con un tablero en 3D.
