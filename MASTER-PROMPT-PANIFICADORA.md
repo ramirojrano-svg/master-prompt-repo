@@ -90,7 +90,9 @@ HOSTING:             Vercel (funciones en gru1; la base en la región más cerca
 
 ```yaml
 PRODUCTOS:           # COMPLETAR  pan de miga blanco / integral / sin corteza, tamaños, pan rallado
-UNIDAD_DE_VENTA:     PAQUETE      # CONFIRMAR (paquete / plancha / kilo) — ver §11 #2
+                     # CERRADO: cada producto se vende en PAQUETE o como PAN ENTERO, y de la
+                     #          misma masa pueden salir los dos formatos (§4/M2)
+UNIDAD_DE_VENTA:     PAQUETE      # CERRADO — "pesa siempre lo mismo, es un paquete y ya"
 VIDA_UTIL_DIAS:      # COMPLETAR  por producto
 REPARTIDORES:        # COMPLETAR
 CLIENTES_REPARTO:    # COMPLETAR
@@ -98,7 +100,7 @@ CLIENTES_MAYORISTAS: # COMPLETAR
 DIAS_DE_REPARTO:     Lun a Sáb    # CONFIRMAR
 TURNOS_FABRICA:      # COMPLETAR  ej: noche 22-06 amasado / mañana 06-14 corte y empaque
 MODALIDAD_REPARTO:   CONSIGNACION # ver §3.2
-COMISION_REPARTIDOR: 10% sobre lo COBRADO   # CONFIRMAR — ver §11 #4
+SUELDO_REPARTIDOR:   FIJO         # CERRADO — empleado a sueldo, NO hay comisión (§11 #4)
 ```
 
 ---
@@ -130,7 +132,7 @@ AI Advisor · venta mayorista con remito.
 | Afuera | Por qué |
 |---|---|
 | Factura electrónica ARCA | v2 vía proveedor externo. En v1: comprobante interno + campo para pegar el CAE + export para el contador (§10). |
-| Liquidación de sueldos | Esto no es un sistema de nómina. Sí liquida **comisiones y adelantos** de reparto. |
+| Liquidación de sueldos | Esto no es un sistema de nómina. El repartidor cobra sueldo fijo (§11 #4): entra como `Gasto(SUELDOS, COMERCIALIZACION)` y el prorrateo del §4/M4 lo toma de ahí. Sí registra **adelantos**. |
 | Contabilidad por partida doble | Es un libro de cuenta corriente y caja. El contador recibe un CSV. |
 | Venta al público / e-commerce | Otro producto. |
 | GPS, ruteo óptimo, códigos de barra | v2. El modelo deja el campo `codigo`; la lectora no. |
@@ -155,7 +157,7 @@ AI Advisor · venta mayorista con remito.
 Entrega = (empresaId, fecha, clienteId, productoId) → { entregado, devuelto, precioUnitario, importe }
 ```
 
-Todo lo demás —la planilla del mes, la deuda, la comisión, el margen— **se deriva** de esta fila.
+Todo lo demás —la planilla del mes, la deuda, el costo, el margen— **se deriva** de esta fila.
 No hay una segunda tabla que "también" tenga la venta.
 
 - **Una sola fila** por esa combinación, garantizado por un `UNIQUE` en la base (§5.6). Si el
@@ -249,8 +251,7 @@ silencio.
 - El resumen que se le mandó al cliente **no puede cambiar solo**. Si lo reabre en noviembre, dice
   lo mismo que en agosto. Ese es el contrato.
 - **Reabrir** existe, es solo del admin, pide motivo escrito y queda en auditoría.
-- El cierre es **idempotente**: apretarlo dos veces no genera dos juegos de cargos ni dos
-  comisiones.
+- El cierre es **idempotente**: apretarlo dos veces no genera dos juegos de cargos.
 
 ### 3.7 — Roles y accesos: revalidación fresca en la base
 
@@ -375,6 +376,12 @@ conversión.
 lote, a qué clientes fue y qué día**. Es requisito bromatológico y es la única pantalla que sirve
 el día que hay que retirar mercadería.
 
+**Dos formatos de la misma masa.** De una tanda pueden salir **paquetes** y **panes enteros**, y
+son dos productos distintos: cada uno con su precio, su stock y su lote. La tanda registra **lo que
+realmente salió de cada formato**, no un solo número de paquetes. Para que el rendimiento siga
+siendo comparable, cada producto declara **a cuántos paquetes equivale** una de sus unidades (un
+paquete = 1): con un solo formato todo vale 1 y la métrica es la de siempre.
+
 **Venta mayorista.** Mostrador rápido: cliente, productos, cantidades, contado o cuenta corriente.
 Descuenta stock de producto terminado igual que una entrega, sale con **remito numerado** y con
 lote, y afecta la caja general — **no** el stock del repartidor.
@@ -451,7 +458,7 @@ costo_comercializacion_del_canal = INDIRECTOS_COMERCIALIZACION_del_canal
 ```
 COSTO_PAQUETE     = COSTO_DIRECTO + COSTO_INDIRECTO_FABRICA_PAQUETE
 MARGEN_BRUTO      = precio_venta − COSTO_PAQUETE
-MARGEN_NETO_CANAL = MARGEN_BRUTO − costo_comercializacion_del_canal − comisión_repartidor
+MARGEN_NETO_CANAL = MARGEN_BRUTO − costo_comercializacion_del_canal
 MARGEN_%          = MARGEN_NETO_CANAL / precio_venta
 
 COSTO_DE_LA_MERMA = (unidades_merma + devueltas_no_recuperadas) × COSTO_PAQUETE
@@ -882,7 +889,7 @@ Entidades mínimas: `Empresa` · `Usuario` · `Acceso` (rol) · `Invitacion` · 
 `Reparto` · `Producto` · `Precio` · `HojaDeRuta` · `Carga` · `Entrega` · `Rendicion` · `Receta` ·
 `RecetaItem` · `TandaProduccion` · `TandaConsumo` · `Lote` · `MovimientoProducto` · `Insumo` ·
 `Proveedor` · `Compra` · `CompraItem` · `MovimientoInsumo` · `Inventario` · `InventarioItem` ·
-`Gasto` · `Asiento` · `Cobro` · `Cheque` · `MovimientoCaja` · `CierreMes` · `Liquidacion` ·
+`Gasto` · `Asiento` · `Cobro` · `Cheque` · `MovimientoCaja` · `CierreMes` · `TandaSalida` ·
 `Informe` (§6.6).
 
 Todas con `empresaId`, `creadoEn`, `actualizadoEn`; las que deciden plata, además `creadoPor`.
@@ -964,7 +971,7 @@ No se pide cobertura del 90%. Se piden **estos**, y sin ellos una fase no está 
 - El trigger de mes cerrado: un `UPDATE` a una entrega de un mes cerrado rebota.
 - El trigger del ledger: `UPDATE` y `DELETE` sobre `Asiento` rebotan.
 - Aislamiento de empresa y de repartidor (§5.5).
-- Cierre de mes apretado dos veces = un solo juego de cargos y comisiones.
+- Cierre de mes apretado dos veces = un solo juego de cargos.
 - Reintento con la misma clave de idempotencia = una sola entrega.
 
 **E2E con Playwright**
@@ -1017,10 +1024,10 @@ puede es empezar sin decidir y descubrirlo a mitad de camino.
 | # | Decisión | Recomendación | Qué cambia si se decide al revés |
 |---|---|---|---|
 | 1 | ¿El reparto es **consignación** o venta en firme? | **Consignación**, configurable por cliente. | Si es en firme, `devuelto` desaparece de la pantalla y toda devolución es nota de crédito. Cambia la planilla, no el esquema. |
-| 2 | ¿La unidad es **paquete**, plancha o kilo? | **Paquete**, con `pesoUnitarioG` guardado para poder convertir. | Si es kilo, las cantidades dejan de ser enteras y hay que revisar cada `CHECK`. **Decidilo ahora.** |
+| 2 | ¿La unidad es **paquete**, plancha o kilo? | ✅ **CERRADA: paquete.** *"Pesa siempre lo mismo, no interesa: es un paquete y ya."* Cantidades enteras. | — |
 | 3 | ¿Cuántos **productos** distintos tiene el reparto? | 1 o 2 → la planilla muestra uno por vez. Más de 5 → selector de producto obligatorio desde la Fase 4. | Cambia el diseño de la pantalla estrella. |
-| 4 | ¿El repartidor es **empleado a comisión** o **revendedor** que compra y revende? | **Empleado a comisión sobre lo COBRADO**, y el cliente es de la empresa. | Si es revendedor, el "cliente" del sistema pasa a ser el repartidor, la planilla es de él y la panificadora no ve al kiosco. Es **otro producto**: decidilo ahora o vas a reescribir. |
-| 5 | ¿Comisión sobre lo **cobrado** o sobre lo entregado? | **Cobrado.** Sobre lo entregado, el repartidor no tiene ningún incentivo en cobrar y la deuda se vuelve problema del dueño. | Cambia la liquidación, no el esquema. |
+| 4 | ¿El repartidor es empleado o **revendedor** que compra y revende? | ✅ **CERRADA: empleado a sueldo.** El cliente es de la empresa; no hay liquidación por venta. | — |
+| 5 | ¿Comisión sobre lo **cobrado** o sobre lo entregado? | ✅ **CERRADA: no aplica**, cobra sueldo fijo (#4). El sueldo es un gasto de período y entra al costeo por prorrateo (§4/M4). | — |
 | 6 | ¿Se cobra **mensual** o hay clientes de contado diario? | **Los dos**: `modalidadDeCobro` en el cliente. La planilla es igual; cambia si genera saldo o entra a caja. | Nada si se contempla desde el día 1; caro si se agrega después. |
 | 7 | ¿Corta el reparto por **deuda**? | **No automático.** Avisa siempre; el bloqueo lo activa el admin, default 60 días. | Un corte automático mal calibrado le hace perder un cliente al dueño. La decisión es humana. |
 | 8 | ¿**Cheques**? | **Sí, cartera simple desde la Fase 4** (número, banco, fecha de cobro, estado). | Sin esto, la caja del tablero miente en un negocio mayorista. |
@@ -1047,7 +1054,7 @@ Para que los nombres del código sean los de la panadería, no los de un ERP gen
 |---|---|
 | **Tanda / amasijo / bacha** | una hornada de masa. La unidad de producción. |
 | **Porcentaje panadero** | todos los ingredientes expresados como % de la harina, que es 100%. Así está escrita toda receta de panadería. |
-| **Plancha** | el pan de miga entero, sin cortar en paquetes. |
+| **Plancha / pan entero** | el pan de miga entero, sin cortar ni empaquetar. También se vende así, y es un producto distinto del paquete. |
 | **Descortezado** | sacarle la corteza a la plancha. Merma grande y esperada; suele volverse pan rallado. |
 | **Hoja de ruta** | la lista ordenada de clientes de un reparto en un día. |
 | **Rendición** | la cuenta que hace el repartidor al volver: lo que llevó vs. lo que trae y lo que cobró. |
