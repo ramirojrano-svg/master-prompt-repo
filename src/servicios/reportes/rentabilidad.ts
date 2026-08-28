@@ -76,15 +76,36 @@ export async function rentabilidad(
 
   const [operador, movimientos, gastos] = await Promise.all([
     db.operador.findUniqueOrThrow({ where: { id: op }, select: { moneda: true } }),
-    // Débitos y créditos por período, en una sola consulta para los seis meses. El signo es el que
-    // manda: + es lo que se le cargó a alguien, − lo que entró.
-    db.$queryRaw<{ periodo: string; debe: bigint; haber: bigint }[]>`
-      SELECT "periodo",
-             COALESCE(SUM(CASE WHEN "montoCent" > 0 THEN "montoCent" ELSE 0 END), 0)::bigint AS debe,
-             COALESCE(SUM(CASE WHEN "montoCent" < 0 THEN -"montoCent" ELSE 0 END), 0)::bigint AS haber
-      FROM "Asiento"
-      WHERE "operadorId" = ${op} AND "cuenta" = 'corriente' AND "periodo" = ANY(${periodos})
-      GROUP BY "periodo"`,
+    // Lo facturado y lo cobrado por período, en una sola consulta para los seis meses.
+    //
+    // Se clasifica por CONCEPTO, no por signo, y eso no es un detalle de estilo: el signo miente
+    // en los dos casos que más importan, que son las vueltas atrás.
+    //
+    //  · Cancelar un turno suma una `nota_credito` NEGATIVA. Por signo caía en "cobrado", así que
+    //    la pantalla inventaba plata que nadie pagó —y encima dejaba el cargo cancelado sumando en
+    //    "facturado"—. Un turno cancelado movía el resultado del mes dos veces, para arriba.
+    //  · Anular un cobro suma un `ajuste_debito` POSITIVO. Por signo caía en "facturado", así que
+    //    anular un pago aparecía como una venta nueva, y el pago anulado seguía contando como
+    //    cobrado.
+    //
+    // Lo que distingue una vuelta atrás de un movimiento genuino es `revierteAId`: apunta al
+    // asiento que da vuelta. Si ese original era un `pago`, la reversa es plata que se fue; si no,
+    // es facturación que se dio de baja. Con eso las dos columnas quedan bien definidas:
+    //   facturado = todo lo que NO es pago ni reversa de pago (los créditos restan solos, por
+    //               venir en negativo)
+    //   cobrado   = los pagos y sus reversas, cambiados de signo
+    db.$queryRaw<{ periodo: string; facturado: bigint; cobrado: bigint }[]>`
+      SELECT a."periodo",
+             COALESCE(SUM(CASE WHEN a."concepto" <> 'pago'::"Concepto"
+                                AND (orig."concepto" IS NULL OR orig."concepto" <> 'pago'::"Concepto")
+                               THEN a."montoCent" ELSE 0 END), 0)::bigint AS facturado,
+             COALESCE(SUM(CASE WHEN a."concepto" = 'pago'::"Concepto"
+                                 OR orig."concepto" = 'pago'::"Concepto"
+                               THEN -a."montoCent" ELSE 0 END), 0)::bigint AS cobrado
+      FROM "Asiento" a
+      LEFT JOIN "Asiento" orig ON orig."id" = a."revierteAId"
+      WHERE a."operadorId" = ${op} AND a."cuenta" = 'corriente' AND a."periodo" = ANY(${periodos})
+      GROUP BY a."periodo"`,
     // Los anulados quedan afuera: el total tiene que ser el que se puede defender.
     db.$queryRaw<{ periodo: string; total: bigint }[]>`
       SELECT "periodo", COALESCE(SUM("montoCent"), 0)::bigint AS total
@@ -98,8 +119,8 @@ export async function rentabilidad(
 
   const historia: MesDelNegocio[] = periodos.map((p) => {
     const m = porMov.get(p);
-    const facturadoCent = m?.debe ?? 0n;
-    const cobradoCent = m?.haber ?? 0n;
+    const facturadoCent = m?.facturado ?? 0n;
+    const cobradoCent = m?.cobrado ?? 0n;
     const gastosCent = porGasto.get(p) ?? 0n;
     return { periodo: p, facturadoCent, cobradoCent, gastosCent, resultadoCent: facturadoCent - gastosCent };
   });
