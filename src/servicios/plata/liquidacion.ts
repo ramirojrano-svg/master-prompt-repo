@@ -22,6 +22,36 @@ export const FACTURABLES: Concepto[] = [
   "ajuste_debito",
 ];
 
+/**
+ * Los cargos del período que YA fueron dados vuelta por una nota de crédito.
+ *
+ * Existe por un agujero que costaba plata de verdad. Cancelar un turno no borra su cargo: le suma
+ * un contraasiento `nota_credito` por el mismo importe, y el neto del libro queda en cero, que es
+ * lo correcto. Pero `FACTURABLES` —la lista de lo que el cierre reclama y suma— no incluye
+ * `nota_credito`, así que el crédito era invisible para el cierre: reclamaba el cargo original y
+ * emitía la liquidación por el importe entero. Resultado: un turno cancelado se le seguía
+ * facturando al profesional, con el papel diciendo que lo reservó.
+ *
+ * La salida no es sumar la nota de crédito a `FACTURABLES` —eso daría el total bien pero dejaría
+ * el renglón del turno cancelado en el detalle, y un papel cuyas líneas no suman el total es peor
+ * que uno mal—. Es más simple: un cargo anulado no entra. Ni él, ni su crédito. El turno no pasó.
+ */
+export async function cargosAnulados(
+  db: Pick<PrismaClient, "asiento">,
+  a: { operadorId: string; periodo: string; inquilinoId?: string },
+): Promise<string[]> {
+  const reversas = await db.asiento.findMany({
+    where: {
+      operadorId: a.operadorId,
+      periodo: a.periodo,
+      ...(a.inquilinoId ? { inquilinoId: a.inquilinoId } : {}),
+      revierteAId: { not: null },
+    },
+    select: { revierteAId: true },
+  });
+  return reversas.map((r) => r.revierteAId!).filter((x): x is string => x !== null);
+}
+
 class NadaQueLiquidar extends Error {}
 
 export type ResultadoCierre =
@@ -68,8 +98,15 @@ export async function cerrarPeriodo(
       });
 
       // 1) Reclamar SOLO los asientos del período que nadie liquidó todavía.
+      // Un cargo cuyo turno se canceló ya está compensado en el libro: reclamarlo lo metería en
+      // el papel como si la hora se hubiera usado.
+      const anulados = await cargosAnulados(tx, { operadorId: a.operadorId, periodo: a.periodo, inquilinoId: a.inquilinoId });
       const { count } = await tx.asiento.updateMany({
-        where: { operadorId: a.operadorId, inquilinoId: a.inquilinoId, cuenta: "corriente", periodo: a.periodo, liquidacionId: null, concepto: { in: FACTURABLES } },
+        where: {
+          operadorId: a.operadorId, inquilinoId: a.inquilinoId, cuenta: "corriente", periodo: a.periodo,
+          liquidacionId: null, concepto: { in: FACTURABLES },
+          ...(anulados.length ? { id: { notIn: anulados } } : {}),
+        },
         data: { liquidacionId: liq.id },
       });
       if (count === 0) throw new NadaQueLiquidar();

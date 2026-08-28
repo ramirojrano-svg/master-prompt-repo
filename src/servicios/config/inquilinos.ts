@@ -7,6 +7,7 @@ import { z } from "zod";
 import { EstadoInquilino, type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
+import { cancelarOcupacion } from "../reservas/cancelar.ts";
 import type { Actor } from "../../lib/actor.ts";
 import { telefonoAWa } from "../../dominio/perfil.ts";
 
@@ -33,7 +34,9 @@ export const InquilinoInput = z.object({
   ),
 });
 
-export type ResultadoInquilino = { ok: true; id: string } | { ok: false; error: "NO_ENCONTRADO" };
+export type ResultadoInquilino =
+  | { ok: true; id: string; /** Turnos futuros liberados por una baja, y la plata que devolvieron. */ canceladas?: number; devueltoCent?: bigint }
+  | { ok: false; error: "NO_ENCONTRADO" };
 
 type DatosInquilino = { nombre: string; pagador?: string; facturable?: boolean; email?: string | null; whatsapp?: string | null };
 
@@ -71,13 +74,67 @@ async function editar(
   return r.count === 1 ? { ok: true, id: input.inquilinoId } : { ok: false, error: "NO_ENCONTRADO" };
 }
 
-/** Cambia el estado. `baja` archiva (no borra); `suspendido` no reserva nuevo pero entra a lo pago. */
-async function cambiarEstado(actor: Actor, input: { inquilinoId: string; estado: EstadoInquilino }, db: PrismaClient): Promise<ResultadoInquilino> {
+/**
+ * Cambia el estado. `baja` archiva (no borra); `suspendido` no reserva nuevo pero entra a lo pago.
+ *
+ * Y la baja LIBERA LOS TURNOS FUTUROS.
+ *
+ * Antes no lo hacía, y el resultado no era neutro: la persona se iba del centro, se la marcaba de
+ * baja, y sus horas de los meses que venían seguían reservadas. Dos consecuencias, las dos caras.
+ * Una, el consultorio quedaba ocupado por alguien que no iba a venir, así que esas horas no se le
+ * podían alquilar a nadie. La otra, los cargos de esas horas seguían vivos, y el cierre de mes
+ * seguía ofreciendo liquidarle un mes entero a alguien que ya no está.
+ *
+ * Se cancela desde HOY hacia adelante y nunca para atrás: lo que ya usó lo usó, y esa plata se le
+ * sigue cobrando. La baja saca a alguien de la operación, no le perdona lo que debe.
+ *
+ * Se reusa `cancelarOcupacion`, que es el mismo camino del botón "Cancelar turno": devuelve la
+ * plata con una nota de crédito y deja el rastro. Escribir acá un borrado propio daría el mismo
+ * resultado en la agenda y ninguno en el libro — la hora libre y el cargo igual de vivo.
+ *
+ * Uno por uno y no todo en una transacción: son cancelaciones independientes, y que falle la
+ * número veinte no puede deshacer las diecinueve anteriores.
+ */
+async function cambiarEstado(
+  actor: Actor,
+  input: { inquilinoId: string; estado: EstadoInquilino },
+  db: PrismaClient,
+  ahora: Date = new Date(),
+): Promise<ResultadoInquilino> {
   const r = await db.inquilino.updateMany({
     where: { id: input.inquilinoId, operadorId: actor.operadorId },
     data: { estado: input.estado },
   });
-  return r.count === 1 ? { ok: true, id: input.inquilinoId } : { ok: false, error: "NO_ENCONTRADO" };
+  if (r.count !== 1) return { ok: false, error: "NO_ENCONTRADO" };
+  if (input.estado !== "baja") return { ok: true, id: input.inquilinoId };
+
+  const futuros = await db.ocupacion.findMany({
+    where: {
+      operadorId: actor.operadorId,
+      inquilinoId: input.inquilinoId,
+      tipo: "reserva",
+      // Solo las que todavía se pueden cancelar. Una en curso o ya usada no se toca: ocurrió.
+      estado: "confirmada",
+      inicio: { gte: ahora },
+    },
+    select: { id: true },
+    orderBy: { inicio: "asc" },
+  });
+
+  let canceladas = 0;
+  let devueltoCent = 0n;
+  for (const t of futuros) {
+    const c = await cancelarOcupacion(
+      { ocupacionId: t.id, alcance: "solo", motivo: "baja del profesional" },
+      { operadorId: actor.operadorId },
+      db,
+    );
+    if (c.ok) {
+      canceladas += c.canceladas;
+      devueltoCent += c.devueltoCent;
+    }
+  }
+  return { ok: true, id: input.inquilinoId, canceladas, devueltoCent };
 }
 
 const EstadoInput = z.object({

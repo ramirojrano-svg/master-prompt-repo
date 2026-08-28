@@ -18,10 +18,10 @@ export default async function InquilinosPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string; ok?: string; editar?: string; ver?: string; q?: string; sin?: string; n?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; editar?: string; ver?: string; q?: string; sin?: string; n?: string; libres?: string }>;
 }) {
   const { slug } = await params;
-  const { error, ok, editar, ver, q, sin, n } = await searchParams;
+  const { error, ok, editar, ver, q, sin, n, libres } = await searchParams;
   // El nombre viaja por la URL porque la ficha ya no existe: no hay de dónde volver a leerlo.
   const nombreBorrado = (n ?? "").trim();
   // El texto buscado, normalizado una vez: se usa para filtrar y para repintar el campo.
@@ -101,9 +101,12 @@ export default async function InquilinosPage({
     "use server";
     const a = await actorDeSesion(slug);
     if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
-    await cambiarEstadoInquilino(a, { inquilinoId: formData.get("inquilinoId"), estado: formData.get("estado") });
+    const r = await cambiarEstadoInquilino(a, { inquilinoId: formData.get("inquilinoId"), estado: formData.get("estado") });
     revalidatePath(`/panel/${slug}/inquilinos`);
-    redirect(`/panel/${slug}/inquilinos?ok=1`);
+    // Cuántos turnos futuros liberó la baja. No es un detalle: esas horas quedan disponibles para
+    // alquilar, y si no se dice, nadie se entera de que se liberaron.
+    const liberados = r.ok && r.data.ok ? (r.data.canceladas ?? 0) : 0;
+    redirect(`/panel/${slug}/inquilinos?ok=1${liberados > 0 ? `&libres=${liberados}` : ""}`);
   }
 
   const mensaje =
@@ -287,6 +290,13 @@ export default async function InquilinosPage({
           // Se nombra a quien se borró: es lo único que queda de esa ficha en pantalla, y confirma
           // que se fue la que se quería y no la de al lado.
           <p className="aviso-ok" style={{ marginTop: 12 }}>Se eliminó la ficha de {nombreBorrado || "ese profesional"}.</p>
+        ) : Number(libres) > 0 ? (
+          // Cuántas horas quedaron libres. No es un detalle de cortesía: son horas que ahora se
+          // pueden alquilar, y si no se dicen, nadie se entera de que están disponibles.
+          <p className="aviso-ok" style={{ marginTop: 12 }}>
+            Dado de baja. Se liberaron {libres} {Number(libres) === 1 ? "turno futuro" : "turnos futuros"}: esas horas
+            quedan disponibles y sus cargos se devolvieron. Lo que ya había usado se le sigue cobrando.
+          </p>
         ) : (
           ok && <p style={{ marginTop: 12, color: "#157f4a" }}>Guardado.</p>
         )}

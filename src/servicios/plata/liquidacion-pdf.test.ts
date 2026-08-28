@@ -32,6 +32,7 @@ const detalle: DetalleLiquidacion = {
   minutosUsados: 840, sesiones: 14,
   pagos: [], pagadoCent: 0n, saldoCent: 252_000_00n,
   centro: { nombre: "Espacio Montes de Oca" },
+  facturaExterna: null,
 };
 
 const cobro: DatosDeCobro = {

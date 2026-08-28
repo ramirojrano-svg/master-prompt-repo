@@ -19,7 +19,7 @@ import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
 import type { Actor } from "../../lib/actor.ts";
 import { esPeriodoValido } from "../../dominio/reporte.ts";
-import { cerrarPeriodo, FACTURABLES, type ResultadoCierre } from "./liquidacion.ts";
+import { cargosAnulados, cerrarPeriodo, FACTURABLES, type ResultadoCierre } from "./liquidacion.ts";
 import { idsQueNoFacturan } from "./facturable.ts";
 
 /** Una fila de la pantalla: un profesional en un mes. */
@@ -48,12 +48,22 @@ export async function pendientesDeCierre(
 ): Promise<FilaCierre[]> {
   if (!esPeriodoValido(a.periodo)) return [];
 
+  // Los cargos ya dados vuelta por una cancelación se excluyen ACÁ TAMBIÉN, con el mismo criterio
+  // que usa el cierre. Es la propiedad que hace confiable a esta pantalla: lo que anuncia tiene
+  // que ser exactamente lo que después se emite. Si uno de los dos contara distinto, el operador
+  // aprobaría un número y el profesional recibiría otro.
+  const anulados = await cargosAnulados(db, { operadorId: a.operadorId, periodo: a.periodo });
+
   const [porInquilino, liquidaciones, inquilinos, noFacturan] = await Promise.all([
     // Solo lo NO liquidado: es exactamente lo que el cierre va a reclamar. Si acá se contara todo,
     // el número de la pantalla no sería el que después va a salir.
     db.asiento.groupBy({
       by: ["inquilinoId"],
-      where: { operadorId: a.operadorId, cuenta: "corriente", periodo: a.periodo, liquidacionId: null, concepto: { in: FACTURABLES } },
+      where: {
+        operadorId: a.operadorId, cuenta: "corriente", periodo: a.periodo,
+        liquidacionId: null, concepto: { in: FACTURABLES },
+        ...(anulados.length ? { id: { notIn: anulados } } : {}),
+      },
       _sum: { montoCent: true },
       _count: { _all: true },
     }),
