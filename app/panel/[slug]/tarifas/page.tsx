@@ -15,6 +15,7 @@ import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { cerrarTarifa, ponerTarifa, ponerTarifasEnLote, tarifasVigentes } from "../../../../src/servicios/config/tarifas.ts";
 import { pendientesPorProfesional, recotizarPendientes, reservasSinPrecio } from "../../../../src/servicios/plata/recotizar.ts";
+import { reajustarFuturas, reservasADesajustar } from "../../../../src/servicios/plata/reajustar.ts";
 import { FormPrecio } from "./FormPrecio.tsx";
 import { BotonEnviar } from "../BotonEnviar.tsx";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
@@ -24,7 +25,7 @@ export default async function TarifasPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string; ok?: string; cobrados?: string; repetidos?: string; cotizadas?: string; restantes?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; cobrados?: string; repetidos?: string; cotizadas?: string; restantes?: string; reajustadas?: string }>;
 }) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -66,6 +67,9 @@ export default async function TarifasPage({
   // Reservas que nacieron antes de que hubiera precios y quedaron sin importe. Es plata que no
   // se está cobrando, y sin este número nadie se entera: en la agenda se ven normales.
   const sinPrecio = await reservasSinPrecio(actor.operadorId);
+  // Las que quedaron con un precio distinto al que rige hoy. Se calcula siempre: el aviso solo
+  // aparece cuando hay algo que aplicar, así que en un centro al día no se ve nada.
+  const desajustadas = await reservasADesajustar({ operadorId: actor.operadorId });
   // A quién le corresponden y con qué precio van a entrar. Se calcula solo si hay algo pendiente:
   // en el caso normal —cero— no se paga ninguna consulta de más.
   const pendientes = sinPrecio > 0 ? await pendientesPorProfesional(actor.operadorId) : [];
@@ -116,6 +120,15 @@ export default async function TarifasPage({
     redirect(
       `/panel/${slug}/tarifas${r.ok ? `?cotizadas=${r.data.cotizadas}&restantes=${r.data.restantes}` : `?error=${r.error}`}`,
     );
+  }
+
+  async function aplicarPrecioAFuturas() {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+    const r = await reajustarFuturas(a, {});
+    revalidatePath(`/panel/${slug}/tarifas`);
+    redirect(`/panel/${slug}/tarifas${r.ok ? `?reajustadas=${r.data.reajustadas}` : `?error=${r.error}`}`);
   }
 
   async function guardarAbono(formData: FormData) {
@@ -286,6 +299,43 @@ export default async function TarifasPage({
           </p>
         </form>
       )}
+      {sp.reajustadas && (
+        <p className="aviso-ok" style={{ marginTop: 12 }}>
+          {sp.reajustadas === "0"
+            ? "No había reservas futuras para actualizar."
+            : `${sp.reajustadas} ${Number(sp.reajustadas) === 1 ? "reserva quedó" : "reservas quedaron"} al precio nuevo.`}
+        </p>
+      )}
+
+      {/* ── Aplicar un precio nuevo a lo ya agendado ──────────────────────────
+          Aparece solo cuando hay diferencia. Una reserva estampa su precio al nacer, y las de un
+          mes se cargan el mes anterior: sin esto, subir el alquiler no tenía forma de entrar en
+          vigencia salvo borrando y recargando las reservas a mano. */}
+      {desajustadas.length > 0 && (
+        <div className="panel" style={{ padding: 18, marginTop: 16, borderLeft: "4px solid var(--alerta)" }}>
+          <h2 style={{ marginTop: 0, fontSize: 16 }}>
+            Hay {desajustadas.length} {desajustadas.length === 1 ? "reserva futura" : "reservas futuras"} al precio anterior
+          </h2>
+          <p style={{ margin: "6px 0 10px", fontSize: 14, lineHeight: 1.6 }}>
+            Se agendaron antes del último cambio de precio, así que quedaron con el valor de la hora
+            que regía entonces. Aplicarles el precio de hoy no toca nada de lo ya usado ni de lo ya
+            liquidado: solo las horas que todavía no ocurrieron y que ningún papel emitido incluye.
+          </p>
+          <ul style={{ margin: "0 0 12px", paddingLeft: 18, fontSize: 13, lineHeight: 1.7 }}>
+            {[...new Map(desajustadas.map((d) => [d.inquilinoId, d])).values()].slice(0, 6).map((d) => (
+              <li key={d.inquilinoId}>
+                <b>{d.nombre}</b>: {plata(d.deCent)} → {plata(d.aCent)} la hora
+                {" · "}
+                {desajustadas.filter((x) => x.inquilinoId === d.inquilinoId).length} reservas
+              </li>
+            ))}
+          </ul>
+          <form action={aplicarPrecioAFuturas}>
+            <BotonEnviar enviando="Aplicando…">Aplicar el precio de hoy a esas reservas</BotonEnviar>
+          </form>
+        </div>
+      )}
+
       {sp.cotizadas && (
         <p className={sp.restantes && sp.restantes !== "0" ? "aviso-error" : "aviso-ok"} style={{ marginTop: 20 }}>
           {sp.cotizadas === "0" && (!sp.restantes || sp.restantes === "0")
