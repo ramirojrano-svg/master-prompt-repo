@@ -12,6 +12,7 @@ import { z } from "zod";
 import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
+import { aplicarPrecioVigente } from "../plata/reajustar.ts";
 import { resolverTarifa, type TarifaVigente } from "../../dominio/tarifa.ts";
 import type { Actor } from "../../lib/actor.ts";
 
@@ -31,7 +32,19 @@ export const TarifaInput = Alcance.extend({
 export type TarifaInputT = z.infer<typeof TarifaInput>;
 
 export type ResultadoTarifa =
-  | { ok: true; id: string }
+  /**
+   * `aplicadas` = cuántas reservas YA CARGADAS quedaron con el precio nuevo.
+   *
+   * Guardar un precio tiene que cambiar el precio, y no lo hacía: la tarifa quedaba guardada pero
+   * las reservas ya agendadas conservaban el importe estampado al nacer (§8.8). El operador
+   * cambiaba el valor de la hora, miraba la liquidación y seguía viendo el número anterior; para
+   * que entrara en vigencia había que ir a buscar otro botón, en otra parte de la pantalla, que
+   * nadie sabía que había que apretar.
+   *
+   * Se toca solo lo que todavía no salió del centro —futuro y sin liquidar—; esos frenos viven
+   * adentro del reajuste y no se relajan acá.
+   */
+  | { ok: true; id: string; aplicadas: number }
   | { ok: false; error: "SALA_INEXISTENTE" | "PROFESIONAL_INEXISTENTE" | "NO_ENCONTRADA" };
 
 /**
@@ -62,7 +75,8 @@ export const TarifasLoteInput = z.object({
 export type TarifasLoteInputT = z.infer<typeof TarifasLoteInput>;
 
 export type ResultadoLote =
-  | { ok: true; general: string; excepciones: number }
+  /** `aplicadas`: mismo criterio que en `ResultadoTarifa`. Guardar un precio lo pone en vigencia. */
+  | { ok: true; general: string; excepciones: number; aplicadas: number }
   | { ok: false; error: "PROFESIONAL_INEXISTENTE" | "PROFESIONAL_REPETIDO" };
 
 /** Pesos → centavos, sin float en el resultado. Math.round acá es sobre 2 decimales, no sobre plata acumulada. */
@@ -90,7 +104,7 @@ async function poner(actor: Actor, input: TarifaInputT, db: PrismaClient): Promi
   const ahora = new Date();
   const precioHoraCent = aCentavos(input.precioHora);
 
-  return await db.$transaction(async (tx) => {
+  const creada = await db.$transaction(async (tx) => {
     // 1. Cerrar la(s) vigente(s) del MISMO alcance. Se cierran en `ahora`, así una reserva creada
     //    un milisegundo antes sigue habiendo usado el precio viejo (vigenteHasta es exclusivo).
     await tx.tarifa.updateMany({
@@ -117,6 +131,20 @@ async function poner(actor: Actor, input: TarifaInputT, db: PrismaClient): Promi
     });
     return { ok: true as const, id: t.id };
   });
+
+  // 3. Aplicarlo a lo que ya está agendado y todavía no salió del centro. Va FUERA de la
+  //    transacción a propósito: el precio nuevo ya quedó guardado y esa parte no se discute; si
+  //    el reajuste fallara, lo peor que pasa es que queden reservas al precio viejo —el estado de
+  //    siempre— y el aviso de la pantalla de Precios las levanta. Meterlo adentro haría que un
+  //    problema aplicando el cambio deshiciera también el cambio.
+  const ap = await aplicarPrecioVigente(
+    actor,
+    // Un precio general puede tocar a cualquiera que no tenga uno propio, así que se barre todo.
+    // Uno de una persona toca solo a esa: reajustar de más movería plata que nadie pidió mover.
+    input.inquilinoId ? { inquilinoId: input.inquilinoId } : {},
+    db,
+  );
+  return { ...creada, aplicadas: ap.reajustadas };
 }
 
 async function ponerLote(actor: Actor, input: TarifasLoteInputT, db: PrismaClient): Promise<ResultadoLote> {
@@ -135,17 +163,23 @@ async function ponerLote(actor: Actor, input: TarifasLoteInputT, db: PrismaClien
     if (propios.length !== ids.length) return { ok: false, error: "PROFESIONAL_INEXISTENTE" };
 
     const nombres = new Map(propios.map((p) => [p.id, p.nombre]));
-    return await db.$transaction(async (tx) => {
-      const general = await escribirTarifa(tx, actor.operadorId, null, "General", input.precioHora);
+    const general = await db.$transaction(async (tx) => {
+      const g = await escribirTarifa(tx, actor.operadorId, null, "General", input.precioHora);
       for (const e of input.excepciones) {
         await escribirTarifa(tx, actor.operadorId, e.inquilinoId, nombres.get(e.inquilinoId)!, e.precioHora);
       }
-      return { ok: true as const, general, excepciones: input.excepciones.length };
+      return g;
     });
+    // Fuera de la transacción, por lo mismo que en `poner`: los precios ya quedaron guardados y un
+    // problema aplicándolos no puede deshacerlos. Se barre todo el centro porque un general toca a
+    // cualquiera que no tenga precio propio.
+    const ap = await aplicarPrecioVigente(actor, {}, db);
+    return { ok: true as const, general, excepciones: input.excepciones.length, aplicadas: ap.reajustadas };
   }
 
   const general = await db.$transaction(async (tx) => escribirTarifa(tx, actor.operadorId, null, "General", input.precioHora));
-  return { ok: true, general, excepciones: 0 };
+  const ap = await aplicarPrecioVigente(actor, {}, db);
+  return { ok: true, general, excepciones: 0, aplicadas: ap.reajustadas };
 }
 
 /**
@@ -181,11 +215,22 @@ async function escribirTarifa(
  * especificidad (la de sala, o la general). No borra: cierra.
  */
 async function cerrar(actor: Actor, input: { tarifaId: string }, db: PrismaClient): Promise<ResultadoTarifa> {
+  // A quién apuntaba, para poder reajustar solo a esa persona. Se lee ANTES de cerrarla.
+  const previa = await db.tarifa.findFirst({
+    where: { id: input.tarifaId, operadorId: actor.operadorId, vigenteHasta: null },
+    select: { inquilinoId: true },
+  });
   const r = await db.tarifa.updateMany({
     where: { id: input.tarifaId, operadorId: actor.operadorId, vigenteHasta: null },
     data: { vigenteHasta: new Date() },
   });
-  return r.count === 1 ? { ok: true, id: input.tarifaId } : { ok: false, error: "NO_ENCONTRADA" };
+  if (r.count !== 1) return { ok: false, error: "NO_ENCONTRADA" };
+
+  // Dar de baja un precio también CAMBIA el precio: el alcance cae en el que le siga. Si guardar
+  // uno nuevo aplica a lo agendado, sacar uno tiene que hacer lo mismo, o la mitad de la pantalla
+  // se comporta de una manera y la otra mitad de otra.
+  const ap = await aplicarPrecioVigente(actor, previa?.inquilinoId ? { inquilinoId: previa.inquilinoId } : {}, db);
+  return { ok: true, id: input.tarifaId, aplicadas: ap.reajustadas };
 }
 
 const CFG_TARIFA = {

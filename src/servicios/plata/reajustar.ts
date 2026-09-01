@@ -108,7 +108,15 @@ export const ReajustarInput = z.object({
 
 export type ResultadoReajuste = { ok: true; reajustadas: number; difCent: bigint };
 
-async function reajustar(
+/**
+ * Aplica el precio vigente, sin envoltorio de permiso.
+ *
+ * Se exporta cruda para que guardar una tarifa pueda aplicarla en el mismo paso: el permiso que
+ * pide guardar un precio (`tarifa.administrar`) es EL MISMO que pide reajustar, así que volver a
+ * verificarlo no agrega ningún control, y encadenar dos acciones dejaría dos entradas separadas en
+ * el registro de actividad para lo que el operador vivió como un solo acto.
+ */
+export async function aplicarPrecioVigente(
   actor: Actor,
   input: z.infer<typeof ReajustarInput>,
   db: PrismaClient,
@@ -147,7 +155,7 @@ const CFG_REAJUSTE = {
   resumen: (i: z.infer<typeof ReajustarInput>) => `reajuste de reservas futuras${i.inquilinoId ? ` de ${i.inquilinoId}` : " (todos)"}`,
 } as const;
 
-export const reajustarFuturas = definirAccion(CFG_REAJUSTE, (a, i) => reajustar(a, i, prisma));
+export const reajustarFuturas = definirAccion(CFG_REAJUSTE, (a, i) => aplicarPrecioVigente(a, i, prisma));
 
 export const reajustarCon = (db: PrismaClient) =>
-  definirAccion({ ...CFG_REAJUSTE, db }, (a, i) => reajustar(a, i, db));
+  definirAccion({ ...CFG_REAJUSTE, db }, (a, i) => aplicarPrecioVigente(a, i, db));

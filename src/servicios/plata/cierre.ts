@@ -20,7 +20,9 @@ import { definirAccion } from "../../lib/accion.ts";
 import type { Actor } from "../../lib/actor.ts";
 import { esPeriodoValido } from "../../dominio/reporte.ts";
 import { cargosAnulados, cerrarPeriodo, FACTURABLES, type ResultadoCierre } from "./liquidacion.ts";
+import { asentarIdempotente } from "./ledger.ts";
 import { idsQueNoFacturan } from "./facturable.ts";
+import { JOIN_REVERTIDO, SUMA_COBRADO } from "../reportes/movimientos.ts";
 
 /** Una fila de la pantalla: un profesional en un mes. */
 export type FilaCierre = {
@@ -33,6 +35,12 @@ export type FilaCierre = {
   pendienteCent: bigint;
   /** Si ya se cerró: el número que le tocó y el total congelado. */
   liquidacion: { id: string; numero: number; totalCent: bigint; estado: string; emitidaAt: Date | null } | null;
+  /**
+   * Lo que ya pagó de ESE mes, neto de anulaciones. Es lo que distingue "se le emitió" de "ya
+   * cobré": sin esto, la pantalla que sirve para cerrar el mes no puede después servir para ver a
+   * quién falta cobrarle, que es la segunda vez que se abre.
+   */
+  pagadoCent: bigint;
 };
 
 /**
@@ -54,7 +62,7 @@ export async function pendientesDeCierre(
   // aprobaría un número y el profesional recibiría otro.
   const anulados = await cargosAnulados(db, { operadorId: a.operadorId, periodo: a.periodo });
 
-  const [porInquilino, liquidaciones, inquilinos, noFacturan] = await Promise.all([
+  const [porInquilino, liquidaciones, inquilinos, noFacturan, pagos] = await Promise.all([
     // Solo lo NO liquidado: es exactamente lo que el cierre va a reclamar. Si acá se contara todo,
     // el número de la pantalla no sería el que después va a salir.
     db.asiento.groupBy({
@@ -73,7 +81,18 @@ export async function pendientesDeCierre(
     }),
     db.inquilino.findMany({ where: { operadorId: a.operadorId }, select: { id: true, nombre: true, pagador: true } }),
     idsQueNoFacturan(db, a.operadorId),
+
+    // Lo que cada uno ya pagó de ESTE mes, neto de anulaciones. Se calcula por concepto y no por
+    // signo, igual que en el resto de las pantallas: una nota de crédito de un turno cancelado es
+    // negativa y por signo se leería como plata que el profesional mandó.
+    db.$queryRaw<{ id: string; pagado: bigint }[]>`
+      SELECT a."inquilinoId" AS id, ${SUMA_COBRADO} AS pagado
+      FROM "Asiento" a
+      ${JOIN_REVERTIDO}
+      WHERE a."operadorId" = ${a.operadorId} AND a."cuenta" = 'corriente' AND a."periodo" = ${a.periodo}
+      GROUP BY a."inquilinoId"`,
   ]);
+  const pagadoDe = new Map(pagos.map((p) => [p.id, p.pagado]));
 
   const nombre = new Map(inquilinos.map((i) => [i.id, i]));
   const liqDe = new Map(liquidaciones.map((l) => [l.inquilinoId, l]));
@@ -98,6 +117,7 @@ export async function pendientesDeCierre(
         pendientes: p?._count._all ?? 0,
         pendienteCent: p?._sum.montoCent ?? 0n,
         liquidacion: l ? { id: l.id, numero: l.numero, totalCent: l.totalCent, estado: l.estado, emitidaAt: l.emitidaAt } : null,
+        pagadoCent: pagadoDe.get(id) ?? 0n,
       };
     })
     // Lo más grande primero: es el orden en que se trabaja.
@@ -356,6 +376,69 @@ async function reabrirUna(
   });
 }
 
+export const CobrarLiquidacionInput = z.object({ liquidacionId: z.string().min(1) });
+
+export type ResultadoCobrarLiq =
+  | { ok: true; nombre: string; montoCent: bigint }
+  | { ok: false; error: "NO_ENCONTRADA" | "YA_COBRADA" };
+
+/**
+ * Dar por cobrada una liquidación entera, de un toque.
+ *
+ * Cerrar el mes y cobrarlo NO son lo mismo y no se pueden fusionar: cerrar es emitir el papel,
+ * cobrar es que la plata llegó. Si cerrar diera por pagado, la cuenta corriente perdería lo único
+ * que hace: saber quién debe. Todos figurarían al día el mismo día que se cierra el mes, y el
+ * profesional que no pagó sería indistinguible del que sí.
+ *
+ * Pero el caso habitual es que pague el total, junto, y para eso el formulario de cobro pide
+ * importe, medio, comprobante y fecha — cuatro campos para decir "sí, me pagó". Este botón es ese
+ * caso: asienta el pago por el total de la liquidación, con la fecha de hoy.
+ *
+ * La clave es `pago:liquidacion:<id>`, estable a propósito. El formulario manual usa un UUID al
+ * azar cuando no hay comprobante, así que apretar dos veces cargaría dos pagos; acá el segundo
+ * toque choca contra la misma clave y no entra. Un botón que se puede apretar de más en un celular
+ * necesita que apretarlo de más no haga nada.
+ */
+async function cobrarLiquidacion(
+  actor: Actor,
+  input: z.infer<typeof CobrarLiquidacionInput>,
+  db: PrismaClient,
+): Promise<ResultadoCobrarLiq> {
+  const liq = await db.liquidacion.findFirst({
+    where: { id: input.liquidacionId, operadorId: actor.operadorId },
+    select: { id: true, inquilinoId: true, periodo: true, totalCent: true },
+  });
+  if (!liq) return { ok: false, error: "NO_ENCONTRADA" };
+
+  // La liquidación no guarda moneda: es la del centro. Se lee de ahí, no se asume "ARS".
+  const [ficha, operador] = await Promise.all([
+    db.inquilino.findFirst({ where: { id: liq.inquilinoId }, select: { nombre: true } }),
+    db.operador.findUniqueOrThrow({ where: { id: actor.operadorId }, select: { moneda: true } }),
+  ]);
+  const r = await asentarIdempotente(db, {
+    operadorId: actor.operadorId,
+    inquilinoId: liq.inquilinoId,
+    concepto: "pago",
+    montoCent: -liq.totalCent, // a favor del profesional: baja lo que debe
+    moneda: operador.moneda,
+    // El período es el de la liquidación, no el de hoy: cobrar en octubre el mes de septiembre no
+    // puede mover plata a octubre (§5.1).
+    periodo: liq.periodo,
+    fechaHecho: new Date(),
+    clave: `pago:liquidacion:${liq.id}`,
+    referencia: `liquidación ${liq.id}`,
+    creadoPorUserId: actor.usuarioId,
+  });
+  if (!r.creado) return { ok: false, error: "YA_COBRADA" };
+  return { ok: true, nombre: ficha?.nombre ?? "ese profesional", montoCent: liq.totalCent };
+}
+
+const CFG_COBRAR_LIQ = {
+  permiso: "cobro.registrar",
+  schema: CobrarLiquidacionInput,
+  resumen: (i: z.infer<typeof CobrarLiquidacionInput>) => `cobro total de la liquidación ${i.liquidacionId}`,
+} as const;
+
 const CFG_REABRIR_UNA = {
   permiso: "periodo.cerrar",
   schema: ReabrirUnaInput,
@@ -374,6 +457,7 @@ export const cerrarMesDe = definirAccion(CFG_CIERRE_UNO, (a, i) => cerrarUno(a, 
 export const cerrarMesTodos = definirAccion(CFG_CIERRE_TODOS, (a, i) => cerrarTodos(a, i, prisma));
 export const reabrirMes = definirAccion(CFG_REABRIR, (a, i) => reabrirMesDe(a, i, prisma));
 export const reabrirLiquidacion = definirAccion(CFG_REABRIR_UNA, (a, i) => reabrirUna(a, i, prisma));
+export const darPorCobrada = definirAccion(CFG_COBRAR_LIQ, (a, i) => cobrarLiquidacion(a, i, prisma));
 
 /** Versiones inyectables, para los tests. */
 export const cierreCon = (db: PrismaClient) => ({
@@ -381,4 +465,5 @@ export const cierreCon = (db: PrismaClient) => ({
   todos: definirAccion({ ...CFG_CIERRE_TODOS, db }, (a, i) => cerrarTodos(a, i, db)),
   reabrir: definirAccion({ ...CFG_REABRIR, db }, (a, i) => reabrirMesDe(a, i, db)),
   reabrirUna: definirAccion({ ...CFG_REABRIR_UNA, db }, (a, i) => reabrirUna(a, i, db)),
+  cobrar: definirAccion({ ...CFG_COBRAR_LIQ, db }, (a, i) => cobrarLiquidacion(a, i, db)),
 });

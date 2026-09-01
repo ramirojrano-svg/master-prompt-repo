@@ -17,7 +17,7 @@ import { Cabecera } from "../Cabecera.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
-import { pendientesDeCierre, liquidacionesDeNoFacturables, cerrarMesDe, cerrarMesTodos, reabrirMes, reabrirLiquidacion } from "../../../../src/servicios/plata/cierre.ts";
+import { pendientesDeCierre, liquidacionesDeNoFacturables, cerrarMesDe, cerrarMesTodos, reabrirMes, reabrirLiquidacion, darPorCobrada } from "../../../../src/servicios/plata/cierre.ts";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
 import { nombreDePeriodo, periodoAnterior, periodoSiguiente, venceElDelPeriodo } from "../../../../src/dominio/reporte.ts";
 import { periodoDeTrabajo } from "../../../../src/servicios/plata/periodo-trabajo.ts";
@@ -146,6 +146,16 @@ export default async function CierrePage({
     redirect(`${volverA}${r.ok ? `&ok=abonos&n=${r.data.cobrados}` : `&error=${r.error}`}`);
   }
 
+  async function darCobrada(formData: FormData) {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+    const r = await darPorCobrada(a, { liquidacionId: String(formData.get("liquidacionId") ?? "") });
+    revalidatePath(`/panel/${slug}/cierre`);
+    const qs = !r.ok ? `&error=${r.error}` : r.data.ok ? `&ok=cobrada` : `&error=${r.data.error}`;
+    redirect(`${volverA}${qs}#p-${String(formData.get("inquilinoId") ?? "")}`);
+  }
+
   async function reabrirUna(formData: FormData) {
     "use server";
     const a = await actorDeSesion(slug);
@@ -223,6 +233,12 @@ export default async function CierrePage({
           <p className="aviso-ok">
             {sp.n === "0" ? "Los abonos de este mes ya estaban cargados." : `${sp.n} ${Number(sp.n) === 1 ? "abono cargado" : "abonos cargados"}. Ya aparecen abajo para cerrar.`}
           </p>
+        )}
+        {sp.ok === "cobrada" && (
+          <p className="aviso-ok">Cobro registrado por el total de la liquidación, con fecha de hoy.</p>
+        )}
+        {sp.error === "YA_COBRADA" && (
+          <p className="aviso-error">Esa liquidación ya figuraba cobrada. No se cargó un segundo pago.</p>
         )}
         {sp.ok === "reabierta" && (
           <p className="aviso-ok">Liquidación anulada. Los cargos de ese profesional vuelven a estar pendientes.</p>
@@ -423,6 +439,39 @@ export default async function CierrePage({
                           >
                             <IconoDocumento tam={22} />
                           </Link>
+                          {/* Cobrada de un toque. El caso normal es que pague el total, junto, y
+                              el formulario de cobro pide importe, medio, comprobante y fecha:
+                              cuatro campos para decir "sí, me pagó", por cada uno de treinta y
+                              seis. Acá el importe ya se sabe —es el de la liquidación— y la fecha
+                              es hoy. Apretarlo dos veces no carga dos pagos: la clave del asiento
+                              es la de la liquidación.
+
+                              Una vez cobrada, el botón desaparece y queda el visto: si siguiera
+                              ahí, no habría forma de mirar la lista y ver a quién falta cobrarle,
+                              que es justamente para lo que se abre esta pantalla la segunda vez. */}
+                          {f.pagadoCent >= f.liquidacion.totalCent ? (
+                            <span
+                              title={`Cobrada: ${plata(f.pagadoCent)}`}
+                              aria-label={`Liquidación de ${f.nombre} cobrada`}
+                              style={{ color: "var(--ok, green)", fontSize: 16, lineHeight: 1 }}
+                            >
+                              ✓
+                            </span>
+                          ) : (
+                            <form action={darCobrada} style={{ display: "inline" }}>
+                              <input type="hidden" name="liquidacionId" value={f.liquidacion.id} />
+                              <input type="hidden" name="inquilinoId" value={f.inquilinoId} />
+                              <button
+                                type="submit"
+                                title={`Registrar el pago de ${plata(f.liquidacion.totalCent)} de ${f.nombre}, con fecha de hoy`}
+                                aria-label={`Dar por cobrada la liquidación de ${f.nombre}`}
+                                className="pastilla"
+                                style={{ padding: "5px 10px", fontSize: 12, minHeight: 32 }}
+                              >
+                                Cobrada
+                              </button>
+                            </form>
+                          )}
                           {/* Deshacer el cierre de ESTE. Cerrar de a uno es lo normal, y en una
                               lista de treinta y seis equivocarse de fila es cuestión de tiempo;
                               sin esto había que deshacer el mes entero y volver a cerrar a los

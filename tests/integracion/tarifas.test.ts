@@ -8,7 +8,7 @@ import { resolverTarifa } from "../../src/dominio/tarifa.ts";
 import { crearOcupacion, type CtxReserva } from "../../src/servicios/reservas/crear.ts";
 import { prisma } from "../../src/db/prisma.ts";
 import type { Actor } from "../../src/lib/actor.ts";
-import { nuevoPool, reiniciarEsquema, seedBase, TZ_SEDE, URL_DB } from "./db.ts";
+import { insertarOcupacion, nuevoPool, reiniciarEsquema, seedBase, TZ_SEDE, URL_DB } from "./db.ts";
 
 const pgPool = nuevoPool();
 const db = new PrismaClient({ datasourceUrl: URL_DB });
@@ -164,7 +164,29 @@ test("la reserva ESTAMPA el precio y carga la cuenta corriente", async () => {
   assert.equal(asientos[0]?.periodo, periodoEsperado(`${DIA}T12:00:00.000Z`), "el mes se corta en la zona de la sede");
 });
 
-test("subir el precio HOY no reescribe lo que ya se reservó ayer (§8.8)", async () => {
+test("subir el precio HOY no reescribe una hora que YA SE USÓ (§8.8)", async () => {
+  // §8.8 protege lo que ya ocurrió: esa hora se usó a un precio, y ese precio es el que fue.
+  // El límite es la fecha de la hora, no la de la reserva — antes este test reservaba a 30 días
+  // (o sea, futuro) y decía estar probando "lo que se reservó ayer". Probaba otra cosa.
+  await tarifas.poner(owner, { precioHora: 8000 });
+  const ayer = new Date(Date.now() - 86_400_000);
+  const fin = new Date(ayer.getTime() + 3_600_000);
+  await insertarOcupacion(pgPool, {
+    id: "usada", salaId: "sa1", inquilinoId: "in1",
+    inicio: ayer.toISOString(), fin: fin.toISOString(),
+  });
+  await db.ocupacion.update({ where: { id: "usada" }, data: { precioHoraCent: 800_000n, importeCent: 800_000n } });
+
+  await tarifas.poner(owner, { precioHora: 20000 });
+
+  const a = await db.ocupacion.findUniqueOrThrow({ where: { id: "usada" }, select: { importeCent: true } });
+  assert.equal(a.importeCent, 800_000n, "la hora que ya pasó vale lo que valió");
+});
+
+test("subir el precio SÍ alcanza a lo que todavía no se usó ni se liquidó", async () => {
+  // La otra mitad de la misma regla, y la que el operador da por sentada: cambiar el precio tiene
+  // que cambiar el precio. Una hora futura no ocurrió y no se facturó, así que le corresponde el
+  // precio que rige para cuando se va a usar.
   await tarifas.poner(owner, { precioHora: 8000 });
   const vieja = await crearOcupacion(req("sa1", 12), ctx("in1"), db);
   assert.ok(vieja.ok);
@@ -177,11 +199,11 @@ test("subir el precio HOY no reescribe lo que ya se reservó ayer (§8.8)", asyn
 
   const a = await db.ocupacion.findUniqueOrThrow({ where: { id: vieja.id }, select: { importeCent: true } });
   const b = await db.ocupacion.findUniqueOrThrow({ where: { id: nueva.id }, select: { importeCent: true } });
-  assert.equal(a.importeCent, 800_000n, "la de antes sigue valiendo lo de antes");
+  assert.equal(a.importeCent, 2_000_000n, "la que ya estaba agendada pasa al precio nuevo");
   assert.equal(b.importeCent, 2_000_000n);
 
   const suma = await db.asiento.aggregate({ where: { inquilinoId: "in1" }, _sum: { montoCent: true } });
-  assert.equal(suma._sum.montoCent, 2_800_000n, "el saldo se deriva del ledger, no de un contador");
+  assert.equal(suma._sum.montoCent, 4_000_000n, "el saldo se deriva del ledger, no de un contador");
 });
 
 test("la tarifa del profesional le gana a la general en el cobro real", async () => {

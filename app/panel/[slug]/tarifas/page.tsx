@@ -25,7 +25,7 @@ export default async function TarifasPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string; ok?: string; cobrados?: string; repetidos?: string; cotizadas?: string; restantes?: string; reajustadas?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; cobrados?: string; repetidos?: string; cotizadas?: string; restantes?: string; reajustadas?: string; aplicadas?: string }>;
 }) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -83,6 +83,10 @@ export default async function TarifasPage({
 
     const alcance = String(formData.get("alcance") ?? "todos");
 
+    // Guardar un precio APLICA el precio: `ponerTarifa` reajusta lo ya agendado que todavía no
+    // salió del centro y devuelve cuántas reservas tocó. No es un paso aparte de esta pantalla —
+    // serlo era el problema: se guardaba el valor nuevo y la liquidación seguía con el viejo.
+
     // "Todos menos…" es un guardado distinto: el general y los precios propios de los excluidos
     // van en UNA transacción. Los dos arrays vienen apareados por posición desde el formulario.
     if (alcance === "todos-menos") {
@@ -92,22 +96,25 @@ export default async function TarifasPage({
         precioHora: formData.get("precioHora"),
         excepciones: ids.map((inquilinoId, n) => ({ inquilinoId, precioHora: precios[n] ?? "" })),
       });
+      const n = r.ok && r.data.ok ? r.data.aplicadas : 0;
       revalidatePath(`/panel/${slug}/tarifas`);
-      const qs = !r.ok ? `?error=${r.error}` : !r.data.ok ? `?error=${r.data.error}` : "?ok=1";
+      const qs = !r.ok ? `?error=${r.error}` : !r.data.ok ? `?error=${r.data.error}` : `?ok=1&aplicadas=${n}`;
       redirect(`/panel/${slug}/tarifas${qs}`);
     }
 
+    const uno = alcance === "uno" ? String(formData.get("inquilinoId") ?? "") : "";
     const r = await ponerTarifa(a, {
       precioHora: formData.get("precioHora"),
       // El precio NO depende del consultorio: es del profesional (o general del centro). Se
       // manda null siempre, así toda tarifa nueva nace con alcance de profesional.
       salaId: null,
       // Con "Todos" el campo viaja vacío, que el esquema convierte en null (= general).
-      inquilinoId: alcance === "uno" ? formData.get("inquilinoId") : null,
+      inquilinoId: uno === "" ? null : uno,
     });
 
+    const n = r.ok && r.data.ok ? r.data.aplicadas : 0;
     revalidatePath(`/panel/${slug}/tarifas`);
-    const qs = !r.ok ? `?error=${r.error}` : !r.data.ok ? `?error=${r.data.error}` : "?ok=1";
+    const qs = !r.ok ? `?error=${r.error}` : !r.data.ok ? `?error=${r.data.error}` : `?ok=1&aplicadas=${n}`;
     redirect(`/panel/${slug}/tarifas${qs}`);
   }
 
@@ -361,6 +368,7 @@ export default async function TarifasPage({
         inquilinos={inquilinos.map((i) => ({ id: i.id, nombre: i.nombre, estado: i.estado }))}
         mensaje={mensaje}
         ok={ok === "1"}
+        aplicadas={sp.aplicadas === undefined ? undefined : Number(sp.aplicadas)}
       />
 
       {/* ── Qué paga cada uno, resuelto ─────────────────────────────────── */}

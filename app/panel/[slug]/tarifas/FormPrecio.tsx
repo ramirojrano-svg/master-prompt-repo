@@ -27,11 +27,14 @@ export function FormPrecio({
   inquilinos,
   mensaje,
   ok,
+  aplicadas,
 }: {
   accion: (formData: FormData) => Promise<void>;
   inquilinos: OpcionProfesional[];
   mensaje?: string | null;
   ok?: boolean;
+  /** Cuántas reservas ya cargadas quedaron con el precio nuevo. */
+  aplicadas?: number;
 }) {
   // Un solo estado para el select: "todos", "todos-menos", o el id de una persona. Tener el modo
   // y el id por separado permitía que quedaran en desacuerdo (modo "uno" sin nadie elegido).
@@ -159,7 +162,17 @@ export function FormPrecio({
       )}
 
       {mensaje && <p className="aviso-error" style={{ marginTop: 12 }}>{mensaje}</p>}
-      {ok && <p className="aviso-ok" style={{ marginTop: 12 }}>Guardado. Rige desde ahora en adelante.</p>}
+      {/* El mensaje dice qué pasó con LO YA CARGADO, no solo que se guardó. Antes decía "rige
+          desde ahora en adelante" y se leía como que el cambio ya estaba hecho, cuando las
+          reservas de la agenda seguían con el importe viejo. */}
+      {ok && (
+        <p className="aviso-ok" style={{ marginTop: 12 }}>
+          Guardado.{" "}
+          {aplicadas === undefined || aplicadas === 0
+            ? "No había reservas ya cargadas para actualizar: rige para las que se agenden de acá en adelante."
+            : `${aplicadas} ${aplicadas === 1 ? "reserva ya agendada quedó" : "reservas ya agendadas quedaron"} al precio nuevo. Lo ya usado y lo ya liquidado no se tocó.`}
+        </p>
+      )}
 
       <p style={{ marginTop: 14 }}>
         <BotonEnviar enviando="Guardando…">Guardar precio</BotonEnviar>

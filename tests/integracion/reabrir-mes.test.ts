@@ -20,7 +20,7 @@ import { nuevoPool, reiniciarEsquema, seedBase, URL_DB } from "./db.ts";
 
 const pgPool = nuevoPool();
 const db = new PrismaClient({ datasourceUrl: URL_DB });
-const { todos, reabrir, reabrirUna } = cierreCon(db);
+const { todos, reabrir, reabrirUna, cobrar } = cierreCon(db);
 
 const owner: Actor = { usuarioId: "u1", operadorId: "op1", rol: "owner", inquilinoId: null };
 const profesional: Actor = { usuarioId: "u2", operadorId: "op1", rol: "inquilino_titular", inquilinoId: "in1" };
@@ -230,4 +230,84 @@ test("un profesional no puede reabrir una liquidación", async () => {
   assert.equal(r.ok, false);
   assert.equal(r.ok === false && r.error, "SIN_PERMISO");
   assert.equal(await db.liquidacion.count({ where: { id: suya!.id } }), 1);
+});
+
+// ── Cobrada de un toque ─────────────────────────────────────────────────────
+//
+// Cerrar el mes y cobrarlo no son lo mismo: cerrar es emitir el papel, cobrar es que la plata
+// llegó. Fusionarlos —dar por pagado al cerrar— dejaría a la cuenta corriente sin lo único que
+// hace, que es saber quién debe. Lo que sí se puede es que decir "me pagó todo" sea un toque en
+// vez de cuatro campos.
+
+test("dar por cobrada asienta el pago por el total de la liquidación", async () => {
+  await mesCerrado();
+  const suya = await db.liquidacion.findFirstOrThrow({
+    where: { inquilinoId: "in1", periodo: MES },
+    select: { id: true, totalCent: true },
+  });
+
+  const r = await cobrar(owner, { liquidacionId: suya.id });
+
+  assert.ok(r.ok && r.data.ok);
+  const pago = await db.asiento.findFirstOrThrow({
+    where: { inquilinoId: "in1", concepto: "pago" },
+    select: { montoCent: true, periodo: true },
+  });
+  assert.equal(pago.montoCent, -suya.totalCent, "a favor del profesional, por el total");
+  assert.equal(pago.periodo, MES, "el pago pertenece al mes de la liquidación, no al de hoy");
+});
+
+test("apretar dos veces no carga dos pagos", async () => {
+  // Es un botón en un celular: apretarlo de más tiene que no hacer nada.
+  await mesCerrado();
+  const suya = await db.liquidacion.findFirstOrThrow({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
+
+  const a = await cobrar(owner, { liquidacionId: suya.id });
+  const b = await cobrar(owner, { liquidacionId: suya.id });
+
+  assert.ok(a.ok && a.data.ok);
+  assert.ok(b.ok && !b.data.ok && b.data.error === "YA_COBRADA");
+  assert.equal(await db.asiento.count({ where: { inquilinoId: "in1", concepto: "pago" } }), 1);
+});
+
+test("la fila queda marcada como cobrada y la del de al lado no", async () => {
+  await mesCerrado();
+  const suya = await db.liquidacion.findFirstOrThrow({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true, totalCent: true } });
+  await cobrar(owner, { liquidacionId: suya.id });
+
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
+  const uno = filas.find((f) => f.inquilinoId === "in1")!;
+  const dos = filas.find((f) => f.inquilinoId === "in2")!;
+  assert.equal(uno.pagadoCent, suya.totalCent, "in1 figura cobrado");
+  assert.equal(dos.pagadoCent, 0n, "in2 sigue debiendo: cerrar no es cobrar");
+});
+
+test("cobrar no cierra a nadie ni reabre nada: son actos distintos", async () => {
+  await mesCerrado();
+  const antes = await db.liquidacion.count({ where: { periodo: MES } });
+  const suya = await db.liquidacion.findFirstOrThrow({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
+
+  await cobrar(owner, { liquidacionId: suya.id });
+
+  assert.equal(await db.liquidacion.count({ where: { periodo: MES } }), antes);
+});
+
+test("una liquidación ya cobrada no se puede reabrir", async () => {
+  // El freno que ya existía, ahora alcanzado por el camino nuevo: hay plata aplicada contra ese
+  // papel, y borrarlo dejaría un pago colgando de un documento que no existe.
+  await mesCerrado();
+  const suya = await db.liquidacion.findFirstOrThrow({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
+  await cobrar(owner, { liquidacionId: suya.id });
+
+  const r = await reabrirUna(owner, { liquidacionId: suya.id });
+  assert.ok(r.ok && !r.data.ok && r.data.error === "CON_PAGOS");
+});
+
+test("un profesional no puede dar por cobrada una liquidación", async () => {
+  await mesCerrado();
+  const suya = await db.liquidacion.findFirstOrThrow({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
+
+  const r = await cobrar(profesional, { liquidacionId: suya.id });
+  assert.equal(r.ok, false);
+  assert.equal(await db.asiento.count({ where: { concepto: "pago" } }), 0);
 });
