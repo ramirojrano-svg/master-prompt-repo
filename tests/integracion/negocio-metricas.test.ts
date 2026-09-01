@@ -16,7 +16,7 @@ import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
 import { rentabilidad } from "../../src/servicios/reportes/rentabilidad.ts";
-import { reporteMensual } from "../../src/servicios/reportes/mensual.ts";
+import { detalleProfesional, reporteMensual } from "../../src/servicios/reportes/mensual.ts";
 import { cancelarOcupacion } from "../../src/servicios/reservas/cancelar.ts";
 import { cobrosCon } from "../../src/servicios/plata/cobros.ts";
 import { gastosCon } from "../../src/servicios/plata/gastos.ts";
@@ -164,4 +164,76 @@ test("la historia de seis meses termina en el mes pedido y coincide con él", as
   assert.equal(n?.historia.length, 6);
   assert.equal(n?.historia.at(-1)?.periodo, P, "el último del corte es el que se está mirando");
   assert.equal(n?.historia.at(-1)?.facturadoCent, n?.facturadoCent, "y tiene que decir lo mismo que el encabezado");
+});
+
+// ── La ficha del profesional ────────────────────────────────────────────────
+//
+// Los mismos dos números, en la pantalla donde se los mira de a uno para cobrarle. Estaban
+// calculados por signo mucho después de que Negocio se arreglara: se arregló un archivo y los
+// otros tres siguieron mintiendo. Un profesional al que se le canceló un turno y se le anuló un
+// cobro aparecía con "Pagó" inflado y SALDO NEGATIVO —el centro debiéndole plata a él— cuando en
+// realidad era él el que debía.
+
+const fichaDe = () => detalleProfesional({ actor: owner, inquilinoId: "in1", periodo: P }, db);
+const cobros = cobrosCon(db);
+
+test("un cobro anulado no sigue contando como pagado en la ficha", async () => {
+  await reserva("r1", 120_000n);
+  await cobros.registrar(owner, { inquilinoId: "in1", monto: 1200, medio: "transferencia", fecha: `${P}-01` });
+  const pago = await db.asiento.findFirstOrThrow({ where: { concepto: "pago" }, select: { id: true } });
+  await cobros.anular(owner, { asientoId: pago.id, motivo: "nunca entró" });
+
+  const d = (await fichaDe())!;
+  assert.equal(d.totales.pagadoCent, 0n, "el cobro se anuló: no pagó nada");
+  assert.equal(d.totales.facturadoCent, 120_000n, "la anulación no es una venta nueva");
+});
+
+test("un turno cancelado no figura como plata que el profesional pagó", async () => {
+  await reserva("r1", 120_000n);
+  await reserva("r2", 120_000n, "11");
+  await cancelarOcupacion({ ocupacionId: "r2", motivo: "se enfermó" }, { operadorId: "op1", moneda: "ARS" }, db);
+
+  const d = (await fichaDe())!;
+  assert.equal(d.totales.pagadoCent, 0n, "una nota de crédito no es un pago");
+  assert.equal(d.totales.facturadoCent, 120_000n, "el turno cancelado deja de facturarse");
+});
+
+test("cancelar un turno y anular el cobro no deja el saldo del mes en negativo", async () => {
+  // El caso exacto que se vio en producción: la ficha decía que el centro le debía plata a él.
+  await reserva("r1", 120_000n);
+  await reserva("r2", 120_000n, "11");
+  await cancelarOcupacion({ ocupacionId: "r2", motivo: "se enfermó" }, { operadorId: "op1", moneda: "ARS" }, db);
+  await cobros.registrar(owner, { inquilinoId: "in1", monto: 1200, medio: "transferencia", fecha: `${P}-01` });
+  const pago = await db.asiento.findFirstOrThrow({ where: { concepto: "pago" }, select: { id: true } });
+  await cobros.anular(owner, { asientoId: pago.id, motivo: "rebotó" });
+
+  const d = (await fichaDe())!;
+  assert.equal(d.totales.pagadoCent, 0n);
+  assert.equal(d.totales.facturadoCent, 120_000n);
+  assert.ok(d.totales.saldoCent >= 0n, `el saldo no puede quedar negativo, quedó ${d.totales.saldoCent}`);
+});
+
+test("un cobro que SÍ quedó firme sigue contando como pagado", async () => {
+  // El arreglo no puede haber apagado el caso normal, que es el 99% de las veces.
+  await reserva("r1", 120_000n);
+  await cobros.registrar(owner, { inquilinoId: "in1", monto: 1200, medio: "transferencia", fecha: `${P}-01` });
+
+  const d = (await fichaDe())!;
+  assert.equal(d.totales.pagadoCent, 120_000n);
+  assert.equal(d.totales.facturadoCent, 120_000n);
+});
+
+test("la ficha y el reporte mensual dicen lo mismo del mismo profesional", async () => {
+  // Dos pantallas con el mismo número calculado en dos consultas distintas es el error más caro
+  // de explicar, porque las dos parecen correctas.
+  await reserva("r1", 120_000n);
+  await reserva("r2", 120_000n, "11");
+  await cancelarOcupacion({ ocupacionId: "r2", motivo: "x" }, { operadorId: "op1", moneda: "ARS" }, db);
+  await cobros.registrar(owner, { inquilinoId: "in1", monto: 500, medio: "efectivo", fecha: `${P}-05` });
+
+  const d = (await fichaDe())!;
+  const r = (await reporteMensual({ actor: owner, periodo: P }, db))!;
+  const fila = r.profesionales.find((p) => p.id === "in1")!;
+  assert.equal(fila.facturadoCent, d.totales.facturadoCent);
+  assert.equal(fila.pagadoCent, d.totales.pagadoCent);
 });

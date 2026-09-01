@@ -12,6 +12,7 @@
 
 import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
+import { JOIN_REVERTIDO, SUMA_COBRADO, SUMA_FACTURADO } from "./movimientos.ts";
 import { cotizar, resolverTarifa } from "../../dominio/tarifa.ts";
 import { parseHorarios } from "../../dominio/motor/horarios.ts";
 import { diaSemanaDeFecha, fechaEnZona, minutosAHora, rangoDiaEnZona } from "../../dominio/motor/zona.ts";
@@ -144,22 +145,28 @@ export async function reporteMensual(
           AND o."inicio" >= ${desde} AND o."inicio" < ${hasta}
         GROUP BY o."salaId"`,
 
-      // Débitos y créditos del período, por profesional. Los dos por separado: un neto esconde
-      // que alguien facturó $100.000 y pagó $100.000 el mismo mes.
+      // Lo facturado y lo cobrado del período, por profesional. Los dos por separado: un neto
+      // esconde que alguien facturó $100.000 y pagó $100.000 el mismo mes.
+      //
+      // La partición sale de `movimientos.ts` y NO se escribe acá: clasificar por signo daba un
+      // saldo negativo —el centro debiéndole al profesional— con solo cancelar un turno o anular
+      // un cobro. El detalle de por qué está en ese archivo.
       db.$queryRaw<{ id: string; debe: bigint; haber: bigint }[]>`
-        SELECT "inquilinoId" AS id,
-               COALESCE(SUM(CASE WHEN "montoCent" > 0 THEN "montoCent" ELSE 0 END), 0)::bigint AS debe,
-               COALESCE(SUM(CASE WHEN "montoCent" < 0 THEN -"montoCent" ELSE 0 END), 0)::bigint AS haber
-        FROM "Asiento"
-        WHERE "operadorId" = ${op} AND "cuenta" = 'corriente' AND "periodo" = ${a.periodo}
-        GROUP BY "inquilinoId"`,
+        SELECT a."inquilinoId" AS id,
+               ${SUMA_FACTURADO} AS debe,
+               ${SUMA_COBRADO} AS haber
+        FROM "Asiento" a
+        ${JOIN_REVERTIDO}
+        WHERE a."operadorId" = ${op} AND a."cuenta" = 'corriente' AND a."periodo" = ${a.periodo}
+        GROUP BY a."inquilinoId"`,
 
       // El total, calculado APARTE del detalle: si no coinciden, se muestra la diferencia.
       db.$queryRaw<{ debe: bigint; haber: bigint }[]>`
-        SELECT COALESCE(SUM(CASE WHEN "montoCent" > 0 THEN "montoCent" ELSE 0 END), 0)::bigint AS debe,
-               COALESCE(SUM(CASE WHEN "montoCent" < 0 THEN -"montoCent" ELSE 0 END), 0)::bigint AS haber
-        FROM "Asiento"
-        WHERE "operadorId" = ${op} AND "cuenta" = 'corriente' AND "periodo" = ${a.periodo}`,
+        SELECT ${SUMA_FACTURADO} AS debe,
+               ${SUMA_COBRADO} AS haber
+        FROM "Asiento" a
+        ${JOIN_REVERTIDO}
+        WHERE a."operadorId" = ${op} AND a."cuenta" = 'corriente' AND a."periodo" = ${a.periodo}`,
     ]);
 
   const ocup = new Map(porInquilino.map((r) => [r.id, r]));
@@ -350,11 +357,16 @@ export async function detalleProfesional(
       select: { id: true, inicio: true, fin: true, estado: true, importeCent: true, precioHoraCent: true, salaId: true, sala: { select: { nombre: true } } },
       orderBy: { inicio: "asc" },
     }),
+    // Misma partición que el resto de las pantallas (ver `movimientos.ts`): por concepto, no por
+    // signo. Con el criterio viejo, a quien se le cancelaba un turno o se le anulaba un cobro le
+    // quedaba "Pagó" inflado y el saldo del mes en negativo.
     db.$queryRaw<{ debe: bigint; haber: bigint }[]>`
-      SELECT COALESCE(SUM(CASE WHEN "montoCent" > 0 THEN "montoCent" ELSE 0 END), 0)::bigint AS debe,
-             COALESCE(SUM(CASE WHEN "montoCent" < 0 THEN -"montoCent" ELSE 0 END), 0)::bigint AS haber
-      FROM "Asiento"
-      WHERE "operadorId" = ${op} AND "inquilinoId" = ${inq.id} AND "cuenta" = 'corriente' AND "periodo" = ${a.periodo}`,
+      SELECT ${SUMA_FACTURADO} AS debe,
+             ${SUMA_COBRADO} AS haber
+      FROM "Asiento" a
+      ${JOIN_REVERTIDO}
+      WHERE a."operadorId" = ${op} AND a."inquilinoId" = ${inq.id}
+        AND a."cuenta" = 'corriente' AND a."periodo" = ${a.periodo}`,
     // Las tarifas vigentes, para poder ponerle precio a las reservas que nacieron sin ninguna.
     db.tarifa.findMany({
       where: { operadorId: op, vigenteDesde: { lte: ahora }, OR: [{ vigenteHasta: null }, { vigenteHasta: { gt: ahora } }] },

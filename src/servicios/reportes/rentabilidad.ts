@@ -20,6 +20,7 @@ import { prisma } from "../../db/prisma.ts";
 import { type Actor } from "../../lib/actor.ts";
 import { puede } from "../../lib/permisos.ts";
 import { esPeriodoValido, periodoAnterior } from "../../dominio/reporte.ts";
+import { JOIN_REVERTIDO, SUMA_COBRADO, SUMA_FACTURADO } from "./movimientos.ts";
 
 export type MesDelNegocio = {
   periodo: string;
@@ -78,32 +79,16 @@ export async function rentabilidad(
     db.operador.findUniqueOrThrow({ where: { id: op }, select: { moneda: true } }),
     // Lo facturado y lo cobrado por período, en una sola consulta para los seis meses.
     //
-    // Se clasifica por CONCEPTO, no por signo, y eso no es un detalle de estilo: el signo miente
-    // en los dos casos que más importan, que son las vueltas atrás.
-    //
-    //  · Cancelar un turno suma una `nota_credito` NEGATIVA. Por signo caía en "cobrado", así que
-    //    la pantalla inventaba plata que nadie pagó —y encima dejaba el cargo cancelado sumando en
-    //    "facturado"—. Un turno cancelado movía el resultado del mes dos veces, para arriba.
-    //  · Anular un cobro suma un `ajuste_debito` POSITIVO. Por signo caía en "facturado", así que
-    //    anular un pago aparecía como una venta nueva, y el pago anulado seguía contando como
-    //    cobrado.
-    //
-    // Lo que distingue una vuelta atrás de un movimiento genuino es `revierteAId`: apunta al
-    // asiento que da vuelta. Si ese original era un `pago`, la reversa es plata que se fue; si no,
-    // es facturación que se dio de baja. Con eso las dos columnas quedan bien definidas:
-    //   facturado = todo lo que NO es pago ni reversa de pago (los créditos restan solos, por
-    //               venir en negativo)
-    //   cobrado   = los pagos y sus reversas, cambiados de signo
+    // La partición se clasifica por CONCEPTO, no por signo, y está definida una sola vez en
+    // `movimientos.ts` porque estas dos columnas también las muestran el reporte mensual, Cobranza
+    // y la ficha del profesional. El día que estuvieron escritas cuatro veces, se arregló una y
+    // las otras tres siguieron mintiendo. Ahí está el porqué del criterio.
     db.$queryRaw<{ periodo: string; facturado: bigint; cobrado: bigint }[]>`
       SELECT a."periodo",
-             COALESCE(SUM(CASE WHEN a."concepto" <> 'pago'::"Concepto"
-                                AND (orig."concepto" IS NULL OR orig."concepto" <> 'pago'::"Concepto")
-                               THEN a."montoCent" ELSE 0 END), 0)::bigint AS facturado,
-             COALESCE(SUM(CASE WHEN a."concepto" = 'pago'::"Concepto"
-                                 OR orig."concepto" = 'pago'::"Concepto"
-                               THEN -a."montoCent" ELSE 0 END), 0)::bigint AS cobrado
+             ${SUMA_FACTURADO} AS facturado,
+             ${SUMA_COBRADO} AS cobrado
       FROM "Asiento" a
-      LEFT JOIN "Asiento" orig ON orig."id" = a."revierteAId"
+      ${JOIN_REVERTIDO}
       WHERE a."operadorId" = ${op} AND a."cuenta" = 'corriente' AND a."periodo" = ANY(${periodos})
       GROUP BY a."periodo"`,
     // Los anulados quedan afuera: el total tiene que ser el que se puede defender.
