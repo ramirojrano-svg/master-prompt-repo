@@ -71,7 +71,7 @@ export default async function CierrePage({
   const hoy = fechaEnZona(new Date(), sede.zonaHoraria);
   // Por default se trabaja el mes ANTERIOR —el mes en curso todavía está sumando horas—, salvo que
   // ese mes esté vacío: ahí se abre el mes en curso, que es el único que tiene algo para mostrar.
-  const periodo = await periodoDeTrabajo({ operadorId: actor.operadorId, hoy: hoy.slice(0, 7), pedido: sp.periodo });
+  const periodo = periodoDeTrabajo({ hoy: hoy.slice(0, 7), pedido: sp.periodo });
   const [filas, huerfanas, cobro] = await Promise.all([
     pendientesDeCierre({ operadorId: actor.operadorId, periodo }),
     liquidacionesDeNoFacturables({ operadorId: actor.operadorId, periodo }),

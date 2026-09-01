@@ -1,38 +1,29 @@
 // src/servicios/plata/periodo-trabajo.ts — con qué mes abre Cierre de mes.
 //
-// Este centro cobra A MES ENTRANTE: el último día hábil de agosto se le manda a cada profesional
-// lo que va a pagar por SEPTIEMBRE, calculado sobre las reservas que ya tiene cargadas. No se
-// cobra a mes vencido.
+// Abre en el MES EN CURSO, siempre.
 //
-// Eso da vuelta el default de la pantalla. Antes abría en el mes anterior —el que ya terminó de
-// sumar horas—, que es lo correcto cuando se factura lo consumido. Acá el mes que hay que cerrar
-// es el que VIENE, porque es el que se está por cobrar.
+// Antes abría en el mes que viene. La idea era acompañar cómo cobra el centro —a mes entrante: a
+// fin de agosto se manda lo que se va a pagar por septiembre—, así el mes que hay que cerrar ya
+// estaba puesto. En la práctica salió al revés: la pantalla se abre muchas más veces para mirar el
+// mes que se está trabajando que para cerrar el que viene, y cada una de esas veces caía en un mes
+// futuro con la lista casi vacía, obligando a volver una flecha para atrás. Un default que hay que
+// corregir a mano casi siempre no es un default.
 //
-// Queda un caso que hay que atender: si el mes que viene todavía no tiene ni una reserva cargada,
-// abrir ahí muestra una pantalla en cero que parece rota. Ahí se cae al mes en curso, que es el
-// único con algo para mostrar. La flecha sigue estando para ir a cualquier otro.
+// El mes en curso es el que uno tiene en la cabeza cuando abre la pantalla. Para cerrar el que
+// viene está la flecha, y es un acto deliberado que se hace una vez por mes.
+//
+// Que sea un módulo aparte y no dos líneas adentro de la página no es ceremonia: es EL lugar donde
+// se decide con qué mes abre, y ya cambió de criterio una vez.
 
-import { type PrismaClient } from "@prisma/client";
-import { prisma } from "../../db/prisma.ts";
-import { esPeriodoValido, periodoSiguiente, type Periodo } from "../../dominio/reporte.ts";
+import { esPeriodoValido, type Periodo } from "../../dominio/reporte.ts";
 
 /**
  * El período con el que abrir la pantalla.
  *
  * `pedido` es lo que vino por la URL: si es un 'YYYY-MM' válido manda él, siempre — la flecha del
- * mes tiene que poder llevar a un mes vacío si eso es lo que el usuario pidió.
+ * mes tiene que poder llevar a cualquier mes, incluido uno vacío, si eso es lo que se pidió.
  */
-export async function periodoDeTrabajo(
-  a: { operadorId: string; hoy: Periodo; pedido?: string },
-  db: PrismaClient = prisma,
-): Promise<Periodo> {
+export function periodoDeTrabajo(a: { hoy: Periodo; pedido?: string }): Periodo {
   if (a.pedido && esPeriodoValido(a.pedido)) return a.pedido;
-
-  const siguiente = periodoSiguiente(a.hoy);
-  // Un solo asiento alcanza para decidir: no hace falta contarlos ni sumarlos.
-  const hubo = await db.asiento.findFirst({
-    where: { operadorId: a.operadorId, periodo: siguiente },
-    select: { id: true },
-  });
-  return hubo ? siguiente : a.hoy;
+  return a.hoy;
 }
