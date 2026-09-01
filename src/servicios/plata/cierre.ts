@@ -358,12 +358,24 @@ async function reabrirUna(
     if (!liq) return { ok: false as const, error: "NO_ENCONTRADA" as const };
     if (liq.avisadaEl !== null) return { ok: false as const, error: "YA_AVISADA" as const };
 
-    // Los pagos de ESE profesional en ESE mes. Un pago no queda pegado a la liquidación —el cierre
-    // no lo sella—, así que mirar los asientos que cuelgan del papel daría cero siempre.
-    const pagos = await tx.asiento.count({
+    // Los pagos VIGENTES de ESE profesional en ESE mes. Un pago no queda pegado a la liquidación
+    // —el cierre no lo sella—, así que mirar los asientos que cuelgan del papel daría cero siempre.
+    //
+    // Un cobro ANULADO no cuenta, y esto costó una pantalla trabada en producción: a un profesional
+    // se le cargaron dos cobros por error, se anularon los dos, no quedó un peso aplicado contra el
+    // papel, y aun así la liquidación no se podía reabrir porque el freno contaba los pagos por
+    // concepto sin mirar si seguían en pie. El motivo del freno es que haya plata aplicada; si el
+    // cobro se dio vuelta, no la hay.
+    const pagos = await tx.asiento.findMany({
       where: { operadorId: actor.operadorId, inquilinoId: liq.inquilinoId, periodo: liq.periodo, concepto: "pago" },
+      select: { id: true },
     });
-    if (pagos > 0) return { ok: false as const, error: "CON_PAGOS" as const };
+    if (pagos.length > 0) {
+      const anuladas = await tx.asiento.count({
+        where: { operadorId: actor.operadorId, revierteAId: { in: pagos.map((p) => p.id) } },
+      });
+      if (anuladas < pagos.length) return { ok: false as const, error: "CON_PAGOS" as const };
+    }
 
     const { count: cargos } = await tx.asiento.updateMany({
       where: { operadorId: actor.operadorId, liquidacionId: liq.id },

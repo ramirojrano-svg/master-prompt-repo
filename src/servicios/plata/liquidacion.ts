@@ -35,6 +35,20 @@ export const FACTURABLES: Concepto[] = [
  * La salida no es sumar la nota de crédito a `FACTURABLES` —eso daría el total bien pero dejaría
  * el renglón del turno cancelado en el detalle, y un papel cuyas líneas no suman el total es peor
  * que uno mal—. Es más simple: un cargo anulado no entra. Ni él, ni su crédito. El turno no pasó.
+ *
+ * SE DEVUELVEN LOS DOS LADOS DEL PAR, no solo el original, y esa segunda mitad se agregó por un
+ * caso que llegó a producción: anular un COBRO.
+ *
+ * Anular un cobro asienta un `ajuste_debito` que revierte al `pago` —correcto: vuelve a poner la
+ * deuda que el pago había bajado—. Pero `ajuste_debito` SÍ está en `FACTURABLES` y `pago` no, así
+ * que del par solo se veía la mitad que suma: el cierre ofrecía la anulación como un cargo nuevo.
+ * Con un cobro de $120.000 anulado dos veces, a un profesional que debía $120.000 le aparecían
+ * $240.000 "fuera del cierre", listos para emitirle una segunda liquidación por plata que no
+ * debía.
+ *
+ * La regla es la del par, no la del concepto: un movimiento y su vuelta atrás se cancelan entre
+ * ellos y NINGUNO de los dos entra en una liquidación. Da igual de qué lado esté el que la lista
+ * de facturables incluya.
  */
 export async function cargosAnulados(
   db: Pick<PrismaClient, "asiento">,
@@ -47,9 +61,9 @@ export async function cargosAnulados(
       ...(a.inquilinoId ? { inquilinoId: a.inquilinoId } : {}),
       revierteAId: { not: null },
     },
-    select: { revierteAId: true },
+    select: { id: true, revierteAId: true },
   });
-  return reversas.map((r) => r.revierteAId!).filter((x): x is string => x !== null);
+  return reversas.flatMap((r) => (r.revierteAId ? [r.revierteAId, r.id] : [r.id]));
 }
 
 class NadaQueLiquidar extends Error {}
