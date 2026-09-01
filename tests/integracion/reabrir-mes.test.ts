@@ -20,7 +20,7 @@ import { nuevoPool, reiniciarEsquema, seedBase, URL_DB } from "./db.ts";
 
 const pgPool = nuevoPool();
 const db = new PrismaClient({ datasourceUrl: URL_DB });
-const { todos, reabrir } = cierreCon(db);
+const { todos, reabrir, reabrirUna } = cierreCon(db);
 
 const owner: Actor = { usuarioId: "u1", operadorId: "op1", rol: "owner", inquilinoId: null };
 const profesional: Actor = { usuarioId: "u2", operadorId: "op1", rol: "inquilino_titular", inquilinoId: "in1" };
@@ -158,4 +158,76 @@ test("queda registrado quién reabrió y qué mes", async () => {
   });
   assert.ok(fila, "sin registro, deshacer un cierre sería invisible");
   assert.match(fila!.resumen ?? "", /reabrir 2026-09/);
+});
+
+// ── Reabrir UNO solo ────────────────────────────────────────────────────────
+// Cerrar de a uno es lo normal —se baja por la lista apretando "Cerrar"—, y equivocarse de fila en
+// una lista de treinta y seis es cuestión de tiempo. Sin esto había que deshacer el mes ENTERO y
+// volver a cerrar a los otros treinta y cinco.
+
+test("reabrir UNA deja al resto cerrado", async () => {
+  await mesCerrado(); // in1 e in2
+  const suya = await db.liquidacion.findFirst({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
+
+  const r = await reabrirUna(owner, { liquidacionId: suya!.id });
+  assert.ok(r.ok && r.data.ok, "tenía que reabrir");
+  assert.equal(r.data.cargos, 1);
+
+  assert.equal(await db.liquidacion.count({ where: { inquilinoId: "in1", periodo: MES } }), 0, "la suya ya no está");
+  assert.equal(await db.liquidacion.count({ where: { inquilinoId: "in2", periodo: MES } }), 1, "la del otro NO se toca");
+
+  const suyos = await db.asiento.findMany({ where: { inquilinoId: "in1", periodo: MES } });
+  assert.ok(suyos.every((a) => a.liquidacionId === null), "sus cargos vuelven a estar sueltos");
+});
+
+test("después de reabrir una, esa persona vuelve a figurar pendiente", async () => {
+  await mesCerrado();
+  const suya = await db.liquidacion.findFirst({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
+  await reabrirUna(owner, { liquidacionId: suya!.id });
+
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
+  const uno = filas.find((f) => f.inquilinoId === "in1");
+  const otro = filas.find((f) => f.inquilinoId === "in2");
+  assert.equal(uno?.liquidacion, null, "vuelve a estar sin cerrar");
+  assert.ok((uno?.pendientes ?? 0) > 0, "y con cargos por cerrar");
+  assert.ok(otro?.liquidacion, "el otro sigue cerrado");
+});
+
+test("no reabre una que ya se mandó por mail", async () => {
+  await mesCerrado();
+  const suya = await db.liquidacion.findFirst({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
+  await db.liquidacion.update({ where: { id: suya!.id }, data: { avisadaEl: new Date() } });
+
+  const r = await reabrirUna(owner, { liquidacionId: suya!.id });
+  assert.ok(r.ok && !r.data.ok);
+  assert.equal(r.data.error, "YA_AVISADA");
+  assert.equal(await db.liquidacion.count({ where: { id: suya!.id } }), 1, "no borró nada");
+});
+
+test("no reabre una que ya tiene un pago de ese profesional", async () => {
+  await mesCerrado();
+  await cargo("in1", -50_000n, "pago1", MES, "pago");
+  const suya = await db.liquidacion.findFirst({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
+
+  const r = await reabrirUna(owner, { liquidacionId: suya!.id });
+  assert.ok(r.ok && !r.data.ok);
+  assert.equal(r.data.error, "CON_PAGOS");
+});
+
+test("el pago de OTRO profesional no bloquea la que se quiere reabrir", async () => {
+  await mesCerrado();
+  await cargo("in2", -50_000n, "pago2", MES, "pago"); // paga in2
+  const suya = await db.liquidacion.findFirst({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
+
+  const r = await reabrirUna(owner, { liquidacionId: suya!.id });
+  assert.ok(r.ok && r.data.ok, "el freno es por persona, no por mes");
+});
+
+test("un profesional no puede reabrir una liquidación", async () => {
+  await mesCerrado();
+  const suya = await db.liquidacion.findFirst({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
+  const r = await reabrirUna(profesional, { liquidacionId: suya!.id });
+  assert.equal(r.ok, false);
+  assert.equal(r.ok === false && r.error, "SIN_PERMISO");
+  assert.equal(await db.liquidacion.count({ where: { id: suya!.id } }), 1);
 });

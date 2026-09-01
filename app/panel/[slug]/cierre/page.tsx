@@ -17,11 +17,12 @@ import { Cabecera } from "../Cabecera.tsx";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
 import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
-import { pendientesDeCierre, liquidacionesDeNoFacturables, cerrarMesDe, cerrarMesTodos, reabrirMes } from "../../../../src/servicios/plata/cierre.ts";
+import { pendientesDeCierre, liquidacionesDeNoFacturables, cerrarMesDe, cerrarMesTodos, reabrirMes, reabrirLiquidacion } from "../../../../src/servicios/plata/cierre.ts";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
 import { nombreDePeriodo, periodoAnterior, periodoSiguiente, venceElDelPeriodo } from "../../../../src/dominio/reporte.ts";
 import { periodoDeTrabajo } from "../../../../src/servicios/plata/periodo-trabajo.ts";
 import { datosDeCobro } from "../../../../src/servicios/config/cobro.ts";
+import { abonosVigentes, cobrarAbonosDelMes } from "../../../../src/servicios/config/abonos.ts";
 import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
 import { BotonEnviar } from "../BotonEnviar.tsx";
 import { IconoDocumento } from "../../../Iconos.tsx";
@@ -93,6 +94,25 @@ export default async function CierrePage({
   // siendo un default: el campo se puede cambiar antes de emitir.
   // Ya no es el valor de un campo: es lo que se le AVISA a quien cierra. La fecha sale de
   // Configuración → Datos de cobro y se decide una vez, no en cada cierre.
+  // Los abonos NO se cargan solos: hay un botón aparte que postea el cargo del mes. Si nadie lo
+  // aprieta, quien tiene abono no tiene ningún cargo, no aparece en esta lista, y termina siendo
+  // el único al que no se le factura el mes. Se detecta acá para poder avisarlo antes de cerrar.
+  const abonos = await abonosVigentes(actor.operadorId);
+  const yaCobrados = abonos.length
+    ? new Set(
+        (
+          await prisma.asiento.findMany({
+            where: {
+              operadorId: actor.operadorId,
+              clave: { in: abonos.map((m) => `cargo_membresia:${m.id}:${periodo}`) },
+            },
+            select: { clave: true },
+          })
+        ).map((x) => x.clave),
+      )
+    : new Set<string>();
+  const abonosSinCobrar = abonos.filter((m) => !yaCobrados.has(`cargo_membresia:${m.id}:${periodo}`));
+
   const venceDefault = venceElDelPeriodo(periodo, cobro.diaVencimiento);
   const venceTexto = new Date(`${venceDefault}T12:00:00Z`).toLocaleDateString("es-AR", {
     day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
@@ -111,7 +131,29 @@ export default async function CierrePage({
     });
     revalidatePath(`/panel/${slug}/cierre`);
     const qs = !r.ok ? `&error=${r.error}` : r.data.ok ? `&ok=uno&n=${r.data.numero}` : `&error=${r.data.error}`;
-    redirect(`${volverA}${qs}`);
+    // El ancla devuelve a la MISMA fila. Sin esto, cerrar de a uno mandaba la pantalla arriba de
+    // todo en cada toque: con treinta y seis profesionales, había que volver a bajar treinta y seis
+    // veces para hacer un trabajo que es una sola pasada por la lista.
+    redirect(`${volverA}${qs}#p-${String(formData.get("inquilinoId") ?? "")}`);
+  }
+
+  async function cobrarAbonos(formData: FormData) {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+    const r = await cobrarAbonosDelMes(a, { periodo: String(formData.get("periodo") ?? "") });
+    revalidatePath(`/panel/${slug}/cierre`);
+    redirect(`${volverA}${r.ok ? `&ok=abonos&n=${r.data.cobrados}` : `&error=${r.error}`}`);
+  }
+
+  async function reabrirUna(formData: FormData) {
+    "use server";
+    const a = await actorDeSesion(slug);
+    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
+    const r = await reabrirLiquidacion(a, { liquidacionId: String(formData.get("liquidacionId") ?? "") });
+    revalidatePath(`/panel/${slug}/cierre`);
+    const qs = !r.ok ? `&error=${r.error}` : r.data.ok ? `&ok=reabierta` : `&error=${r.data.error}`;
+    redirect(`${volverA}${qs}#p-${String(formData.get("inquilinoId") ?? "")}`);
   }
 
   async function reabrir(formData: FormData) {
@@ -177,6 +219,20 @@ export default async function CierrePage({
             volvieron a quedar pendientes, sin perderse nada.
           </p>
         )}
+        {sp.ok === "abonos" && (
+          <p className="aviso-ok">
+            {sp.n === "0" ? "Los abonos de este mes ya estaban cargados." : `${sp.n} ${Number(sp.n) === 1 ? "abono cargado" : "abonos cargados"}. Ya aparecen abajo para cerrar.`}
+          </p>
+        )}
+        {sp.ok === "reabierta" && (
+          <p className="aviso-ok">Liquidación anulada. Los cargos de ese profesional vuelven a estar pendientes.</p>
+        )}
+        {sp.error === "YA_AVISADA" && (
+          <p className="aviso-error">
+            No se pudo reabrir: esa liquidación ya se le mandó por mail. Borrarla lo dejaría con un papel que no existe.
+          </p>
+        )}
+        {sp.error === "NO_ENCONTRADA" && <p className="aviso-error">Esa liquidación ya no existe.</p>}
         {sp.error === "YA_AVISADAS" && (
           <p className="aviso-error">
             No se reabrió: alguna liquidación de {nombreDePeriodo(periodo)} ya se le mandó por mail al
@@ -265,6 +321,36 @@ export default async function CierrePage({
           </p>
         </section>
 
+        {/* ── Abonos del mes sin postear ───────────────────────────────────────
+            Aparece solo si falta alguno. Un abono no genera su cargo solo: hay un botón que lo
+            postea. Si nadie lo aprieta, quien tiene abono no tiene cargos, no entra en la lista de
+            abajo y termina siendo el único al que no se le factura el mes — que es exactamente el
+            error que este aviso viene a hacer imposible. */}
+        {abonosSinCobrar.length > 0 && (
+          <div className="panel" style={{ padding: 18, marginTop: 18, borderLeft: "4px solid var(--alerta)" }}>
+            <h2 style={{ marginTop: 0, fontSize: 16 }}>
+              {abonosSinCobrar.length === 1
+                ? "Hay un abono mensual sin cargar en este mes"
+                : `Hay ${abonosSinCobrar.length} abonos mensuales sin cargar en este mes`}
+            </h2>
+            <p style={{ margin: "6px 0 10px", fontSize: 14, lineHeight: 1.6 }}>
+              Un abono no genera su cargo solo. Hasta que se cargue, estos profesionales no
+              aparecen abajo y el cierre no les emite nada.
+            </p>
+            <ul style={{ margin: "0 0 12px", paddingLeft: 18, fontSize: 14, lineHeight: 1.7 }}>
+              {abonosSinCobrar.map((m) => (
+                <li key={m.id}>
+                  {m.inquilino.nombre} · {plata(m.precioMensualCent)} por mes
+                </li>
+              ))}
+            </ul>
+            <form action={cobrarAbonos}>
+              <input type="hidden" name="periodo" value={periodo} />
+              <BotonEnviar enviando="Cargando…">Cargar los abonos de {nombreDePeriodo(periodo)}</BotonEnviar>
+            </form>
+          </div>
+        )}
+
         {/* ── Profesional por profesional ─────────────────────────────────── */}
         <h2 style={{ marginTop: 26 }}>Profesional por profesional</h2>
         {filas.length === 0 ? (
@@ -285,7 +371,7 @@ export default async function CierrePage({
               </thead>
               <tbody>
                 {filas.map((f) => (
-                  <tr key={f.inquilinoId}>
+                  <tr key={f.inquilinoId} id={`p-${f.inquilinoId}`}>
                     <td>
                       <Link href={`/panel/${slug}/inquilinos/${f.inquilinoId}?periodo=${periodo}`}>{f.nombre}</Link>
                       {/* A nombre de quién sale el papel: es el dato que se mira al momento de cobrar. */}
@@ -328,14 +414,38 @@ export default async function CierrePage({
                           de mandarla. Bajarla es una decisión aparte y se toma adentro: un click
                           que deja un archivo en Descargas sin haberlo pedido sorprende. */}
                       {f.liquidacion ? (
-                        <Link
-                          href={`/panel/${slug}/liquidaciones/${f.liquidacion.id}`}
-                          title={`Ver la liquidación N° ${f.liquidacion.numero} de ${f.nombre} · ${plata(f.liquidacion.totalCent)}`}
-                          aria-label={`Ver la liquidación N° ${f.liquidacion.numero} de ${f.nombre}`}
-                          style={{ display: "inline-flex", flexShrink: 0 }}
-                        >
-                          <IconoDocumento tam={22} />
-                        </Link>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                          <Link
+                            href={`/panel/${slug}/liquidaciones/${f.liquidacion.id}`}
+                            title={`Ver la liquidación N° ${f.liquidacion.numero} de ${f.nombre} · ${plata(f.liquidacion.totalCent)}`}
+                            aria-label={`Ver la liquidación N° ${f.liquidacion.numero} de ${f.nombre}`}
+                            style={{ display: "inline-flex", flexShrink: 0 }}
+                          >
+                            <IconoDocumento tam={22} />
+                          </Link>
+                          {/* Deshacer el cierre de ESTE. Cerrar de a uno es lo normal, y en una
+                              lista de treinta y seis equivocarse de fila es cuestión de tiempo;
+                              sin esto había que deshacer el mes entero y volver a cerrar a los
+                              otros treinta y cinco. Va en rojo y sin fondo: es una salida de
+                              emergencia al lado de una acción de todos los días, y tiene que
+                              distinguirse de un vistazo del ícono de al lado. */}
+                          <form action={reabrirUna} style={{ display: "inline" }}>
+                            <input type="hidden" name="liquidacionId" value={f.liquidacion.id} />
+                            <input type="hidden" name="inquilinoId" value={f.inquilinoId} />
+                            <button
+                              type="submit"
+                              title={`Anular la liquidación N° ${f.liquidacion.numero} de ${f.nombre} y volver a dejarla pendiente`}
+                              aria-label={`Anular la liquidación de ${f.nombre}`}
+                              style={{
+                                background: "none", border: "none", padding: 4, cursor: "pointer",
+                                color: "var(--error)", fontSize: 18, lineHeight: 1, fontWeight: 700,
+                                minHeight: 32, minWidth: 32,
+                              }}
+                            >
+                              ×
+                            </button>
+                          </form>
+                        </span>
                       ) : f.pendientes > 0 ? (
                         <form action={cerrarUno}>
                           <input type="hidden" name="periodo" value={periodo} />

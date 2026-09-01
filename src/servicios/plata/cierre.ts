@@ -308,6 +308,60 @@ const CFG_CIERRE_TODOS = {
   resumen: (i: z.infer<typeof CierreTodosInput>) => `cierre de ${i.periodo} para todos`,
 } as const;
 
+export const ReabrirUnaInput = z.object({ liquidacionId: z.string().min(1) });
+
+export type ResultadoReabrirUna =
+  | { ok: true; nombre: string; cargos: number; totalCent: bigint }
+  | { ok: false; error: "NO_ENCONTRADA" | "YA_AVISADA" | "CON_PAGOS" };
+
+/**
+ * Deshacer el cierre de UN profesional, no del mes entero.
+ *
+ * Cerrar de a uno es lo normal —se va bajando por la lista y se aprieta "Cerrar" en cada uno—, y
+ * equivocarse de fila en una lista de treinta y seis es cuestión de tiempo. Sin esto, el único
+ * arreglo era deshacer el mes COMPLETO y volver a cerrar a los otros treinta y cinco.
+ *
+ * Los frenos son los mismos que los del mes, con el alcance de una sola persona: no se deshace lo
+ * que ya salió del centro. Si su liquidación ya se le mandó por mail, tiene el papel en su casilla;
+ * si ya pagó, hay plata aplicada contra ese documento.
+ */
+async function reabrirUna(
+  actor: Actor,
+  input: z.infer<typeof ReabrirUnaInput>,
+  db: PrismaClient,
+): Promise<ResultadoReabrirUna> {
+  return db.$transaction(async (tx) => {
+    const liq = await tx.liquidacion.findFirst({
+      where: { id: input.liquidacionId, operadorId: actor.operadorId },
+      select: { id: true, inquilinoId: true, periodo: true, avisadaEl: true, totalCent: true },
+    });
+    if (!liq) return { ok: false as const, error: "NO_ENCONTRADA" as const };
+    if (liq.avisadaEl !== null) return { ok: false as const, error: "YA_AVISADA" as const };
+
+    // Los pagos de ESE profesional en ESE mes. Un pago no queda pegado a la liquidación —el cierre
+    // no lo sella—, así que mirar los asientos que cuelgan del papel daría cero siempre.
+    const pagos = await tx.asiento.count({
+      where: { operadorId: actor.operadorId, inquilinoId: liq.inquilinoId, periodo: liq.periodo, concepto: "pago" },
+    });
+    if (pagos > 0) return { ok: false as const, error: "CON_PAGOS" as const };
+
+    const { count: cargos } = await tx.asiento.updateMany({
+      where: { operadorId: actor.operadorId, liquidacionId: liq.id },
+      data: { liquidacionId: null },
+    });
+    await tx.liquidacion.delete({ where: { id: liq.id } });
+
+    const ficha = await tx.inquilino.findFirst({ where: { id: liq.inquilinoId }, select: { nombre: true } });
+    return { ok: true as const, nombre: ficha?.nombre ?? "ese profesional", cargos, totalCent: liq.totalCent };
+  });
+}
+
+const CFG_REABRIR_UNA = {
+  permiso: "periodo.cerrar",
+  schema: ReabrirUnaInput,
+  resumen: (i: z.infer<typeof ReabrirUnaInput>) => `reabrir la liquidación ${i.liquidacionId}`,
+} as const;
+
 const CFG_REABRIR = {
   // Mismo permiso que cerrar, que hoy es solo del administrador: deshacer un cierre es tanto o
   // más delicado que hacerlo, así que no puede pedir menos.
@@ -319,10 +373,12 @@ const CFG_REABRIR = {
 export const cerrarMesDe = definirAccion(CFG_CIERRE_UNO, (a, i) => cerrarUno(a, i, prisma));
 export const cerrarMesTodos = definirAccion(CFG_CIERRE_TODOS, (a, i) => cerrarTodos(a, i, prisma));
 export const reabrirMes = definirAccion(CFG_REABRIR, (a, i) => reabrirMesDe(a, i, prisma));
+export const reabrirLiquidacion = definirAccion(CFG_REABRIR_UNA, (a, i) => reabrirUna(a, i, prisma));
 
 /** Versiones inyectables, para los tests. */
 export const cierreCon = (db: PrismaClient) => ({
   uno: definirAccion({ ...CFG_CIERRE_UNO, db }, (a, i) => cerrarUno(a, i, db)),
   todos: definirAccion({ ...CFG_CIERRE_TODOS, db }, (a, i) => cerrarTodos(a, i, db)),
   reabrir: definirAccion({ ...CFG_REABRIR, db }, (a, i) => reabrirMesDe(a, i, db)),
+  reabrirUna: definirAccion({ ...CFG_REABRIR_UNA, db }, (a, i) => reabrirUna(a, i, db)),
 });
