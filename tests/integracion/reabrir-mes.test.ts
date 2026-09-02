@@ -397,3 +397,46 @@ test("un ajuste de débito GENUINO se sigue facturando", async () => {
   const f = filas.find((x) => x.inquilinoId === "in1")!;
   assert.equal(f.pendienteCent, 50_000n, "un ajuste que no revierte nada es un cargo como cualquier otro");
 });
+
+// ── Los tres números de la cabecera ─────────────────────────────────────────
+//
+// La pantalla muestra pendiente, cerrado y cobrado, y los tres salen de estas filas. Contestan
+// preguntas distintas —qué falta emitir, qué se emitió, qué entró— y confundir dos de ellas es el
+// error caro: dar por cobrado lo que solo se emitió.
+
+test("cerrar suma al total cerrado y no al cobrado", async () => {
+  await mesCerrado();
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
+
+  const cerrado = filas.reduce((a, f) => a + (f.liquidacion?.totalCent ?? 0n), 0n);
+  const cobrado = filas.reduce((a, f) => a + f.pagadoCent, 0n);
+  const pendiente = filas.reduce((a, f) => a + f.pendienteCent, 0n);
+
+  assert.equal(cerrado, 300_000n, "los dos cargos del escenario, emitidos");
+  assert.equal(cobrado, 0n, "emitir no es cobrar");
+  assert.equal(pendiente, 0n, "no quedó nada sin emitir");
+});
+
+test("cobrar mueve el total cobrado y deja el cerrado quieto", async () => {
+  await mesCerrado();
+  const suya = await db.liquidacion.findFirstOrThrow({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true, totalCent: true } });
+  await cobrar(owner, { liquidacionId: suya.id });
+
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
+  const cerrado = filas.reduce((a, f) => a + (f.liquidacion?.totalCent ?? 0n), 0n);
+  const cobrado = filas.reduce((a, f) => a + f.pagadoCent, 0n);
+
+  assert.equal(cerrado, 300_000n, "el total emitido está congelado");
+  assert.equal(cobrado, suya.totalCent, "solo entró lo de uno");
+  assert.equal(cerrado - cobrado, 200_000n, "es lo que la pantalla anuncia como 'faltan'");
+});
+
+test("un cobro anulado no queda contado como cobrado", async () => {
+  await mesCerrado();
+  await cobros.registrar(owner, { inquilinoId: "in1", monto: 1000, medio: "transferencia", referencia: "x1", fecha: `${MES}-05` });
+  const p = await db.asiento.findFirstOrThrow({ where: { concepto: "pago", referencia: "x1" }, select: { id: true } });
+  await cobros.anular(owner, { asientoId: p.id, motivo: "rebotó" });
+
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
+  assert.equal(filas.reduce((a, f) => a + f.pagadoCent, 0n), 0n);
+});

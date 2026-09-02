@@ -88,6 +88,21 @@ export default async function CierrePage({
   const tardioCent = tardios.reduce((acc, f) => acc + f.pendienteCent, 0n);
   const yaCerradas = filas.filter((f) => f.liquidacion);
   const totalPendiente = conPendiente.reduce((acc, f) => acc + f.pendienteCent, 0n);
+
+  // Los tres números del mes, que contestan tres preguntas distintas y en ese orden:
+  //   · pendiente = lo que falta EMITIR
+  //   · cerrado   = lo que ya se emitió, congelado (§ el total de la liquidación no se mueve)
+  //   · cobrado   = lo que realmente entró, neto de anulaciones
+  //
+  // Cerrado y cobrado no son lo mismo y por eso van separados: emitir el papel no es que la plata
+  // llegó. Con un solo número —el que había— la pantalla contestaba "¿qué me falta cerrar?" y
+  // dejaba sin respuesta la que se hace después, todo el mes: "¿quién me pagó?".
+  const totalCerrado = yaCerradas.reduce((acc, f) => acc + (f.liquidacion?.totalCent ?? 0n), 0n);
+  const totalCobrado = filas.reduce((acc, f) => acc + f.pagadoCent, 0n);
+  // Lo emitido que todavía no entró. Puede dar negativo si alguien pagó por adelantado más de lo
+  // que se le emitió; ahí no se muestra, porque "falta cobrar -$5.000" no significa nada.
+  const faltaCobrar = totalCerrado - totalCobrado;
+  const cobradas = filas.filter((f) => f.liquidacion && f.pagadoCent >= f.liquidacion.totalCent).length;
   // El día que el centro tenga configurado, del mes SIGUIENTE al facturado: se cierra agosto y se
   // cobra en septiembre. Antes eran "diez días desde hoy", lo que corría el vencimiento según el
   // día en que uno se acordaba de cerrar — dos meses seguidos vencían en fechas distintas. Sigue
@@ -305,18 +320,51 @@ export default async function CierrePage({
 
         {/* ── Lo que falta cerrar ─────────────────────────────────────────── */}
         <section className="panel" style={{ padding: 22 }}>
-          <p className="tenue" style={{ margin: 0, fontSize: 13 }}>Pendiente de cerrar</p>
-          <p style={{ fontSize: 34, margin: "4px 0 2px", fontWeight: 600, letterSpacing: "-0.02em" }}>{plata(totalPendiente)}</p>
-          <p className="tenue" style={{ margin: 0, fontSize: 13 }}>
-            {/* Cero pendiente tiene DOS causas que no significan lo mismo: que se cerró todo, o
-                que nunca hubo nada. Decir "ya están en una liquidación" cuando el mes está vacío
-                es afirmar un trabajo que nadie hizo. */}
-            {conPendiente.length > 0
-              ? `en ${conPendiente.length} ${conPendiente.length === 1 ? "profesional" : "profesionales"}`
-              : filas.length === 0
-                ? `No hubo movimientos en ${nombreDePeriodo(periodo)}: no hay nada para cerrar.`
-                : "Nada: todos los cargos de este mes ya están en una liquidación."}
-          </p>
+          {/* Los tres números en una fila. El pendiente queda primero y más grande: es lo que
+              trae a esta pantalla la primera vez. Los otros dos son los que se miran el resto del
+              mes, y no estaban en ningún lado. Envuelven en pantalla angosta. */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 28, alignItems: "flex-start" }}>
+            <div style={{ minWidth: 190 }}>
+              <p className="tenue" style={{ margin: 0, fontSize: 13 }}>Pendiente de cerrar</p>
+              <p style={{ fontSize: 34, margin: "4px 0 2px", fontWeight: 600, letterSpacing: "-0.02em" }}>{plata(totalPendiente)}</p>
+              <p className="tenue" style={{ margin: 0, fontSize: 13 }}>
+                {/* Cero pendiente tiene DOS causas que no significan lo mismo: que se cerró todo, o
+                    que nunca hubo nada. Decir "ya están en una liquidación" cuando el mes está vacío
+                    es afirmar un trabajo que nadie hizo. */}
+                {conPendiente.length > 0
+                  ? `en ${conPendiente.length} ${conPendiente.length === 1 ? "profesional" : "profesionales"}`
+                  : filas.length === 0
+                    ? `No hubo movimientos en ${nombreDePeriodo(periodo)}: no hay nada para cerrar.`
+                    : "Nada: todos los cargos de este mes ya están en una liquidación."}
+              </p>
+            </div>
+
+            {yaCerradas.length > 0 && (
+              <div style={{ minWidth: 170 }}>
+                <p className="tenue" style={{ margin: 0, fontSize: 13 }}>Cerrado</p>
+                <p style={{ fontSize: 26, margin: "4px 0 2px", fontWeight: 600, letterSpacing: "-0.02em" }}>{plata(totalCerrado)}</p>
+                <p className="tenue" style={{ margin: 0, fontSize: 13 }}>
+                  {yaCerradas.length} {yaCerradas.length === 1 ? "liquidación emitida" : "liquidaciones emitidas"}
+                </p>
+              </div>
+            )}
+
+            {yaCerradas.length > 0 && (
+              <div style={{ minWidth: 170 }}>
+                <p className="tenue" style={{ margin: 0, fontSize: 13 }}>Cobrado</p>
+                <p style={{ fontSize: 26, margin: "4px 0 2px", fontWeight: 600, letterSpacing: "-0.02em", color: totalCobrado > 0n ? "var(--ok, green)" : undefined }}>
+                  {plata(totalCobrado)}
+                </p>
+                <p className="tenue" style={{ margin: 0, fontSize: 13 }}>
+                  {/* La pregunta que sigue a "cuánto cobré" es siempre "cuánto falta". Se responde
+                      acá para no obligar a restar dos números a ojo. */}
+                  {faltaCobrar > 0n
+                    ? `faltan ${plata(faltaCobrar)} de ${yaCerradas.length - cobradas} ${yaCerradas.length - cobradas === 1 ? "profesional" : "profesionales"}`
+                    : "todo lo emitido está cobrado"}
+                </p>
+              </div>
+            )}
+          </div>
 
           {conPendiente.length > 0 && (
             <form action={cerrarTodos} style={{ marginTop: 18, display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -332,8 +380,9 @@ export default async function CierrePage({
           </p>
           <p className="tenue" style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.5 }}>
             Cerrar emite la liquidación de cada profesional con su número, y <b>congela</b> los
-            importes: un mes cerrado da siempre el mismo total. Los pagos no entran —esto es lo que
-            se cobra, no lo que se cobró—. Y no se puede cerrar dos veces el mismo mes.
+            importes: un mes cerrado da siempre el mismo total. Un pago no cambia ese total —el
+            papel dice lo que se le cobra, y aparte se registra lo que entró—. Y no se puede cerrar
+            dos veces el mismo mes.
           </p>
         </section>
 
