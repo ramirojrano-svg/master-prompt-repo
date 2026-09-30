@@ -27,7 +27,22 @@ const db = new PrismaClient({ datasourceUrl: URL_DB });
 const { cambiarEstado } = inquilinosCon(db);
 
 const owner: Actor = { usuarioId: "u1", operadorId: "op1", rol: "owner", inquilinoId: null };
-const HOY = new Date("2026-08-25T12:00:00Z");
+// Las fechas se calculan desde HOY, no se clavan.
+//
+// Estaban clavadas en septiembre de 2026 y el archivo entero empezó a fallar el día que esa fecha
+// pasó: la baja cancela lo FUTURO, y un "futuro" escrito a mano deja de serlo con el calendario.
+// Un test que se rompe solo con el paso del tiempo no avisa de una regresión, avisa de su propia
+// fecha de vencimiento — y entrena a ignorarlo.
+const dia = (offsetDias: number) => new Date(Date.now() + offsetDias * 86_400_000).toISOString().slice(0, 10);
+// Los tres futuros tienen que caer en EL MISMO mes: varios tests cierran ese período y cuentan lo
+// que entró. Por eso no son "hoy + N días" sueltos —tres offsets cercanos cruzan el fin de mes y
+// uno se va al siguiente— sino tres días fijos de un mes que todavía no empezó.
+const MES_FUTURO = dia(40).slice(0, 7);
+const FUTURO_1 = `${MES_FUTURO}-10`;
+const FUTURO_2 = `${MES_FUTURO}-17`;
+const FUTURO_3 = `${MES_FUTURO}-24`;
+const PASADO = dia(-20);
+const MES_PASADO = PASADO.slice(0, 7);
 
 /** Una reserva con su cargo, como la crea la agenda. */
 async function reserva(id: string, cuando: string, montoCent: bigint) {
@@ -60,8 +75,8 @@ after(async () => {
 });
 
 test("la baja cancela los turnos FUTUROS y devuelve sus cargos", async () => {
-  await reserva("f1", "2026-09-10", 100_000n);
-  await reserva("f2", "2026-09-17", 100_000n);
+  await reserva("f1", FUTURO_1, 100_000n);
+  await reserva("f2", FUTURO_2, 100_000n);
 
   const r = await cambiarEstado(owner, { inquilinoId: "in1", estado: "baja" });
   assert.ok(r.ok && r.data.ok, "tenía que dar de baja");
@@ -71,48 +86,48 @@ test("la baja cancela los turnos FUTUROS y devuelve sus cargos", async () => {
   assert.equal(await estadoDe("f2"), "cancelada");
 
   // El cargo no se borra: se compensa. El libro sigue explicando qué pasó.
-  const neto = await db.asiento.aggregate({ where: { inquilinoId: "in1", periodo: "2026-09" }, _sum: { montoCent: true } });
+  const neto = await db.asiento.aggregate({ where: { inquilinoId: "in1", periodo: MES_FUTURO }, _sum: { montoCent: true } });
   assert.equal(neto._sum.montoCent, 0n, "lo cobrado por horas que no se van a usar tiene que volver a cero");
 });
 
 test("NO toca lo que ya pasó: eso se le sigue cobrando", async () => {
-  await reserva("p1", "2026-08-03", 80_000n); // ya ocurrió
-  await reserva("f1", "2026-09-10", 100_000n); // todavía no
+  await reserva("p1", PASADO, 80_000n); // ya ocurrió
+  await reserva("f1", FUTURO_1, 100_000n); // todavía no
 
   const r = await cambiarEstado(owner, { inquilinoId: "in1", estado: "baja" });
   assert.ok(r.ok && r.data.ok);
   assert.equal(r.data.canceladas, 1, "solo el futuro");
 
   assert.equal(await estadoDe("p1"), "confirmada", "el turno usado queda como está");
-  const agosto = await db.asiento.aggregate({ where: { inquilinoId: "in1", periodo: "2026-08" }, _sum: { montoCent: true } });
+  const agosto = await db.asiento.aggregate({ where: { inquilinoId: "in1", periodo: MES_PASADO }, _sum: { montoCent: true } });
   assert.equal(agosto._sum.montoCent, 80_000n, "la deuda de lo usado no se perdona");
 });
 
 test("después de la baja, el cierre ya no ofrece liquidarle el mes que viene", async () => {
-  await reserva("f1", "2026-09-10", 100_000n);
+  await reserva("f1", FUTURO_1, 100_000n);
 
-  const antes = await pendientesDeCierre({ operadorId: "op1", periodo: "2026-09" }, db);
+  const antes = await pendientesDeCierre({ operadorId: "op1", periodo: MES_FUTURO }, db);
   assert.equal(antes.length, 1, "antes figuraba");
   assert.ok(antes[0]!.pendienteCent > 0n);
 
   await cambiarEstado(owner, { inquilinoId: "in1", estado: "baja" });
 
-  const despues = await pendientesDeCierre({ operadorId: "op1", periodo: "2026-09" }, db);
+  const despues = await pendientesDeCierre({ operadorId: "op1", periodo: MES_FUTURO }, db);
   const suyo = despues.find((f) => f.inquilinoId === "in1");
   assert.equal(suyo?.pendienteCent ?? 0n, 0n, "ya no hay nada que liquidarle de septiembre");
 });
 
 test("pero el mes que SÍ usó se le sigue pudiendo liquidar", async () => {
-  await reserva("p1", "2026-08-03", 80_000n);
+  await reserva("p1", PASADO, 80_000n);
   await cambiarEstado(owner, { inquilinoId: "in1", estado: "baja" });
 
-  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: "2026-08" }, db);
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES_PASADO }, db);
   const suyo = filas.find((f) => f.inquilinoId === "in1");
   assert.equal(suyo?.pendienteCent, 80_000n, "sin esto, dar de baja borraría plata que se debe");
 });
 
 test("suspender NO cancela nada: es una pausa, no una salida", async () => {
-  await reserva("f1", "2026-09-10", 100_000n);
+  await reserva("f1", FUTURO_1, 100_000n);
   const r = await cambiarEstado(owner, { inquilinoId: "in1", estado: "suspendido" });
   assert.ok(r.ok && r.data.ok);
   assert.equal(r.data.canceladas, undefined);
@@ -122,7 +137,7 @@ test("suspender NO cancela nada: es una pausa, no una salida", async () => {
 test("volver a activarlo no revive los turnos, y eso es a propósito", async () => {
   // Cancelar libera la hora, y liberar significa que otro se la pudo llevar. Devolverla sola
   // pisaría lo que se agendó en el medio.
-  await reserva("f1", "2026-09-10", 100_000n);
+  await reserva("f1", FUTURO_1, 100_000n);
   await cambiarEstado(owner, { inquilinoId: "in1", estado: "baja" });
   await cambiarEstado(owner, { inquilinoId: "in1", estado: "activo" });
   assert.equal(await estadoDe("f1"), "cancelada");
@@ -135,33 +150,33 @@ test("volver a activarlo no revive los turnos, y eso es a propósito", async () 
 // recibía un papel cobrándole una hora que había cancelado.
 
 test("un turno cancelado NO se factura, aunque no haya ninguna baja de por medio", async () => {
-  await reserva("o1", "2026-09-10", 100_000n);
+  await reserva("o1", FUTURO_1, 100_000n);
   const c = await cancelarOcupacion({ ocupacionId: "o1" }, { operadorId: "op1" }, db);
   assert.ok(c.ok);
 
-  const neto = await db.asiento.aggregate({ where: { inquilinoId: "in1", periodo: "2026-09" }, _sum: { montoCent: true } });
+  const neto = await db.asiento.aggregate({ where: { inquilinoId: "in1", periodo: MES_FUTURO }, _sum: { montoCent: true } });
   assert.equal(neto._sum.montoCent, 0n, "el libro ya lo tenía bien");
 
-  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: "2026-09" }, db);
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES_FUTURO }, db);
   assert.equal(filas.find((f) => f.inquilinoId === "in1")?.pendienteCent ?? 0n, 0n, "la pantalla no puede ofrecer cobrarlo");
 
   const { todos } = cierreCon(db);
-  await todos(owner, { periodo: "2026-09", venceEl: "2026-10-07" });
-  const liq = await db.liquidacion.findFirst({ where: { periodo: "2026-09" } });
+  await todos(owner, { periodo: MES_FUTURO, venceEl: `${MES_FUTURO}-28` });
+  const liq = await db.liquidacion.findFirst({ where: { periodo: MES_FUTURO } });
   assert.equal(liq, null, "y no se emite ningún papel por una hora que no se usó");
 });
 
 test("cancelar UNO de varios turnos descuenta solo ese", async () => {
-  await reserva("o1", "2026-09-10", 100_000n);
-  await reserva("o2", "2026-09-17", 100_000n);
-  await reserva("o3", "2026-09-24", 100_000n);
+  await reserva("o1", FUTURO_1, 100_000n);
+  await reserva("o2", FUTURO_2, 100_000n);
+  await reserva("o3", FUTURO_3, 100_000n);
   await cancelarOcupacion({ ocupacionId: "o2" }, { operadorId: "op1" }, db);
 
-  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: "2026-09" }, db);
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES_FUTURO }, db);
   assert.equal(filas.find((f) => f.inquilinoId === "in1")?.pendienteCent, 200_000n, "quedan dos horas, no tres");
 
   const { todos } = cierreCon(db);
-  await todos(owner, { periodo: "2026-09", venceEl: "2026-10-07" });
-  const liq = await db.liquidacion.findFirst({ where: { periodo: "2026-09" }, select: { totalCent: true } });
+  await todos(owner, { periodo: MES_FUTURO, venceEl: `${MES_FUTURO}-28` });
+  const liq = await db.liquidacion.findFirst({ where: { periodo: MES_FUTURO }, select: { totalCent: true } });
   assert.equal(liq?.totalCent, 200_000n, "lo que la pantalla anunció es lo que se emite");
 });

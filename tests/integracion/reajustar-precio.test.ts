@@ -13,7 +13,7 @@ import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
 import { tarifasCon } from "../../src/servicios/config/tarifas.ts";
-import { reajustarCon, reservasADesajustar } from "../../src/servicios/plata/reajustar.ts";
+import { desajusteDelCentro, reajustarCon, reservasADesajustar } from "../../src/servicios/plata/reajustar.ts";
 import { cierreCon } from "../../src/servicios/plata/cierre.ts";
 import { crearOcupacion, type CtxReserva } from "../../src/servicios/reservas/crear.ts";
 import { prisma } from "../../src/db/prisma.ts";
@@ -266,4 +266,84 @@ test("guardar el mismo precio dos veces no mueve nada la segunda", async () => {
   assert.ok(primera.ok && primera.data.ok && segunda.ok && segunda.data.ok);
   assert.equal(primera.data.aplicadas, 1);
   assert.equal(segunda.data.aplicadas, 0, "ya estaban al día");
+});
+
+// ── Los dos silencios: cuando el precio nuevo NO llega ──────────────────────
+//
+// Caso reportado: se cargan los aumentos de octubre en Precios y Cierre de mes de octubre sigue
+// mostrando los importes viejos. El precio se guardaba bien; lo que fallaba era que no llegaba a
+// destino y la pantalla no lo decía. Hay dos motivos distintos y los dos se veían igual —"Guardado"
+// y nada cambia—, así que los dos tienen que ser detectables desde el código que arma la pantalla.
+
+test("un precio GENERAL no le llega a quien tiene precio propio", async () => {
+  // No es un bug: el propio le gana por ser más específico, y así tiene que ser. El bug era que
+  // pasara en silencio.
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: null });
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: "in1" });
+  await reservar(13, "in1");
+  await reservar(15, "in2");
+
+  const r = await tarifas.poner(owner, { precioHora: 9000, inquilinoId: null });
+
+  assert.ok(r.ok && r.data.ok);
+  assert.equal(r.data.aplicadas, 1, "solo in2, que sigue el general");
+  assert.equal(await precioDe("in1"), 600_000n, "in1 conserva SU precio");
+  assert.equal(await precioDe("in2"), 900_000n);
+});
+
+test("subirle el precio propio a esa persona sí le llega", async () => {
+  // La salida del caso de arriba, para que el test diga también qué hay que hacer.
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: null });
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: "in1" });
+  await reservar(13, "in1");
+
+  const r = await tarifas.poner(owner, { precioHora: 9000, inquilinoId: "in1" });
+
+  assert.ok(r.ok && r.data.ok && r.data.aplicadas === 1);
+  assert.equal(await precioDe("in1"), 900_000n);
+});
+
+test("'Todos menos…' sube a todos de una, con el importe de cada uno", async () => {
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: null });
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: "in1" });
+  await reservar(13, "in1");
+  await reservar(15, "in2");
+
+  const r = await tarifas.ponerLote(owner, {
+    precioHora: 9000,
+    excepciones: [{ inquilinoId: "in1", precioHora: 7000 }],
+  });
+
+  assert.ok(r.ok && r.data.ok);
+  assert.equal(await precioDe("in1"), 700_000n, "el que tenía precio propio también se actualizó");
+  assert.equal(await precioDe("in2"), 900_000n);
+});
+
+test("el mes ya liquidado se informa aparte, no se confunde con 'no hacía falta'", async () => {
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: "in1" });
+  await reservar(13, "in1");
+  const periodo = new Intl.DateTimeFormat("en-CA", { timeZone: TZ_SEDE, year: "numeric", month: "2-digit" })
+    .format(new Date(`${DIA}T13:00:00.000Z`)).slice(0, 7);
+  const c = await cierreCon(db).todos(owner, { periodo, venceEl: `${periodo}-28` });
+  assert.ok(c.ok && c.data.cerradas === 1);
+
+  const r = await tarifas.poner(owner, { precioHora: 9000, inquilinoId: "in1" });
+  assert.ok(r.ok && r.data.ok && r.data.aplicadas === 0, "no se puede tocar un papel emitido");
+
+  const { reajustables, selladas } = await desajusteDelCentro({ operadorId: "op1" }, db);
+  assert.equal(reajustables.length, 0);
+  assert.equal(selladas.length, 1, "pero la pantalla tiene que poder decir POR QUÉ no se aplicó");
+  assert.equal(selladas[0]!.inquilinoId, "in1");
+  assert.equal(selladas[0]!.reservas, 1);
+  assert.equal(selladas[0]!.deCent, 600_000n);
+  assert.equal(selladas[0]!.aCent, 900_000n);
+});
+
+test("un centro al día no reporta nada sellado", async () => {
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: "in1" });
+  await reservar(13, "in1");
+
+  const { reajustables, selladas } = await desajusteDelCentro({ operadorId: "op1" }, db);
+  assert.equal(reajustables.length, 0);
+  assert.equal(selladas.length, 0, "sin desfasaje no hay nada que avisar");
 });

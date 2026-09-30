@@ -42,14 +42,31 @@ export type FilaReajuste = {
 };
 
 /**
+ * Una hora futura que le correspondería otro precio pero NO se puede reajustar porque su cargo ya
+ * salió en una liquidación emitida.
+ *
+ * Se informa aparte y no se mezcla con las reajustables, porque el operador tiene que poder
+ * distinguir "no hizo falta" de "no se pudo". Sin esto, subir el precio de alguien a quien ya se
+ * le cerró el mes decía "Guardado" y no cambiaba nada, sin una palabra sobre por qué: exactamente
+ * el mismo silencio que un precio que no llegó a destino.
+ */
+export type FilaSellada = {
+  inquilinoId: string;
+  nombre: string;
+  reservas: number;
+  deCent: bigint;
+  aCent: bigint;
+};
+
+/**
  * Qué cambiaría si se aplicara el precio de hoy. Se calcula ANTES de tocar nada: un botón que
  * mueve plata tiene que poder decir cuánta antes de que lo aprieten.
  */
-export async function reservasADesajustar(
+export async function desajusteDelCentro(
   a: { operadorId: string; inquilinoId?: string },
   db: PrismaClient = prisma,
   ahora: Date = new Date(),
-): Promise<FilaReajuste[]> {
+): Promise<{ reajustables: FilaReajuste[]; selladas: FilaSellada[] }> {
   const [ocupaciones, tarifas, fichas] = await Promise.all([
     db.ocupacion.findMany({
       where: {
@@ -81,13 +98,31 @@ export async function reservasADesajustar(
   const liquidada = new Set(asientos.filter((x) => x.liquidacionId !== null).map((x) => x.clave));
 
   const filas: FilaReajuste[] = [];
+  const selladas = new Map<string, FilaSellada>();
   for (const o of ocupaciones) {
-    if (!o.inquilinoId || liquidada.has(`cargo_uso:${o.id}`)) continue;
+    if (!o.inquilinoId) continue;
     const minutos = Math.round((o.fin.getTime() - o.inicio.getTime()) / 60_000);
     // El precio que rige para CUANDO se va a usar la hora, no para hoy.
     const t = resolverTarifa(tarifas, { salaId: o.salaId ?? "", inquilinoId: o.inquilinoId, ahora: o.inicio });
     const cot = cotizar(t, minutos);
     if (!t || cot.precioHoraCent === (o.precioHoraCent ?? -1n)) continue; // ya está al día
+
+    // Le tocaría otro precio. Si su cargo ya salió en una liquidación, no se toca —hay un papel
+    // numerado con ese importe— pero se ANOTA: "no se pudo" y "no hacía falta" tienen que poder
+    // distinguirse desde la pantalla, o subir el precio de alguien con el mes ya cerrado se ve
+    // igual que no haber cambiado nada.
+    if (liquidada.has(`cargo_uso:${o.id}`)) {
+      const previa = selladas.get(o.inquilinoId);
+      selladas.set(o.inquilinoId, {
+        inquilinoId: o.inquilinoId,
+        nombre: nombreDe.get(o.inquilinoId) ?? "—",
+        reservas: (previa?.reservas ?? 0) + 1,
+        deCent: o.precioHoraCent ?? 0n,
+        aCent: cot.precioHoraCent,
+      });
+      continue;
+    }
+
     filas.push({
       ocupacionId: o.id,
       inquilinoId: o.inquilinoId,
@@ -98,7 +133,23 @@ export async function reservasADesajustar(
       aCent: cot.precioHoraCent,
     });
   }
-  return filas;
+  return { reajustables: filas, selladas: [...selladas.values()] };
+}
+
+/**
+ * Solo las reajustables. Es lo que mira el reajuste para escribir, y la forma en que la mayoría de
+ * los llamadores lo usan.
+ *
+ * Las dos listas salen del MISMO recorrido y por eso se piden juntas en `desajusteDelCentro`: son
+ * el mismo trabajo —tres consultas y una pasada— y separarlas en dos funciones que cada una hace
+ * todo de nuevo se paga en cada carga de la pantalla de Precios, que necesita las dos.
+ */
+export async function reservasADesajustar(
+  a: { operadorId: string; inquilinoId?: string },
+  db: PrismaClient = prisma,
+  ahora: Date = new Date(),
+): Promise<FilaReajuste[]> {
+  return (await desajusteDelCentro(a, db, ahora)).reajustables;
 }
 
 export const ReajustarInput = z.object({

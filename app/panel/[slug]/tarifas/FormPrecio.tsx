@@ -28,6 +28,7 @@ export function FormPrecio({
   mensaje,
   ok,
   aplicadas,
+  conPrecioPropio = [],
 }: {
   accion: (formData: FormData) => Promise<void>;
   inquilinos: OpcionProfesional[];
@@ -35,6 +36,8 @@ export function FormPrecio({
   ok?: boolean;
   /** Cuántas reservas ya cargadas quedaron con el precio nuevo. */
   aplicadas?: number;
+  /** Quiénes tienen precio propio: a ellos un precio general NO les llega. */
+  conPrecioPropio?: { id: string; nombre: string; precio: string }[];
 }) {
   // Un solo estado para el select: "todos", "todos-menos", o el id de una persona. Tener el modo
   // y el id por separado permitía que quedaran en desacuerdo (modo "uno" sin nadie elegido).
@@ -162,15 +165,45 @@ export function FormPrecio({
       )}
 
       {mensaje && <p className="aviso-error" style={{ marginTop: 12 }}>{mensaje}</p>}
+      {/* A quién NO le va a llegar este precio, ANTES de guardarlo.
+
+          Un precio propio le gana al general —es más específico, y así tiene que ser—, pero eso
+          se resolvía en silencio: se escribía el aumento para "Todos", la pantalla decía
+          "Guardado", y los que tenían precio propio seguían facturando el viejo. El operador se
+          entera un mes después, cuando cierra y los números no son los que esperaba.
+
+          Va acá arriba y no en el mensaje de después: la decisión útil —usar "Todos menos…"— se
+          toma antes de apretar, no cuando ya está guardado. */}
+      {!esTodosMenos && !esUno && conPrecioPropio.length > 0 && (
+        <p className="aviso-error" style={{ marginTop: 12, fontSize: 13, lineHeight: 1.6 }}>
+          Ojo: este precio es el <b>general</b>, y{" "}
+          {conPrecioPropio.length === 1 ? "hay 1 profesional que tiene" : `hay ${conPrecioPropio.length} profesionales que tienen`}{" "}
+          precio propio, así que <b>no les llega</b> —el suyo le gana—:{" "}
+          {conPrecioPropio.slice(0, 8).map((p, n) => (
+            <span key={p.id}>
+              {n > 0 ? ", " : ""}
+              {p.nombre} ({p.precio})
+            </span>
+          ))}
+          {conPrecioPropio.length > 8 ? ` y ${conPrecioPropio.length - 8} más` : ""}.{" "}
+          Para subirles a ellos también, usá <b>Todos menos…</b> y ponéles el importe nuevo, o
+          elegilos de a uno.
+        </p>
+      )}
+
       {/* El mensaje dice qué pasó con LO YA CARGADO, no solo que se guardó. Antes decía "rige
           desde ahora en adelante" y se leía como que el cambio ya estaba hecho, cuando las
           reservas de la agenda seguían con el importe viejo. */}
       {ok && (
         <p className="aviso-ok" style={{ marginTop: 12 }}>
           Guardado.{" "}
-          {aplicadas === undefined || aplicadas === 0
-            ? "No había reservas ya cargadas para actualizar: rige para las que se agenden de acá en adelante."
-            : `${aplicadas} ${aplicadas === 1 ? "reserva ya agendada quedó" : "reservas ya agendadas quedaron"} al precio nuevo. Lo ya usado y lo ya liquidado no se tocó.`}
+          {aplicadas !== undefined && aplicadas > 0
+            ? `${aplicadas} ${aplicadas === 1 ? "reserva ya agendada quedó" : "reservas ya agendadas quedaron"} al precio nuevo. Lo ya usado y lo ya liquidado no se tocó.`
+            : /* Cero reservas actualizadas NO quiere decir que esté todo al día, y decirlo era el
+                 problema: podía ser que el precio no llegara a nadie (tienen el suyo propio) o que
+                 sus meses ya estén cerrados. Los dos casos tienen su aviso abajo; acá se deja de
+                 afirmar algo que no se comprobó. */
+              "No cambió ninguna reserva ya agendada: rige para las que se carguen de acá en adelante. Si esperabas que cambiaran, mirá los avisos de abajo."}
         </p>
       )}
 

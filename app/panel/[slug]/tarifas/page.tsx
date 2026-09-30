@@ -15,7 +15,7 @@ import { prisma } from "../../../../src/db/prisma.ts";
 import { puede } from "../../../../src/lib/permisos.ts";
 import { cerrarTarifa, ponerTarifa, ponerTarifasEnLote, tarifasVigentes } from "../../../../src/servicios/config/tarifas.ts";
 import { pendientesPorProfesional, recotizarPendientes, reservasSinPrecio } from "../../../../src/servicios/plata/recotizar.ts";
-import { reajustarFuturas, reservasADesajustar } from "../../../../src/servicios/plata/reajustar.ts";
+import { desajusteDelCentro, reajustarFuturas } from "../../../../src/servicios/plata/reajustar.ts";
 import { FormPrecio } from "./FormPrecio.tsx";
 import { BotonEnviar } from "../BotonEnviar.tsx";
 import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
@@ -69,7 +69,20 @@ export default async function TarifasPage({
   const sinPrecio = await reservasSinPrecio(actor.operadorId);
   // Las que quedaron con un precio distinto al que rige hoy. Se calcula siempre: el aviso solo
   // aparece cuando hay algo que aplicar, así que en un centro al día no se ve nada.
-  const desajustadas = await reservasADesajustar({ operadorId: actor.operadorId });
+  const { reajustables: desajustadas, selladas } = await desajusteDelCentro({ operadorId: actor.operadorId });
+
+  // Quién tiene precio PROPIO. Es el dato que faltaba para que la pantalla no mienta: un precio
+  // general NO les llega —el suyo le gana por ser más específico, que es lo correcto— pero hasta
+  // ahora eso pasaba en silencio. Se guardaba el aumento, la app decía "Guardado", y esa gente
+  // seguía facturando al precio viejo sin una palabra.
+  const conPrecioPropio = vigentes
+    .filter((t) => t.inquilinoId !== null)
+    .map((t) => ({
+      id: t.inquilinoId!,
+      nombre: inquilinos.find((i) => i.id === t.inquilinoId)?.nombre ?? "—",
+      precioHoraCent: t.precioHoraCent,
+    }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   // A quién le corresponden y con qué precio van a entrar. Se calcula solo si hay algo pendiente:
   // en el caso normal —cero— no se paga ninguna consulta de más.
   const pendientes = sinPrecio > 0 ? await pendientesPorProfesional(actor.operadorId) : [];
@@ -318,6 +331,38 @@ export default async function TarifasPage({
           Aparece solo cuando hay diferencia. Una reserva estampa su precio al nacer, y las de un
           mes se cargan el mes anterior: sin esto, subir el alquiler no tenía forma de entrar en
           vigencia salvo borrando y recargando las reservas a mano. */}
+      {/* ── Aumentos que NO se pudieron aplicar: el mes ya está cerrado ─────────
+          El otro silencio de esta pantalla. Si a alguien ya se le emitió la liquidación del mes
+          que viene, subirle el precio guarda la tarifa y no cambia una sola reserva: hay un papel
+          numerado con esos importes y no se reescribe. Sin este aviso, "no se pudo" y "no hacía
+          falta" se ven exactamente igual.
+
+          Tiene arreglo y se dice cuál: reabrir esa liquidación en Cierre de mes y volver a
+          cerrarla ya toma el precio nuevo. */}
+      {selladas.length > 0 && (
+        <div className="panel" style={{ padding: 18, marginTop: 20, borderLeft: "4px solid var(--alerta)" }}>
+          <h2 style={{ marginTop: 0, fontSize: 16 }}>
+            Hay {selladas.length === 1 ? "un profesional" : `${selladas.length} profesionales`} con el precio nuevo sin aplicar
+          </h2>
+          <p style={{ margin: "6px 0 10px", fontSize: 14, lineHeight: 1.6 }}>
+            Les correspondería otro importe, pero sus reservas ya salieron en una liquidación
+            emitida y esos números están congelados. Guardar el precio no las toca.
+          </p>
+          <ul style={{ margin: "0 0 10px", paddingLeft: 18, fontSize: 14, lineHeight: 1.7 }}>
+            {selladas.slice(0, 10).map((f) => (
+              <li key={f.inquilinoId}>
+                {f.nombre}: {f.reservas} {f.reservas === 1 ? "reserva" : "reservas"} a {plata(f.deCent)} la hora, cuando le
+                correspondería {plata(f.aCent)}
+              </li>
+            ))}
+          </ul>
+          <p className="tenue" style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>
+            Para que entre el precio nuevo: en <Link href={`/panel/${slug}/cierre`}>Cierre de mes</Link> reabrí
+            esa liquidación con la <b>×</b> roja y volvé a cerrarla. Se vuelve a calcular con el precio de ahora.
+          </p>
+        </div>
+      )}
+
       {desajustadas.length > 0 && (
         <div className="panel" style={{ padding: 18, marginTop: 16, borderLeft: "4px solid var(--alerta)" }}>
           <h2 style={{ marginTop: 0, fontSize: 16 }}>
@@ -369,6 +414,7 @@ export default async function TarifasPage({
         mensaje={mensaje}
         ok={ok === "1"}
         aplicadas={sp.aplicadas === undefined ? undefined : Number(sp.aplicadas)}
+        conPrecioPropio={conPrecioPropio.map((p) => ({ id: p.id, nombre: p.nombre, precio: plata(p.precioHoraCent) }))}
       />
 
       {/* ── Qué paga cada uno, resuelto ─────────────────────────────────── */}
