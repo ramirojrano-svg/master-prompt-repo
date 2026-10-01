@@ -25,7 +25,7 @@ export default async function TarifasPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string; ok?: string; cobrados?: string; repetidos?: string; cotizadas?: string; restantes?: string; reajustadas?: string; aplicadas?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; cobrados?: string; repetidos?: string; cotizadas?: string; restantes?: string; reajustadas?: string; aplicadas?: string; porSala?: string }>;
 }) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -75,6 +75,13 @@ export default async function TarifasPage({
   // general NO les llega —el suyo le gana por ser más específico, que es lo correcto— pero hasta
   // ahora eso pasaba en silencio. Se guardaba el aumento, la app decía "Guardado", y esa gente
   // seguía facturando al precio viejo sin una palabra.
+  // Precios viejos POR CONSULTORIO que siguen abiertos. Ya no se pueden crear desde ningún lado,
+  // pero los que quedaron en la base le GANAN al precio del profesional por ser más específicos, y
+  // eso hacía que un aumento se guardara, se mostrara en la lista, y no cambiara una sola reserva.
+  // Guardar de nuevo el precio de esa persona ahora los deja sin efecto; hasta que eso pase, se
+  // avisa, porque es invisible de otra manera.
+  const porSalaAbiertas = vigentes.filter((t) => t.salaId !== null);
+
   const conPrecioPropio = vigentes
     .filter((t) => t.inquilinoId !== null)
     .map((t) => ({
@@ -126,8 +133,11 @@ export default async function TarifasPage({
     });
 
     const n = r.ok && r.data.ok ? r.data.aplicadas : 0;
+    // `porSala` se informa aparte: haber dejado sin efecto un precio viejo por consultorio explica
+    // por qué hoy sí cambiaron reservas que ayer no cambiaban.
+    const ps = r.ok && r.data.ok ? r.data.porSala : 0;
     revalidatePath(`/panel/${slug}/tarifas`);
-    const qs = !r.ok ? `?error=${r.error}` : !r.data.ok ? `?error=${r.data.error}` : `?ok=1&aplicadas=${n}`;
+    const qs = !r.ok ? `?error=${r.error}` : !r.data.ok ? `?error=${r.data.error}` : `?ok=1&aplicadas=${n}&porSala=${ps}`;
     redirect(`/panel/${slug}/tarifas${qs}`);
   }
 
@@ -331,6 +341,33 @@ export default async function TarifasPage({
           Aparece solo cuando hay diferencia. Una reserva estampa su precio al nacer, y las de un
           mes se cargan el mes anterior: sin esto, subir el alquiler no tenía forma de entrar en
           vigencia salvo borrando y recargando las reservas a mano. */}
+      {/* ── Precios viejos por consultorio ──────────────────────────────────── */}
+      {porSalaAbiertas.length > 0 && (
+        <div className="panel" style={{ padding: 18, marginTop: 20, borderLeft: "4px solid var(--error)" }}>
+          <h2 style={{ marginTop: 0, fontSize: 16 }}>
+            {porSalaAbiertas.length === 1
+              ? "Hay un precio viejo por consultorio que tapa al que cargaste"
+              : `Hay ${porSalaAbiertas.length} precios viejos por consultorio que tapan a los que cargaste`}
+          </h2>
+          <p style={{ margin: "6px 0 10px", fontSize: 14, lineHeight: 1.6 }}>
+            Son de cuando el precio podía depender del consultorio. Le <b>ganan</b> al precio del
+            profesional y al general, así que mientras estén, un aumento se guarda pero las reservas
+            siguen cotizando al valor viejo.
+          </p>
+          <ul style={{ margin: "0 0 10px", paddingLeft: 18, fontSize: 14, lineHeight: 1.7 }}>
+            {porSalaAbiertas.slice(0, 10).map((t) => (
+              <li key={t.id}>
+                {t.nombre} · {plata(t.precioHoraCent)} la hora
+              </li>
+            ))}
+          </ul>
+          <p className="tenue" style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>
+            Para sacarlos: volvé a guardar acá abajo el precio de esa persona (o el general, si no
+            tiene dueño). Queda guardado el historial, no se borra nada.
+          </p>
+        </div>
+      )}
+
       {/* ── Aumentos que NO se pudieron aplicar: el mes ya está cerrado ─────────
           El otro silencio de esta pantalla. Si a alguien ya se le emitió la liquidación del mes
           que viene, subirle el precio guarda la tarifa y no cambia una sola reserva: hay un papel
@@ -414,6 +451,7 @@ export default async function TarifasPage({
         mensaje={mensaje}
         ok={ok === "1"}
         aplicadas={sp.aplicadas === undefined ? undefined : Number(sp.aplicadas)}
+        porSala={sp.porSala === undefined ? undefined : Number(sp.porSala)}
         conPrecioPropio={conPrecioPropio.map((p) => ({ id: p.id, nombre: p.nombre, precio: plata(p.precioHoraCent) }))}
       />
 

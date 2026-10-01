@@ -28,6 +28,7 @@ export function FormPrecio({
   mensaje,
   ok,
   aplicadas,
+  porSala,
   conPrecioPropio = [],
 }: {
   accion: (formData: FormData) => Promise<void>;
@@ -36,6 +37,8 @@ export function FormPrecio({
   ok?: boolean;
   /** Cuántas reservas ya cargadas quedaron con el precio nuevo. */
   aplicadas?: number;
+  /** Tarifas viejas por consultorio que este guardado dejó sin efecto. */
+  porSala?: number;
   /** Quiénes tienen precio propio: a ellos un precio general NO les llega. */
   conPrecioPropio?: { id: string; nombre: string; precio: string }[];
 }) {
@@ -197,6 +200,8 @@ export function FormPrecio({
       {ok && (
         <p className="aviso-ok" style={{ marginTop: 12 }}>
           Guardado.{" "}
+          {porSala !== undefined && porSala > 0 &&
+            `Se dejó sin efecto ${porSala === 1 ? "un precio viejo por consultorio que tapaba a este" : `${porSala} precios viejos por consultorio que tapaban a este`}. `}
           {aplicadas !== undefined && aplicadas > 0
             ? `${aplicadas} ${aplicadas === 1 ? "reserva ya agendada quedó" : "reservas ya agendadas quedaron"} al precio nuevo. Lo ya usado y lo ya liquidado no se tocó.`
             : /* Cero reservas actualizadas NO quiere decir que esté todo al día, y decirlo era el

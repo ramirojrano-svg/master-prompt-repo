@@ -347,3 +347,94 @@ test("un centro al día no reporta nada sellado", async () => {
   assert.equal(reajustables.length, 0);
   assert.equal(selladas.length, 0, "sin desfasaje no hay nada que avisar");
 });
+
+// ── Tarifas viejas POR CONSULTORIO ──────────────────────────────────────────
+//
+// El caso reportado, y el más difícil de ver desde la pantalla: se carga el precio nuevo de una
+// profesional, la lista de precios lo muestra, y sus reservas siguen cotizando al viejo. Para
+// siempre, sin aviso.
+//
+// La causa es una tarifa vieja (sala + profesional) que quedó abierta de cuando el precio podía
+// depender del consultorio. Es MÁS específica que una de profesional, así que gana; y como el
+// formulario ya no puede crear ni editar una tarifa por sala, no había ninguna forma de sacarla
+// desde la app. El precio nuevo se guardaba y no servía para nada.
+
+/** Una tarifa por sala de las que ya no se pueden crear, como las que quedaron en la base. */
+async function tarifaLegacyPorSala(precioHora: number, inquilinoId: string | null) {
+  await db.tarifa.create({
+    data: {
+      operadorId: "op1", salaId: "sa1", inquilinoId, nombre: "legacy",
+      precioHoraCent: BigInt(precioHora) * 100n,
+      vigenteDesde: new Date(Date.now() - 90 * 86_400_000),
+    },
+  });
+}
+
+test("el precio nuevo de la profesional le gana a su tarifa vieja por consultorio", async () => {
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: null });
+  await tarifaLegacyPorSala(6000, "in1");
+  await reservar(13, "in1");
+  assert.equal(await precioDe("in1"), 600_000n, "nace con la vieja, que es la que gana");
+
+  const r = await tarifas.poner(owner, { precioHora: 7100, inquilinoId: "in1" });
+
+  assert.ok(r.ok && r.data.ok);
+  assert.equal(r.data.porSala, 1, "tiene que decir que sacó una tarifa por consultorio");
+  assert.equal(r.data.aplicadas, 1);
+  assert.equal(await precioDe("in1"), 710_000n, "la reserva queda al precio nuevo");
+  assert.equal(await cargoDe("in1"), 710_000n);
+});
+
+test("el precio general le gana a una tarifa vieja de solo consultorio", async () => {
+  // La misma trampa sin dueño: una tarifa de sala sin profesional también le gana al general.
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: null });
+  await tarifaLegacyPorSala(6000, null);
+  await reservar(13, "in1");
+
+  const r = await tarifas.poner(owner, { precioHora: 9100, inquilinoId: null });
+
+  assert.ok(r.ok && r.data.ok && r.data.porSala === 1);
+  assert.equal(await precioDe("in1"), 910_000n);
+});
+
+test("el precio general NO pisa el precio propio de un profesional", async () => {
+  // El barrido nuevo es más amplio, y esta es la línea que no puede cruzar: la precedencia entre
+  // general y precio propio es correcta y es la que el operador espera.
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: null });
+  await tarifas.poner(owner, { precioHora: 6500, inquilinoId: "in1" });
+  await reservar(13, "in1");
+
+  await tarifas.poner(owner, { precioHora: 9100, inquilinoId: null });
+
+  assert.equal(await precioDe("in1"), 650_000n, "sigue con el suyo");
+  const suyas = await db.tarifa.count({ where: { inquilinoId: "in1", vigenteHasta: null } });
+  assert.equal(suyas, 1, "su tarifa propia sigue abierta");
+});
+
+test("'Todos menos…' también saca las tarifas viejas por consultorio", async () => {
+  // El caso real completo: general nuevo con excepciones, sobre una base que tiene legacy.
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: null });
+  await tarifaLegacyPorSala(6000, "in1");
+  await reservar(13, "in1");
+  await reservar(15, "in2");
+
+  const r = await tarifas.ponerLote(owner, {
+    precioHora: 9100,
+    excepciones: [{ inquilinoId: "in1", precioHora: 7100 }],
+  });
+
+  assert.ok(r.ok && r.data.ok);
+  assert.equal(await precioDe("in1"), 710_000n, "Laila al precio nuevo, no al de la tarifa vieja");
+  assert.equal(await precioDe("in2"), 910_000n);
+  assert.equal(await db.tarifa.count({ where: { salaId: { not: null }, vigenteHasta: null } }), 0);
+});
+
+test("cerrar una tarifa vieja no borra nada: el historial queda", async () => {
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: null });
+  await tarifaLegacyPorSala(6000, "in1");
+
+  await tarifas.poner(owner, { precioHora: 7100, inquilinoId: "in1" });
+
+  const legacy = await db.tarifa.findFirstOrThrow({ where: { nombre: "legacy" }, select: { vigenteHasta: true } });
+  assert.ok(legacy.vigenteHasta !== null, "se cierra, no se borra: el resumen de meses viejos se sigue explicando");
+});

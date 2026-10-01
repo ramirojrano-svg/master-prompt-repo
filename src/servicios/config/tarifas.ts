@@ -44,7 +44,7 @@ export type ResultadoTarifa =
    * Se toca solo lo que todavía no salió del centro —futuro y sin liquidar—; esos frenos viven
    * adentro del reajuste y no se relajan acá.
    */
-  | { ok: true; id: string; aplicadas: number }
+  | { ok: true; id: string; aplicadas: number; /** Tarifas viejas POR CONSULTORIO que este precio dejó sin efecto. */ porSala: number }
   | { ok: false; error: "SALA_INEXISTENTE" | "PROFESIONAL_INEXISTENTE" | "NO_ENCONTRADA" };
 
 /**
@@ -105,17 +105,32 @@ async function poner(actor: Actor, input: TarifaInputT, db: PrismaClient): Promi
   const precioHoraCent = aCentavos(input.precioHora);
 
   const creada = await db.$transaction(async (tx) => {
-    // 1. Cerrar la(s) vigente(s) del MISMO alcance. Se cierran en `ahora`, así una reserva creada
-    //    un milisegundo antes sigue habiendo usado el precio viejo (vigenteHasta es exclusivo).
-    await tx.tarifa.updateMany({
-      where: {
-        operadorId: actor.operadorId,
-        salaId: input.salaId,
-        inquilinoId: input.inquilinoId,
-        vigenteHasta: null,
-      },
-      data: { vigenteHasta: ahora },
-    });
+    // 1. Cerrar lo que este precio viene a reemplazar. Se cierra en `ahora`, así una reserva
+    //    creada un milisegundo antes sigue habiendo usado el precio viejo (vigenteHasta es
+    //    exclusivo).
+    //
+    //    No alcanza con cerrar el MISMO alcance, y esa era la falla: el precio de este centro es
+    //    del profesional o general, nunca por consultorio, pero quedaron tarifas viejas POR SALA
+    //    de cuando sí se podía. Una tarifa (sala + profesional) es MÁS específica que una de
+    //    profesional, así que le ganaba — y como el formulario ya no puede crear ni editar una
+    //    tarifa por sala, no había forma de sacarla: se guardaba el precio nuevo, la pantalla lo
+    //    mostraba, y las reservas seguían cotizando al viejo para siempre.
+    //
+    //    Por eso el barrido es por ALCANCE EFECTIVO: el precio de una persona reemplaza todo lo
+    //    suyo (tenga sala o no), y el general reemplaza también los precios que eran solo de una
+    //    sala, que son los únicos que le ganaban sin pertenecer a nadie. Lo que NO toca el general
+    //    son los precios propios de cada profesional: ahí la precedencia es la correcta y es la
+    //    que el operador espera.
+    const alcance = {
+      operadorId: actor.operadorId,
+      vigenteHasta: null,
+      ...(input.inquilinoId ? { inquilinoId: input.inquilinoId } : { inquilinoId: null }),
+    };
+    // Cuántas de las que se cierran son por sala. Es el dato que la pantalla informa: reemplazar
+    // el precio anterior es lo normal y no merece mención, pero haber sacado de encima una tarifa
+    // por consultorio sí — explica por qué hoy sí cambió algo que ayer no cambiaba.
+    const porSala = await tx.tarifa.count({ where: { ...alcance, salaId: { not: null } } });
+    await tx.tarifa.updateMany({ where: alcance, data: { vigenteHasta: ahora } });
 
     // 2. Crear la nueva. Fila nueva, no UPDATE: el historial queda entero.
     const t = await tx.tarifa.create({
@@ -129,7 +144,7 @@ async function poner(actor: Actor, input: TarifaInputT, db: PrismaClient): Promi
       },
       select: { id: true },
     });
-    return { ok: true as const, id: t.id };
+    return { ok: true as const, id: t.id, porSala };
   });
 
   // 3. Aplicarlo a lo que ya está agendado y todavía no salió del centro. Va FUERA de la
@@ -197,10 +212,12 @@ async function escribirTarifa(
   precioHora: number,
 ): Promise<string> {
   const ahora = new Date();
-  // El precio NO depende del consultorio: es del profesional o general del centro. `salaId: null`
-  // en el where importa tanto como en el data — sin él se cerrarían también las tarifas por sala.
+  // El precio NO depende del consultorio: es del profesional o general del centro. Por eso el
+  // barrido ignora `salaId` y cierra todo lo del mismo alcance EFECTIVO — ver el comentario largo
+  // en `poner`, que explica el bug: una tarifa vieja por sala le ganaba al precio nuevo y, como el
+  // formulario ya no puede crear una, no había manera de sacarla.
   await tx.tarifa.updateMany({
-    where: { operadorId, salaId: null, inquilinoId, vigenteHasta: null },
+    where: { operadorId, inquilinoId, vigenteHasta: null },
     data: { vigenteHasta: ahora },
   });
   const t = await tx.tarifa.create({
@@ -230,7 +247,7 @@ async function cerrar(actor: Actor, input: { tarifaId: string }, db: PrismaClien
   // uno nuevo aplica a lo agendado, sacar uno tiene que hacer lo mismo, o la mitad de la pantalla
   // se comporta de una manera y la otra mitad de otra.
   const ap = await aplicarPrecioVigente(actor, previa?.inquilinoId ? { inquilinoId: previa.inquilinoId } : {}, db);
-  return { ok: true, id: input.tarifaId, aplicadas: ap.reajustadas };
+  return { ok: true, id: input.tarifaId, aplicadas: ap.reajustadas, porSala: 0 };
 }
 
 const CFG_TARIFA = {
