@@ -13,6 +13,7 @@ import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
 import { aplicarPrecioVigente } from "../plata/reajustar.ts";
+import { rangoDiaEnZona } from "../../dominio/motor/zona.ts";
 import { resolverTarifa, type TarifaVigente } from "../../dominio/tarifa.ts";
 import type { Actor } from "../../lib/actor.ts";
 
@@ -27,6 +28,20 @@ export const TarifaInput = Alcance.extend({
   // Se escribe en PESOS (lo que el owner tiene en la cabeza) y se guarda en CENTAVOS.
   // coerce.number sobre "8000" y sobre "8000.50"; el redondeo es al centavo, no al peso.
   precioHora: z.coerce.number().finite().min(0).max(100_000_000),
+  /**
+   * Desde cuándo rige, como 'YYYY-MM-DD'. Si no viene, desde este instante.
+   *
+   * Existe porque un aumento casi nunca empieza "ahora": se carga el 30 de septiembre y rige desde
+   * el 1 de octubre, que es la unidad con la que este centro factura. Sin esta fecha, el precio
+   * nuevo arrancaba en el minuto del guardado y las horas usadas ESE MISMO DÍA más temprano
+   * quedaban al valor anterior — una profesional con nueve turnos de cuatro horas facturaba
+   * 251.200 en vez de 255.600, y la diferencia se repetía en cada profesional que tuviera turno el
+   * día del cambio.
+   *
+   * Se toma a las 00:00 de la zona del centro: "a partir del 1 de octubre" quiere decir el día
+   * entero, no desde la hora en que uno se sentó a cargarlo.
+   */
+  vigenteDesde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fecha inválida").optional(),
 });
 
 export type TarifaInputT = z.infer<typeof TarifaInput>;
@@ -61,6 +76,8 @@ export type ResultadoTarifa =
  */
 export const TarifasLoteInput = z.object({
   precioHora: z.coerce.number().finite().min(0).max(100_000_000),
+  /** Igual que en `TarifaInput`: desde cuándo rige. Vale para el general y para las excepciones. */
+  vigenteDesde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fecha inválida").optional(),
   excepciones: z
     .array(
       z.object({
@@ -101,7 +118,7 @@ async function poner(actor: Actor, input: TarifaInputT, db: PrismaClient): Promi
   if (input.salaId && !sala) return { ok: false, error: "SALA_INEXISTENTE" };
   if (input.inquilinoId && !inq) return { ok: false, error: "PROFESIONAL_INEXISTENTE" };
 
-  const ahora = new Date();
+  const ahora = await instanteDeVigencia(db, actor.operadorId, input.vigenteDesde);
   const precioHoraCent = aCentavos(input.precioHora);
 
   const creada = await db.$transaction(async (tx) => {
@@ -178,10 +195,13 @@ async function ponerLote(actor: Actor, input: TarifasLoteInputT, db: PrismaClien
     if (propios.length !== ids.length) return { ok: false, error: "PROFESIONAL_INEXISTENTE" };
 
     const nombres = new Map(propios.map((p) => [p.id, p.nombre]));
+    // Un solo instante para todo el lote: el general y las excepciones son UNA decisión, y dos
+    // marcas de tiempo distintas dejarían una ventana en la que rige una mitad sola.
+    const desde = await instanteDeVigencia(db, actor.operadorId, input.vigenteDesde);
     const general = await db.$transaction(async (tx) => {
-      const g = await escribirTarifa(tx, actor.operadorId, null, "General", input.precioHora);
+      const g = await escribirTarifa(tx, actor.operadorId, null, "General", input.precioHora, desde);
       for (const e of input.excepciones) {
-        await escribirTarifa(tx, actor.operadorId, e.inquilinoId, nombres.get(e.inquilinoId)!, e.precioHora);
+        await escribirTarifa(tx, actor.operadorId, e.inquilinoId, nombres.get(e.inquilinoId)!, e.precioHora, desde);
       }
       return g;
     });
@@ -192,9 +212,33 @@ async function ponerLote(actor: Actor, input: TarifasLoteInputT, db: PrismaClien
     return { ok: true as const, general, excepciones: input.excepciones.length, aplicadas: ap.reajustadas };
   }
 
-  const general = await db.$transaction(async (tx) => escribirTarifa(tx, actor.operadorId, null, "General", input.precioHora));
+  const soloGeneral = await instanteDeVigencia(db, actor.operadorId, input.vigenteDesde);
+  const general = await db.$transaction(async (tx) => escribirTarifa(tx, actor.operadorId, null, "General", input.precioHora, soloGeneral));
   const ap = await aplicarPrecioVigente(actor, {}, db);
   return { ok: true, general, excepciones: 0, aplicadas: ap.reajustadas };
+}
+
+
+/**
+ * Desde qué instante rige un precio.
+ *
+ * Sin fecha, ahora mismo. Con fecha, las 00:00 de ESE día en la zona del centro: "a partir del 1
+ * de octubre" tiene que querer decir el día entero, no desde la hora en que uno se sentó a
+ * cargarlo — si no, las horas usadas esa misma mañana se facturan al precio anterior.
+ *
+ * La zona sale de la sede y no tiene default: adivinarla es el bug que el guardarraíl §14.4 evita.
+ * Sin sede, se cae a "ahora", que es el comportamiento de siempre.
+ */
+async function instanteDeVigencia(
+  db: Pick<PrismaClient, "sede">,
+  operadorId: string,
+  fecha: string | undefined,
+): Promise<Date> {
+  if (!fecha) return new Date();
+  const sede = await db.sede.findFirst({ where: { operadorId, activa: true }, select: { zonaHoraria: true } });
+  if (!sede) return new Date();
+  const rango = rangoDiaEnZona(fecha, sede.zonaHoraria);
+  return rango ? rango.inicio : new Date();
 }
 
 /**
@@ -210,8 +254,8 @@ async function escribirTarifa(
   inquilinoId: string | null,
   nombre: string,
   precioHora: number,
+  ahora: Date,
 ): Promise<string> {
-  const ahora = new Date();
   // El precio NO depende del consultorio: es del profesional o general del centro. Por eso el
   // barrido ignora `salaId` y cierra todo lo del mismo alcance EFECTIVO — ver el comentario largo
   // en `poner`, que explica el bug: una tarifa vieja por sala le ganaba al precio nuevo y, como el

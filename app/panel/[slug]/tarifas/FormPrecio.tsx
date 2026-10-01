@@ -30,6 +30,7 @@ export function FormPrecio({
   aplicadas,
   porSala,
   conPrecioPropio = [],
+  hoy,
 }: {
   accion: (formData: FormData) => Promise<void>;
   inquilinos: OpcionProfesional[];
@@ -41,6 +42,8 @@ export function FormPrecio({
   porSala?: number;
   /** Quiénes tienen precio propio: a ellos un precio general NO les llega. */
   conPrecioPropio?: { id: string; nombre: string; precio: string }[];
+  /** Hoy en la zona del CENTRO, no la del navegador: el default del campo de vigencia. */
+  hoy: string;
 }) {
   // Un solo estado para el select: "todos", "todos-menos", o el id de una persona. Tener el modo
   // y el id por separado permitía que quedaran en desacuerdo (modo "uno" sin nadie elegido).
@@ -102,7 +105,20 @@ export function FormPrecio({
           <label htmlFor="precioHora">{esTodosMenos ? "Importe por hora (para el resto)" : "Importe por hora"}</label>
           <input id="precioHora" name="precioHora" type="number" min={0} step="0.01" required placeholder="8000" />
         </div>
+        {/* Un aumento casi nunca empieza "ahora": se carga el 30 de septiembre y rige desde el 1
+            de octubre, que es la unidad con la que se factura. Sin este campo el precio arrancaba
+            en el minuto del guardado, y las horas usadas ESE MISMO DÍA más temprano se facturaban
+            al valor anterior. Se toma el día entero, desde las 00:00. */}
+        <div>
+          <label htmlFor="vigenteDesde">Rige desde</label>
+          <input id="vigenteDesde" name="vigenteDesde" type="date" defaultValue={hoy} />
+        </div>
       </div>
+      <p className="tenue" style={{ margin: "6px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+        El día entero, desde las 00:00. Para que un aumento valga por todo octubre, poné{" "}
+        <b>1 de octubre</b> aunque lo cargues antes: las horas de ese día se cobran al precio nuevo.
+        Lo anterior a esa fecha no se toca.
+      </p>
 
       {esTodosMenos && (
         <div style={{ marginTop: 16 }}>

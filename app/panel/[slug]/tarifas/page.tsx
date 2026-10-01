@@ -114,6 +114,7 @@ export default async function TarifasPage({
       const precios = formData.getAll("excepcionPrecio").map(String);
       const r = await ponerTarifasEnLote(a, {
         precioHora: formData.get("precioHora"),
+        vigenteDesde: formData.get("vigenteDesde") || undefined,
         excepciones: ids.map((inquilinoId, n) => ({ inquilinoId, precioHora: precios[n] ?? "" })),
       });
       const n = r.ok && r.data.ok ? r.data.aplicadas : 0;
@@ -125,6 +126,7 @@ export default async function TarifasPage({
     const uno = alcance === "uno" ? String(formData.get("inquilinoId") ?? "") : "";
     const r = await ponerTarifa(a, {
       precioHora: formData.get("precioHora"),
+      vigenteDesde: formData.get("vigenteDesde") || undefined,
       // El precio NO depende del consultorio: es del profesional (o general del centro). Se
       // manda null siempre, así toda tarifa nueva nace con alcance de profesional.
       salaId: null,
@@ -451,6 +453,7 @@ export default async function TarifasPage({
         mensaje={mensaje}
         ok={ok === "1"}
         aplicadas={sp.aplicadas === undefined ? undefined : Number(sp.aplicadas)}
+        hoy={fechaEnZona(new Date(), sede.zonaHoraria)}
         porSala={sp.porSala === undefined ? undefined : Number(sp.porSala)}
         conPrecioPropio={conPrecioPropio.map((p) => ({ id: p.id, nombre: p.nombre, precio: plata(p.precioHoraCent) }))}
       />

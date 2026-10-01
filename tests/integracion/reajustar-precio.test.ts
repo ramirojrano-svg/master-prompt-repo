@@ -18,7 +18,8 @@ import { cierreCon } from "../../src/servicios/plata/cierre.ts";
 import { crearOcupacion, type CtxReserva } from "../../src/servicios/reservas/crear.ts";
 import { prisma } from "../../src/db/prisma.ts";
 import type { Actor } from "../../src/lib/actor.ts";
-import { nuevoPool, reiniciarEsquema, seedBase, TZ_SEDE, URL_DB } from "./db.ts";
+import { insertarOcupacion, nuevoPool, reiniciarEsquema, seedBase, TZ_SEDE, URL_DB } from "./db.ts";
+import { asentarIdempotente } from "../../src/servicios/plata/ledger.ts";
 
 const pgPool = nuevoPool();
 const db = new PrismaClient({ datasourceUrl: URL_DB });
@@ -37,6 +38,10 @@ const ctx = (inquilinoId = "in1"): CtxReserva => ({ operadorId: "op1", inquilino
 const DIA = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
 const reservar = (hZ: number, inquilinoId = "in1") =>
   crearOcupacion({ salaId: "sa1", fecha: DIA, inicioISO: `${DIA}T${String(hZ).padStart(2, "0")}:00:00.000Z`, duracionMin: 60 }, ctx(inquilinoId), db);
+
+/** Hoy en la zona de la sede, como lo manda el formulario. */
+const hoyLocal = () =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: TZ_SEDE, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
 const precioDe = async (i = "in1") =>
   (await db.ocupacion.findFirst({ where: { inquilinoId: i }, select: { precioHoraCent: true } }))?.precioHoraCent;
@@ -125,15 +130,92 @@ test("una reserva YA LIQUIDADA no se toca, aunque sea futura", async () => {
   assert.equal(await cargoDe(), 600_000n);
 });
 
-test("no toca las horas que ya pasaron", async () => {
-  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: "in1" });
-  await reservar(13);
+test("no toca una hora que ocurrió ANTES de que cambiara el precio", async () => {
+  // §8.8 de verdad: esa hora se usó cuando regía otro precio, y ese es el que fue.
+  //
+  // Lo que protege no es un filtro por fecha, es la resolución: a cada reserva le corresponde la
+  // tarifa que regía EL DÍA QUE SE USA. Una hora de hace dos meses resuelve contra la tarifa de
+  // hace dos meses —la que ya tiene estampada— y no se mueve, aunque hoy se cargue otra.
+  await db.tarifa.create({
+    data: {
+      operadorId: "op1", salaId: null, inquilinoId: "in1", nombre: "viejo",
+      precioHoraCent: 600_000n, vigenteDesde: new Date(Date.now() - 120 * 86_400_000),
+    },
+  });
+  const hace60 = new Date(Date.now() - 60 * 86_400_000);
+  await insertarOcupacion(pgPool, {
+    id: "vieja", salaId: "sa1", inquilinoId: "in1",
+    inicio: hace60.toISOString(), fin: new Date(hace60.getTime() + 3_600_000).toISOString(),
+  });
+  await db.ocupacion.update({ where: { id: "vieja" }, data: { precioHoraCent: 600_000n, importeCent: 600_000n } });
+
   await tarifas.poner(owner, { precioHora: 7000, inquilinoId: "in1" });
 
-  // Un instante posterior a la reserva: para el reajuste, esa hora ya ocurrió.
-  const despues = new Date(Date.now() + 60 * 86_400_000);
-  const filas = await reservasADesajustar({ operadorId: "op1" }, db, despues);
-  assert.equal(filas.length, 0, "una hora usada ocurrió a un precio y ese precio es el que fue");
+  const o = await db.ocupacion.findUniqueOrThrow({ where: { id: "vieja" }, select: { precioHoraCent: true } });
+  assert.equal(o.precioHoraCent, 600_000n, "una hora usada ocurrió a un precio y ese precio es el que fue");
+});
+
+test("SÍ toca una hora que ya pasó pero ocurrió DESPUÉS del cambio de precio", async () => {
+  // El caso reportado, y el que el filtro por fecha tapaba. Se sube el precio y el turno de hoy a
+  // la mañana —que ya ocurrió cuando uno guarda— sucedió igual bajo el precio nuevo: le
+  // corresponde el nuevo. Con el filtro viejo se facturaba al anterior y la diferencia se perdía.
+  await db.tarifa.create({
+    data: {
+      operadorId: "op1", salaId: null, inquilinoId: "in1", nombre: "viejo",
+      precioHoraCent: 600_000n, vigenteDesde: new Date(Date.now() - 120 * 86_400_000),
+    },
+  });
+  const hace6h = new Date(Date.now() - 6 * 3_600_000);
+  await insertarOcupacion(pgPool, {
+    id: "hoy", salaId: "sa1", inquilinoId: "in1",
+    inicio: hace6h.toISOString(), fin: new Date(hace6h.getTime() + 3_600_000).toISOString(),
+  });
+  await db.ocupacion.update({ where: { id: "hoy" }, data: { precioHoraCent: 600_000n, importeCent: 600_000n } });
+  await asentarIdempotente(db, {
+    operadorId: "op1", inquilinoId: "in1", concepto: "cargo_uso", montoCent: 600_000n, moneda: "ARS",
+    periodo: hace6h.toISOString().slice(0, 7), fechaHecho: hace6h, clave: "cargo_uso:hoy", reservaId: "hoy",
+  });
+
+  // Como lo carga el operador: "rige desde hoy", que quiere decir el día entero.
+  const r = await tarifas.poner(owner, { precioHora: 7000, inquilinoId: "in1", vigenteDesde: hoyLocal() });
+
+  assert.ok(r.ok && r.data.ok && r.data.aplicadas === 1);
+  const o = await db.ocupacion.findUniqueOrThrow({ where: { id: "hoy" }, select: { precioHoraCent: true } });
+  assert.equal(o.precioHoraCent, 700_000n);
+  const c = await db.asiento.findFirstOrThrow({ where: { clave: "cargo_uso:hoy" }, select: { montoCent: true } });
+  assert.equal(c.montoCent, 700_000n, "y el cargo también, o la liquidación cobra otra cosa");
+});
+
+test("el caso de Laila: nueve turnos de cuatro horas, uno ya ocurrido hoy", async () => {
+  // 36 horas a 7.100 son 255.600. Facturaba 251.200: ocho turnos al precio nuevo y el de hoy a la
+  // mañana al viejo. La diferencia —4.400, cuatro horas entre 6.000 y 7.100— se perdía todos los
+  // meses, en cada profesional que tuviera un turno el día del cambio.
+  await db.tarifa.create({
+    data: {
+      operadorId: "op1", salaId: null, inquilinoId: "in1", nombre: "viejo",
+      precioHoraCent: 600_000n, vigenteDesde: new Date(Date.now() - 120 * 86_400_000),
+    },
+  });
+  const cuatroHoras = async (id: string, inicio: Date) => {
+    await insertarOcupacion(pgPool, {
+      id, salaId: "sa1", inquilinoId: "in1",
+      inicio: inicio.toISOString(), fin: new Date(inicio.getTime() + 4 * 3_600_000).toISOString(),
+    });
+    await db.ocupacion.update({ where: { id }, data: { precioHoraCent: 600_000n, importeCent: 2_400_000n } });
+    await asentarIdempotente(db, {
+      operadorId: "op1", inquilinoId: "in1", concepto: "cargo_uso", montoCent: 2_400_000n, moneda: "ARS",
+      periodo: inicio.toISOString().slice(0, 7), fechaHecho: inicio, clave: `cargo_uso:${id}`, reservaId: id,
+    });
+  };
+  await cuatroHoras("ya", new Date(Date.now() - 6 * 3_600_000));
+  for (let n = 0; n < 8; n++) await cuatroHoras(`f${n}`, new Date(Date.now() + (n + 2) * 86_400_000));
+
+  const r = await tarifas.poner(owner, { precioHora: 7100, inquilinoId: "in1", vigenteDesde: hoyLocal() });
+
+  assert.ok(r.ok && r.data.ok);
+  assert.equal(r.data.aplicadas, 9, "los nueve, no ocho");
+  const suma = await db.asiento.aggregate({ where: { inquilinoId: "in1", concepto: "cargo_uso" }, _sum: { montoCent: true } });
+  assert.equal(suma._sum.montoCent, 25_560_000n, "36 horas a 7.100 = 255.600");
 });
 
 test("se puede reajustar a UNO solo sin tocar a los demás", async () => {
@@ -437,4 +519,95 @@ test("cerrar una tarifa vieja no borra nada: el historial queda", async () => {
 
   const legacy = await db.tarifa.findFirstOrThrow({ where: { nombre: "legacy" }, select: { vigenteHasta: true } });
   assert.ok(legacy.vigenteHasta !== null, "se cierra, no se borra: el resumen de meses viejos se sigue explicando");
+});
+
+// ── "Rige desde" ────────────────────────────────────────────────────────────
+//
+// Un aumento casi nunca empieza en el minuto en que uno se sienta a cargarlo: se carga el 30 de
+// septiembre y vale desde el 1 de octubre, que es la unidad con la que este centro factura. Sin
+// fecha, el precio arrancaba en el instante del guardado y partía el día al medio.
+
+const diaLocal = (offsetDias: number) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: TZ_SEDE, year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date(Date.now() + offsetDias * 86_400_000));
+
+/** Una reserva en una fecha dada, al precio viejo ya estampado. */
+async function reservaEn(id: string, inicio: Date, precioCent: bigint) {
+  await insertarOcupacion(pgPool, {
+    id, salaId: "sa1", inquilinoId: "in1",
+    inicio: inicio.toISOString(), fin: new Date(inicio.getTime() + 3_600_000).toISOString(),
+  });
+  await db.ocupacion.update({ where: { id }, data: { precioHoraCent: precioCent, importeCent: precioCent } });
+  await asentarIdempotente(db, {
+    operadorId: "op1", inquilinoId: "in1", concepto: "cargo_uso", montoCent: precioCent, moneda: "ARS",
+    periodo: inicio.toISOString().slice(0, 7), fechaHecho: inicio, clave: `cargo_uso:${id}`, reservaId: id,
+  });
+}
+
+test("un precio que rige desde MAÑANA no toca lo de hoy", async () => {
+  await db.tarifa.create({
+    data: {
+      operadorId: "op1", salaId: null, inquilinoId: "in1", nombre: "viejo",
+      precioHoraCent: 600_000n, vigenteDesde: new Date(Date.now() - 120 * 86_400_000),
+    },
+  });
+  await reservaEn("hoyTemprano", new Date(Date.now() - 4 * 3_600_000), 600_000n);
+  await reservaEn("pasadoManana", new Date(Date.now() + 2 * 86_400_000), 600_000n);
+
+  const r = await tarifas.poner(owner, { precioHora: 7100, inquilinoId: "in1", vigenteDesde: diaLocal(1) });
+
+  assert.ok(r.ok && r.data.ok);
+  assert.equal(r.data.aplicadas, 1, "solo la de pasado mañana");
+  const hoy = await db.ocupacion.findUniqueOrThrow({ where: { id: "hoyTemprano" }, select: { precioHoraCent: true } });
+  const dsp = await db.ocupacion.findUniqueOrThrow({ where: { id: "pasadoManana" }, select: { precioHoraCent: true } });
+  assert.equal(hoy.precioHoraCent, 600_000n, "lo anterior a la fecha de vigencia no se toca");
+  assert.equal(dsp.precioHoraCent, 710_000n);
+});
+
+test("un precio que rige desde AYER alcanza lo de hoy a la mañana", async () => {
+  // Cargar el 30/9 con vigencia desde el 1/10 y mirarlo el 1/10: el turno de la mañana entra.
+  await db.tarifa.create({
+    data: {
+      operadorId: "op1", salaId: null, inquilinoId: "in1", nombre: "viejo",
+      precioHoraCent: 600_000n, vigenteDesde: new Date(Date.now() - 120 * 86_400_000),
+    },
+  });
+  await reservaEn("hoyTemprano", new Date(Date.now() - 4 * 3_600_000), 600_000n);
+  await reservaEn("anteayer", new Date(Date.now() - 2 * 86_400_000), 600_000n);
+
+  const r = await tarifas.poner(owner, { precioHora: 7100, inquilinoId: "in1", vigenteDesde: diaLocal(-1) });
+
+  assert.ok(r.ok && r.data.ok);
+  const hoy = await db.ocupacion.findUniqueOrThrow({ where: { id: "hoyTemprano" }, select: { precioHoraCent: true } });
+  const ant = await db.ocupacion.findUniqueOrThrow({ where: { id: "anteayer" }, select: { precioHoraCent: true } });
+  assert.equal(hoy.precioHoraCent, 710_000n, "ocurrió después de la vigencia: precio nuevo");
+  assert.equal(ant.precioHoraCent, 600_000n, "ocurrió antes: no se toca");
+});
+
+test("sin fecha, rige desde ahora: el comportamiento de siempre", async () => {
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: "in1" });
+  await reservar(13);
+
+  const r = await tarifas.poner(owner, { precioHora: 7000, inquilinoId: "in1" });
+
+  assert.ok(r.ok && r.data.ok && r.data.aplicadas === 1);
+  assert.equal(await precioDe(), 700_000n);
+});
+
+test("'Todos menos…' usa UNA sola fecha para el general y las excepciones", async () => {
+  // Dos marcas de tiempo distintas dejarían una ventana con media decisión aplicada.
+  await tarifas.poner(owner, { precioHora: 6000, inquilinoId: null });
+  await reservar(13, "in1");
+  await reservar(15, "in2");
+
+  const r = await tarifas.ponerLote(owner, {
+    precioHora: 9100,
+    excepciones: [{ inquilinoId: "in1", precioHora: 7100 }],
+    vigenteDesde: diaLocal(-1),
+  });
+
+  assert.ok(r.ok && r.data.ok);
+  const abiertas = await db.tarifa.findMany({ where: { vigenteHasta: null }, select: { vigenteDesde: true } });
+  const distintas = new Set(abiertas.map((t) => t.vigenteDesde.getTime()));
+  assert.equal(distintas.size, 1, "todas las del lote arrancan en el mismo instante");
 });

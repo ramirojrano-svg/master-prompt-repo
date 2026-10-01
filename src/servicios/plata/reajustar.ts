@@ -65,23 +65,44 @@ export type FilaSellada = {
 export async function desajusteDelCentro(
   a: { operadorId: string; inquilinoId?: string },
   db: PrismaClient = prisma,
-  ahora: Date = new Date(),
 ): Promise<{ reajustables: FilaReajuste[]; selladas: FilaSellada[] }> {
-  const [ocupaciones, tarifas, fichas] = await Promise.all([
+  const tarifas = await db.tarifa.findMany({
+    where: { operadorId: a.operadorId, vigenteHasta: null },
+    select: { id: true, salaId: true, inquilinoId: true, precioHoraCent: true, vigenteDesde: true, vigenteHasta: true },
+  });
+  if (tarifas.length === 0) return { reajustables: [], selladas: [] };
+
+  // EL CORTE NO ES "LO QUE TODAVÍA NO PASÓ". Eso parecía la regla §8.8 —una hora usada ocurrió a un
+  // precio— y no lo era, y la diferencia se cobró de menos:
+  //
+  //   Se sube el precio el 30/9. El turno del 1/10 a la mañana ya ocurrió cuando se guarda, así que
+  //   el filtro de "solo futuro" lo dejaba afuera y se facturaba al precio viejo — aunque ese turno
+  //   sucedió DESPUÉS de que el precio nuevo entrara en vigencia. Una profesional con nueve turnos
+  //   de cuatro horas facturaba 251.200 en vez de 255.600: ocho al precio nuevo y uno al viejo.
+  //
+  // La regla verdadera ya estaba, y es la de abajo: a cada reserva le corresponde la tarifa que
+  // regía EL DÍA QUE SE USA (`resolverTarifa` con `o.inicio`). Eso solo protege el pasado, sin
+  // ayuda de ningún filtro: una hora de agosto resuelve contra la tarifa de agosto, que es la que
+  // ya tenía estampada, y no se mueve. El filtro por fecha no agregaba protección; solo tapaba el
+  // caso del medio.
+  //
+  // Lo que sí se acota es cuánto se lee: una reserva anterior a la más vieja de las tarifas
+  // ABIERTAS resuelve a `null` y se descarta igual, así que se pide desde ahí. Es el mismo
+  // resultado leyendo una fracción de la agenda, en vez de la historia entera en cada carga de la
+  // pantalla de Precios.
+  const desde = tarifas.reduce((min, t) => (t.vigenteDesde < min ? t.vigenteDesde : min), tarifas[0]!.vigenteDesde);
+
+  const [ocupaciones, fichas] = await Promise.all([
     db.ocupacion.findMany({
       where: {
         operadorId: a.operadorId,
         tipo: TipoOcupacion.reserva,
         estado: { in: VIVOS },
-        inicio: { gt: ahora }, // solo lo que todavía no pasó
+        inicio: { gte: desde },
         ...(a.inquilinoId ? { inquilinoId: a.inquilinoId } : {}),
       },
       select: { id: true, salaId: true, inquilinoId: true, inicio: true, fin: true, precioHoraCent: true },
       orderBy: { inicio: "asc" },
-    }),
-    db.tarifa.findMany({
-      where: { operadorId: a.operadorId, vigenteHasta: null },
-      select: { id: true, salaId: true, inquilinoId: true, precioHoraCent: true, vigenteDesde: true, vigenteHasta: true },
     }),
     db.inquilino.findMany({ where: { operadorId: a.operadorId }, select: { id: true, nombre: true } }),
   ]);
@@ -147,9 +168,8 @@ export async function desajusteDelCentro(
 export async function reservasADesajustar(
   a: { operadorId: string; inquilinoId?: string },
   db: PrismaClient = prisma,
-  ahora: Date = new Date(),
 ): Promise<FilaReajuste[]> {
-  return (await desajusteDelCentro(a, db, ahora)).reajustables;
+  return (await desajusteDelCentro(a, db)).reajustables;
 }
 
 export const ReajustarInput = z.object({
@@ -171,9 +191,8 @@ export async function aplicarPrecioVigente(
   actor: Actor,
   input: z.infer<typeof ReajustarInput>,
   db: PrismaClient,
-  ahora: Date = new Date(),
 ): Promise<ResultadoReajuste> {
-  const filas = await reservasADesajustar({ operadorId: actor.operadorId, inquilinoId: input.inquilinoId }, db, ahora);
+  const filas = await reservasADesajustar({ operadorId: actor.operadorId, inquilinoId: input.inquilinoId }, db);
   let reajustadas = 0;
   let difCent = 0n;
 
