@@ -17,7 +17,7 @@ import { asentarIdempotente } from "../../src/servicios/plata/ledger.ts";
 import { cobrosCon } from "../../src/servicios/plata/cobros.ts";
 import { prisma } from "../../src/db/prisma.ts";
 import type { Actor } from "../../src/lib/actor.ts";
-import { nuevoPool, reiniciarEsquema, seedBase, URL_DB } from "./db.ts";
+import { insertarOcupacion, nuevoPool, reiniciarEsquema, seedBase, URL_DB } from "./db.ts";
 
 const pgPool = nuevoPool();
 const db = new PrismaClient({ datasourceUrl: URL_DB });
@@ -51,7 +51,9 @@ before(async () => {
   await seedBase(pgPool);
 });
 beforeEach(async () => {
-  await pgPool.query('TRUNCATE "Asiento","Liquidacion","Auditoria" CASCADE');
+  // `Ocupacion` también: desde que hay tests que crean reservas, dejarlas se arrastra al siguiente
+  // y choca contra la restricción de solape, que falla por una razón que no tiene nada que ver.
+  await pgPool.query('TRUNCATE "Asiento","Liquidacion","Auditoria","Ocupacion" CASCADE');
 });
 after(async () => {
   await db.$disconnect();
@@ -439,4 +441,80 @@ test("un cobro anulado no queda contado como cobrado", async () => {
 
   const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
   assert.equal(filas.reduce((a, f) => a + f.pagadoCent, 0n), 0n);
+});
+
+// ── Horas y precio por hora en cada fila ────────────────────────────────────
+//
+// La verificación que el operador hacía a mano: "nueve turnos de cuatro horas son treinta y seis,
+// a 7.100 son 255.600 — ¿por qué dice 251.200?". La respuesta era que un turno había quedado al
+// precio anterior, y desde la pantalla era invisible: solo se veía un total que no cerraba. Dos
+// precios distintos en el mismo mes son la firma de un aumento que entró a mitad de camino.
+
+/** Una reserva de N horas a un precio dado, con su cargo, como la crea la agenda. */
+async function turno(id: string, horas: number, precioHoraCent: bigint, dia: string) {
+  const inicio = new Date(`${dia}T13:00:00Z`);
+  await insertarOcupacion(pgPool, {
+    id, salaId: "sa1", inquilinoId: "in1",
+    inicio: inicio.toISOString(), fin: new Date(inicio.getTime() + horas * 3_600_000).toISOString(),
+  });
+  const importe = precioHoraCent * BigInt(horas);
+  await db.ocupacion.update({ where: { id }, data: { precioHoraCent, importeCent: importe } });
+  await asentarIdempotente(db, {
+    operadorId: "op1", inquilinoId: "in1", concepto: "cargo_uso", montoCent: importe, moneda: "ARS",
+    periodo: MES, fechaHecho: inicio, clave: `cargo_uso:${id}`, reservaId: id,
+  });
+}
+
+test("la fila dice cuántas horas y a qué precio", async () => {
+  await turno("t1", 4, 710_000n, `${MES}-08`);
+  await turno("t2", 4, 710_000n, `${MES}-15`);
+
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
+  const f = filas.find((x) => x.inquilinoId === "in1")!;
+  assert.equal(f.horas, 8);
+  assert.deepEqual(f.preciosHora, [710_000n], "un solo precio: la fila está limpia");
+});
+
+test("el caso de Laila: ocho turnos al precio nuevo y uno al viejo", async () => {
+  // 36 horas a 7.100 son 255.600; con un turno a 6.000 dan 251.200. La fila tiene que mostrar los
+  // DOS precios, que es lo único que explica la diferencia.
+  await turno("viejo", 4, 600_000n, `${MES}-01`);
+  for (let n = 0; n < 8; n++) await turno(`f${n}`, 4, 710_000n, `${MES}-${String(n + 8).padStart(2, "0")}`);
+
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
+  const f = filas.find((x) => x.inquilinoId === "in1")!;
+  assert.equal(f.horas, 36);
+  assert.deepEqual(f.preciosHora, [600_000n, 710_000n], "ordenados, de menor a mayor");
+  assert.equal(f.pendienteCent, 25_120_000n, "251.200: el total que no cerraba");
+});
+
+test("una reserva sin precio no se cuenta como un precio de cero", async () => {
+  // Un "$0" al lado de un precio real se leería como que a esa persona se le cobra cero.
+  await turno("conPrecio", 4, 710_000n, `${MES}-08`);
+  await insertarOcupacion(pgPool, {
+    id: "sinPrecio", salaId: "sa1", inquilinoId: "in1",
+    inicio: `${MES}-09T13:00:00Z`, fin: `${MES}-09T17:00:00Z`,
+  });
+  await asentarIdempotente(db, {
+    operadorId: "op1", inquilinoId: "in1", concepto: "cargo_uso", montoCent: 0n, moneda: "ARS",
+    periodo: MES, fechaHecho: new Date(`${MES}-09T13:00:00Z`), clave: "cargo_uso:sinPrecio", reservaId: "sinPrecio",
+  });
+
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
+  const f = filas.find((x) => x.inquilinoId === "in1")!;
+  assert.deepEqual(f.preciosHora, [710_000n]);
+  assert.equal(f.horas, 8, "las horas sí se cuentan: la reserva existe");
+});
+
+test("quien no tiene horas no reporta precios", async () => {
+  // Un abono mensual no es una hora: la fila no tiene que inventar un precio por hora.
+  await asentarIdempotente(db, {
+    operadorId: "op1", inquilinoId: "in1", concepto: "cargo_membresia", montoCent: 500_000n,
+    moneda: "ARS", periodo: MES, fechaHecho: new Date(`${MES}-01T12:00:00Z`), clave: "abono1",
+  });
+
+  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
+  const f = filas.find((x) => x.inquilinoId === "in1")!;
+  assert.equal(f.horas, 0);
+  assert.deepEqual(f.preciosHora, []);
 });

@@ -36,6 +36,19 @@ export type FilaCierre = {
   /** Si ya se cerró: el número que le tocó y el total congelado. */
   liquidacion: { id: string; numero: number; totalCent: bigint; estado: string; emitidaAt: Date | null } | null;
   /**
+   * Las horas de uso del mes y a qué precio por hora están cargadas.
+   *
+   * Es la verificación que el operador hacía a mano y que nadie más podía hacer: "nueve turnos de
+   * cuatro horas son treinta y seis, a 7.100 son 255.600 — ¿por qué dice 251.200?". La respuesta
+   * era que un turno había quedado al precio anterior, y desde la pantalla eso era invisible: solo
+   * se veía un total que no cerraba.
+   *
+   * Con DOS precios distintos en la lista, la fila lo dice sola. Es un arreglo de pantalla, no de
+   * cuentas: los importes siempre fueron los de los cargos; lo que faltaba era poder mirarlos.
+   */
+  horas: number;
+  preciosHora: bigint[];
+  /**
    * Lo que ya pagó de ESE mes, neto de anulaciones. Es lo que distingue "se le emitió" de "ya
    * cobré": sin esto, la pantalla que sirve para cerrar el mes no puede después servir para ver a
    * quién falta cobrarle, que es la segunda vez que se abre.
@@ -62,7 +75,7 @@ export async function pendientesDeCierre(
   // aprobaría un número y el profesional recibiría otro.
   const anulados = await cargosAnulados(db, { operadorId: a.operadorId, periodo: a.periodo });
 
-  const [porInquilino, liquidaciones, inquilinos, noFacturan, pagos] = await Promise.all([
+  const [porInquilino, liquidaciones, inquilinos, noFacturan, cargosHora, pagos] = await Promise.all([
     // Solo lo NO liquidado: es exactamente lo que el cierre va a reclamar. Si acá se contara todo,
     // el número de la pantalla no sería el que después va a salir.
     db.asiento.groupBy({
@@ -82,6 +95,17 @@ export async function pendientesDeCierre(
     db.inquilino.findMany({ where: { operadorId: a.operadorId }, select: { id: true, nombre: true, pagador: true } }),
     idsQueNoFacturan(db, a.operadorId),
 
+    // Los cargos POR HORA del mes con su reserva, para poder mostrar horas y precio por hora. Se
+    // sale por `periodo` del asiento y no por un rango de fechas: es exactamente la definición de
+    // mes que usa el resto de esta pantalla, así que las horas no pueden discrepar del total.
+    db.asiento.findMany({
+      where: {
+        operadorId: a.operadorId, cuenta: "corriente", periodo: a.periodo,
+        concepto: "cargo_uso", reservaId: { not: null },
+      },
+      select: { inquilinoId: true, reservaId: true },
+    }),
+
     // Lo que cada uno ya pagó de ESTE mes, neto de anulaciones. Se calcula por concepto y no por
     // signo, igual que en el resto de las pantallas: una nota de crédito de un turno cancelado es
     // negativa y por signo se leería como plata que el profesional mandó.
@@ -93,6 +117,28 @@ export async function pendientesDeCierre(
       GROUP BY a."inquilinoId"`,
   ]);
   const pagadoDe = new Map(pagos.map((p) => [p.id, p.pagado]));
+
+  // Minutos y precios por hora de cada uno, leyendo las reservas de esos cargos. Una sola consulta
+  // más: los ids ya los trajo la anterior.
+  const idsReserva = cargosHora.map((c) => c.reservaId!).filter(Boolean);
+  const reservas = idsReserva.length
+    ? await db.ocupacion.findMany({
+        where: { id: { in: idsReserva }, operadorId: a.operadorId },
+        select: { id: true, inicio: true, fin: true, precioHoraCent: true },
+      })
+    : [];
+  const reservaPor = new Map(reservas.map((r) => [r.id, r]));
+  const usoDe = new Map<string, { minutos: number; precios: Set<string> }>();
+  for (const c of cargosHora) {
+    const r = reservaPor.get(c.reservaId!);
+    if (!r) continue;
+    const acc = usoDe.get(c.inquilinoId) ?? { minutos: 0, precios: new Set<string>() };
+    acc.minutos += Math.round((r.fin.getTime() - r.inicio.getTime()) / 60_000);
+    // Las reservas sin precio no entran en la lista: un "$0" al lado de un precio real se leería
+    // como que a esa persona se le cobra cero, cuando en realidad es una reserva sin tarifa.
+    if (r.precioHoraCent !== null) acc.precios.add(String(r.precioHoraCent));
+    usoDe.set(c.inquilinoId, acc);
+  }
 
   const nombre = new Map(inquilinos.map((i) => [i.id, i]));
   const liqDe = new Map(liquidaciones.map((l) => [l.inquilinoId, l]));
@@ -117,6 +163,9 @@ export async function pendientesDeCierre(
         pendientes: p?._count._all ?? 0,
         pendienteCent: p?._sum.montoCent ?? 0n,
         liquidacion: l ? { id: l.id, numero: l.numero, totalCent: l.totalCent, estado: l.estado, emitidaAt: l.emitidaAt } : null,
+        horas: Math.round(((usoDe.get(id)?.minutos ?? 0) / 60) * 100) / 100,
+        // Ordenados, así "6.000 y 7.100" sale siempre igual y dos filas se comparan de un vistazo.
+        preciosHora: [...(usoDe.get(id)?.precios ?? [])].map(BigInt).sort((x, y) => (x < y ? -1 : x > y ? 1 : 0)),
         pagadoCent: pagadoDe.get(id) ?? 0n,
       };
     })

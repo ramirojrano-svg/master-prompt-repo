@@ -97,6 +97,10 @@ export default async function CierrePage({
   // Cerrado y cobrado no son lo mismo y por eso van separados: emitir el papel no es que la plata
   // llegó. Con un solo número —el que había— la pantalla contestaba "¿qué me falta cerrar?" y
   // dejaba sin respuesta la que se hace después, todo el mes: "¿quién me pagó?".
+  // Quién tiene DOS precios por hora distintos en el mismo mes. Es la firma de un aumento que
+  // entró a mitad de camino, y era invisible: el total es correcto como suma de cargos, solo que
+  // los cargos no son los que uno espera.
+  const mezclados = filas.filter((f) => f.preciosHora.length > 1);
   const totalCerrado = yaCerradas.reduce((acc, f) => acc + (f.liquidacion?.totalCent ?? 0n), 0n);
   const totalCobrado = filas.reduce((acc, f) => acc + f.pagadoCent, 0n);
   // Lo emitido que todavía no entró. Puede dar negativo si alguien pagó por adelantado más de lo
@@ -386,6 +390,37 @@ export default async function CierrePage({
           </p>
         </section>
 
+        {/* ── Precios mezclados en el mismo mes ─────────────────────────────────
+            Casi siempre es un aumento que entró a mitad de camino: el turno del día en que se
+            cargó el precio quedó al anterior. El total no da error —son los cargos que hay— y por
+            eso se descubría sumando a mano. Acá se ve de una. */}
+        {mezclados.length > 0 && (
+          <div className="panel" style={{ padding: 18, marginTop: 18, borderLeft: "4px solid var(--error)" }}>
+            <h2 style={{ marginTop: 0, fontSize: 16 }}>
+              {mezclados.length === 1
+                ? "Hay un profesional con dos precios por hora en el mismo mes"
+                : `Hay ${mezclados.length} profesionales con dos precios por hora en el mismo mes`}
+            </h2>
+            <p style={{ margin: "6px 0 10px", fontSize: 14, lineHeight: 1.6 }}>
+              Les quedaron turnos a un valor y turnos a otro dentro de {nombreDePeriodo(periodo)}.
+              Suele pasar cuando un aumento se carga con el mes empezado: los turnos de ese mismo día
+              quedan al precio anterior.
+            </p>
+            <ul style={{ margin: "0 0 10px", paddingLeft: 18, fontSize: 14, lineHeight: 1.7 }}>
+              {mezclados.map((f) => (
+                <li key={f.inquilinoId}>
+                  {f.nombre}: {f.horas} h a {f.preciosHora.map((c) => plata(c)).join(" y ")} la hora
+                </li>
+              ))}
+            </ul>
+            <p className="tenue" style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>
+              Para emparejarlos: en <Link href={`/panel/${slug}/tarifas`}>Precios</Link> volvé a
+              guardar su valor por hora poniendo en <b>Rige desde</b> el primer día del mes. Si ya
+              les cerraste la liquidación, reabrila con la <b>×</b> roja y volvé a cerrarla.
+            </p>
+          </div>
+        )}
+
         {/* ── Abonos del mes sin postear ───────────────────────────────────────
             Aparece solo si falta alguno. Un abono no genera su cargo solo: hay un botón que lo
             postea. Si nadie lo aprieta, quien tiene abono no tiene cargos, no entra en la lista de
@@ -441,6 +476,22 @@ export default async function CierrePage({
                       <Link href={`/panel/${slug}/inquilinos/${f.inquilinoId}?periodo=${periodo}`}>{f.nombre}</Link>
                       {/* A nombre de quién sale el papel: es el dato que se mira al momento de cobrar. */}
                       {f.pagador && <span className="tenue" style={{ fontSize: 12 }}> · abona {f.pagador}</span>}
+
+                      {/* Horas y precio por hora: la cuenta que el operador hacía a mano para
+                          controlar el total, y que hasta ahora no podía hacer desde acá. Con DOS
+                          precios en la lista la fila lo dice sola —"6.000 y 7.100"— en vez de
+                          dejar un total que no cierra y ninguna pista de por qué. */}
+                      {f.horas > 0 && (
+                        <div style={{ fontSize: 12, marginTop: 2 }} className={f.preciosHora.length > 1 ? undefined : "tenue"}>
+                          {f.horas} h
+                          {f.preciosHora.length === 1 && <> · {plata(f.preciosHora[0]!)} la hora</>}
+                          {f.preciosHora.length > 1 && (
+                            <span style={{ color: "var(--error)", fontWeight: 600 }}>
+                              {" "}· a {f.preciosHora.map((c) => plata(c)).join(" y ")} la hora
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     {/* `data-rotulo` y `data-vacio` solo pintan en el teléfono, donde la fila se
                         apila y la columna deja de decir qué es cada número. En la tabla ancha no
