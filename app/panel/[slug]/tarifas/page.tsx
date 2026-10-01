@@ -25,13 +25,15 @@ export default async function TarifasPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string; ok?: string; cobrados?: string; repetidos?: string; cotizadas?: string; restantes?: string; reajustadas?: string; aplicadas?: string; porSala?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; cobrados?: string; repetidos?: string; corregidos?: string; juntados?: string; cotizadas?: string; restantes?: string; reajustadas?: string; aplicadas?: string; porSala?: string }>;
 }) {
   const { slug } = await params;
   const sp = await searchParams;
   const { error, ok } = sp;
   const cobrados = sp.cobrados != null ? Number(sp.cobrados) : null;
   const repetidos = Number(sp.repetidos ?? 0);
+  const corregidos = Number(sp.corregidos ?? 0);
+  const juntados = Number(sp.juntados ?? 0);
 
   const actor = await actorDeSesion(slug);
   if (!actor) redirect(`/login?centro=${encodeURIComponent(slug)}`);
@@ -181,7 +183,9 @@ export default async function TarifasPage({
     if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
     const r = await cobrarAbonosDelMes(a, { periodo: formData.get("periodo") });
     revalidatePath(`/panel/${slug}/tarifas`);
-    const q = r.ok ? `?cobrados=${r.data.cobrados}&repetidos=${r.data.yaEstaban}` : "?error=ABONO";
+    const q = r.ok
+      ? `?cobrados=${r.data.cobrados}&repetidos=${r.data.yaEstaban}&corregidos=${r.data.corregidos}&juntados=${r.data.consolidados}`
+      : "?error=ABONO";
     redirect(`/panel/${slug}/tarifas${q}`);
   }
 
@@ -481,7 +485,17 @@ export default async function TarifasPage({
           </div>
           <div>
             <label htmlFor="montoMensual">Importe por mes</label>
-            <input id="montoMensual" name="montoMensual" type="number" min={0} step="0.01" required placeholder="250000" />
+            {/* Texto, por lo mismo que el precio por hora: un abono de "4.500" se guardaba como
+                $4,50. Ver el comentario en FormPrecio. */}
+            <input
+              id="montoMensual"
+              name="montoMensual"
+              type="text"
+              inputMode="decimal"
+              required
+              placeholder="4.500"
+              autoComplete="off"
+            />
           </div>
         </div>
         <p style={{ marginTop: 14, marginBottom: 0 }}><button type="submit">Guardar abono</button></p>
@@ -529,6 +543,14 @@ export default async function TarifasPage({
                   ? "Ya estaban todos cargados este mes."
                   : `${cobrados} abono${cobrados === 1 ? "" : "s"} cargado${cobrados === 1 ? "" : "s"}.`}
                 {repetidos > 0 && <span className="tenue"> {repetidos} ya estaba{repetidos === 1 ? "" : "n"}.</span>}
+                {/* Corregir y juntar no son lo mismo que cobrar, y callarlos dejaría al operador
+                    sin saber que la pantalla le arregló algo. */}
+                {corregidos > 0 && (
+                  <span> {corregidos} se {corregidos === 1 ? "actualizó" : "actualizaron"} al importe del abono vigente.</span>
+                )}
+                {juntados > 0 && (
+                  <span> Se {juntados === 1 ? "juntó un cargo duplicado" : `juntaron ${juntados} cargos duplicados`} del mismo mes.</span>
+                )}
               </span>
             )}
           </form>

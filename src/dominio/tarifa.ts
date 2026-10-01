@@ -81,3 +81,47 @@ export function formatearPesos(centavos: bigint, moneda = "ARS", locale = "es-AR
   const entero = Number(centavos) / 100;
   return new Intl.NumberFormat(locale, { style: "currency", currency: moneda, minimumFractionDigits: 2 }).format(entero);
 }
+
+/**
+ * Lee plata escrita como la escribe un argentino: "4.500" son cuatro mil quinientos.
+ *
+ * EL ERROR QUE ESTO CIERRA, y costó plata de verdad: los campos de importe eran `type="number"`,
+ * así que el valor llegaba al servidor tal cual se tipeó y `Number("4.500")` da **4.5**. Un abono
+ * de $4.500 se guardaba como $4,50 y el de $3.750 como $3,75 — mil veces menos, sin ningún error,
+ * y el operador lo descubría al cerrar el mes.
+ *
+ * La convención es la que la app ya usa para MOSTRAR plata (`formatearPesos` escribe
+ * "$ 4.500,00"): punto para miles, coma para decimales. Leer con la misma convención con la que se
+ * escribe es lo único que hace que lo que uno teclea y lo que ve coincidan.
+ *
+ * El único caso ambiguo es un punto solo. Se resuelve por la forma: punto seguido de EXACTAMENTE
+ * tres dígitos, repetible, es separador de miles ("4.500", "1.234.567"); cualquier otra cosa es
+ * decimal ("4.5", "0.75"). Es la regla de es-AR, y es la que hace que el caso que rompió —tres
+ * dígitos después del punto— se lea bien.
+ *
+ * Devuelve `null` si no es un número, para que el esquema lo rechace en vez de guardar un NaN.
+ */
+export function aPesos(valor: unknown): number | null {
+  if (typeof valor === "number") return Number.isFinite(valor) ? valor : null;
+  if (typeof valor !== "string") return null;
+
+  const t = valor.trim().replace(/\s/g, "").replace(/^\$/, "");
+  if (t === "") return null;
+
+  const tieneComa = t.includes(",");
+  const tienePunto = t.includes(".");
+
+  let normal: string;
+  if (tieneComa) {
+    // Con coma, la coma SIEMPRE es el decimal: "4.500,50" y "4500,50". Los puntos son miles.
+    normal = t.replace(/\./g, "").replace(",", ".");
+  } else if (tienePunto) {
+    // Punto solo: miles si cada grupo tiene tres dígitos, decimal si no.
+    normal = /^-?\d{1,3}(\.\d{3})+$/.test(t) ? t.replace(/\./g, "") : t;
+  } else {
+    normal = t;
+  }
+
+  const n = Number(normal);
+  return Number.isFinite(n) ? n : null;
+}

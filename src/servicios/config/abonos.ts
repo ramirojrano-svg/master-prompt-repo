@@ -16,12 +16,12 @@ import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
 import { cobrarMembresia } from "../plata/membresias.ts";
 import { esPeriodoValido } from "../../dominio/reporte.ts";
-import { aCentavos } from "./tarifas.ts";
+import { aCentavos, PlataEnPesos } from "./tarifas.ts";
 
 export const AbonoInput = z.object({
   inquilinoId: z.string().min(1),
-  /** En PESOS, como lo escribe el operador. 0 = darlo de baja (vuelve a no tener abono). */
-  montoMensual: z.coerce.number().min(0).max(100_000_000),
+  /** En PESOS, como lo escribe el operador —punto de miles incluido—. 0 = darlo de baja. */
+  montoMensual: PlataEnPesos,
 });
 
 export type ResultadoAbono = { ok: true } | { ok: false; error: "INQUILINO_INEXISTENTE" };
@@ -70,7 +70,16 @@ export const ponerAbonoMensual = definirAccion({ permiso: "tarifa.administrar", 
 
 export const PeriodoInput = z.object({ periodo: z.string().refine(esPeriodoValido, "periodo inválido") });
 
-export type ResultadoCobro = { ok: true; cobrados: number; yaEstaban: number; totalCent: bigint };
+export type ResultadoCobro = {
+  ok: true;
+  cobrados: number;
+  yaEstaban: number;
+  /** Cargos del mes que ya existían por OTRO importe y se pusieron al abono vigente. */
+  corregidos: number;
+  /** Duplicados del mismo mes que se juntaron en uno. */
+  consolidados: number;
+  totalCent: bigint;
+};
 
 /**
  * Postea el cargo del mes a TODOS los que tienen abono vigente. Idempotente por período: los que
@@ -95,6 +104,8 @@ async function cobrarDelMes(
 
   let cobrados = 0;
   let yaEstaban = 0;
+  let corregidos = 0;
+  let consolidados = 0;
   let total = 0n;
   for (const m of vigentes) {
     const r = await cobrarMembresia(db, {
@@ -106,14 +117,18 @@ async function cobrarDelMes(
       moneda: operador.moneda,
       fechaHecho,
     });
+    consolidados += r.consolidados;
     if (r.creado) {
       cobrados++;
+      total += m.precioMensualCent;
+    } else if (r.corregido) {
+      corregidos++;
       total += m.precioMensualCent;
     } else {
       yaEstaban++;
     }
   }
-  return { ok: true, cobrados, yaEstaban, totalCent: total };
+  return { ok: true, cobrados, yaEstaban, corregidos, consolidados, totalCent: total };
 }
 
 export const cobrarAbonosDelMes = definirAccion({ permiso: "tarifa.administrar", schema: PeriodoInput }, (a, i) => cobrarDelMes(a, i));

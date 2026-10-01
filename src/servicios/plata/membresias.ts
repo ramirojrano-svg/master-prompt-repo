@@ -37,11 +37,52 @@ export async function altaMembresia(a: AltaMembresia, db: PrismaClient = prisma)
   return { membresiaId: m.id };
 }
 
-/** Cargo mensual del abono. Idempotente: un solo cargo por (membresía, período). */
+/**
+ * Cargo mensual del abono. Un solo cargo por (PROFESIONAL, período).
+ *
+ * La clave era por MEMBRESÍA, y eso dejaba entrar un duplicado por una puerta que se usa seguido:
+ * cambiar el importe del abono no edita la membresía, la cierra y crea otra (§8.8). Así que
+ * corregir un abono y volver a apretar "cobrar los abonos del mes" posteaba un SEGUNDO cargo del
+ * mismo mes —el viejo y el nuevo, los dos vivos— y al profesional le aparecían dos renglones. Es
+ * exactamente lo que pasa cuando uno se equivoca al cargar el importe, que es cuando más
+ * probable es que lo corrija y vuelva a apretar.
+ *
+ * Por eso la clave es del profesional y el mes: no hay forma de que haya dos. Y como el abono
+ * puede haber cambiado entre un intento y el otro, si ya existe un cargo del mes SIN LIQUIDAR y
+ * por otro importe, se corrige al vigente en vez de ignorarlo: el operador aprieta justamente
+ * porque el número anterior estaba mal. Lo ya liquidado no se toca — hay un papel emitido.
+ */
 export async function cobrarMembresia(
   db: Pick<PrismaClient, "asiento">,
   a: { operadorId: string; inquilinoId: string; membresiaId: string; periodo: string; montoCent: bigint; moneda: string; fechaHecho: Date },
-): Promise<{ creado: boolean }> {
+): Promise<{ creado: boolean; corregido: boolean; consolidados: number }> {
+  const clave = `cargo_membresia:${a.inquilinoId}:${a.periodo}`;
+
+  // Los duplicados que ya quedaron en la base, de cuando la clave era por membresía. Se juntan en
+  // uno solo: son el mismo hecho económico contado dos veces, y mientras estén el profesional ve
+  // dos renglones por un abono que es uno.
+  const previos = await db.asiento.findMany({
+    where: {
+      operadorId: a.operadorId, inquilinoId: a.inquilinoId,
+      periodo: a.periodo, concepto: "cargo_membresia", liquidacionId: null,
+    },
+    select: { id: true, montoCent: true, clave: true },
+    orderBy: { id: "asc" },
+  });
+
+  if (previos.length > 0) {
+    const sobran = previos.slice(1);
+    if (sobran.length > 0) {
+      await db.asiento.deleteMany({ where: { id: { in: sobran.map((x) => x.id) } } });
+    }
+    const queda = previos[0]!;
+    const hayQueCorregir = queda.montoCent !== a.montoCent || queda.clave !== clave;
+    if (hayQueCorregir) {
+      await db.asiento.update({ where: { id: queda.id }, data: { montoCent: a.montoCent, clave } });
+    }
+    return { creado: false, corregido: hayQueCorregir, consolidados: sobran.length };
+  }
+
   const r = await asentarIdempotente(db, {
     operadorId: a.operadorId,
     inquilinoId: a.inquilinoId,
@@ -50,9 +91,9 @@ export async function cobrarMembresia(
     moneda: a.moneda,
     periodo: a.periodo,
     fechaHecho: a.fechaHecho,
-    clave: `cargo_membresia:${a.membresiaId}:${a.periodo}`,
+    clave,
   });
-  return { creado: r.creado };
+  return { creado: r.creado, corregido: false, consolidados: 0 };
 }
 
 /**

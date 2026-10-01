@@ -103,7 +103,19 @@ export function FormPrecio({
         </div>
         <div>
           <label htmlFor="precioHora">{esTodosMenos ? "Importe por hora (para el resto)" : "Importe por hora"}</label>
-          <input id="precioHora" name="precioHora" type="number" min={0} step="0.01" required placeholder="8000" />
+          {/* TEXTO y no `number`. Con `number`, escribir "4.500" —el punto de miles de acá— manda
+              "4.500" al servidor y `Number()` lo lee como 4.5: mil veces menos, sin ningún error.
+              Ahora el valor se interpreta con la misma convención con la que la app muestra plata.
+              `inputMode="decimal"` conserva el teclado numérico en el celular. */}
+          <input
+            id="precioHora"
+            name="precioHora"
+            type="text"
+            inputMode="decimal"
+            required
+            placeholder="9.100"
+            autoComplete="off"
+          />
         </div>
         {/* Un aumento casi nunca empieza "ahora": se carga el 30 de septiembre y rige desde el 1
             de octubre, que es la unidad con la que se factura. Sin este campo el precio arrancaba
@@ -159,9 +171,8 @@ export function FormPrecio({
                       <input type="hidden" name="excepcionId" value={i.id} />
                       <input
                         name="excepcionPrecio"
-                        type="number"
-                        min={0}
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
                         required
                         placeholder="importe"
                         value={excluidos[i.id] ?? ""}

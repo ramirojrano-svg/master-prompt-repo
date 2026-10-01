@@ -113,3 +113,89 @@ test("un profesional de otro centro no existe acá", async () => {
   const r = await ponerAbonoMensual(OWNER, { inquilinoId: "no-existe", montoMensual: 250_000 });
   assert.ok(r.ok && !r.data.ok && r.data.error === "INQUILINO_INEXISTENTE");
 });
+
+// ── Un solo cargo por profesional y mes ─────────────────────────────────────
+//
+// El caso reportado: a dos clientes con abono les figuraban DOS cargos en el mismo mes. La clave
+// idempotente era por MEMBRESÍA, y cambiar el importe de un abono no edita la membresía: la cierra
+// y crea otra (§8.8). Así que corregir un abono mal cargado y volver a apretar "cobrar los abonos
+// del mes" posteaba un segundo cargo. Pasa justo cuando uno se equivoca al cargar el importe, que
+// es cuando más probable es que lo corrija y vuelva a apretar.
+
+test("corregir el abono y volver a cobrar NO duplica el cargo del mes", async () => {
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 4.5 }); // el "4.500" mal leído
+  await cobrarAbonosDelMes(OWNER, { periodo: "2026-10" });
+
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 4500 }); // corregido
+  const r = await cobrarAbonosDelMes(OWNER, { periodo: "2026-10" });
+
+  const c = await cargos();
+  assert.equal(c.length, 1, "un abono por mes es UN cargo");
+  assert.equal(c[0]!.montoCent, 450_000n, "y por el importe vigente, no por el viejo");
+  assert.ok(r.ok && r.data.corregidos === 1);
+});
+
+test("apretar dos veces sin cambiar nada sigue sin cobrar dos veces", async () => {
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 4500 });
+  await cobrarAbonosDelMes(OWNER, { periodo: "2026-10" });
+  const r = await cobrarAbonosDelMes(OWNER, { periodo: "2026-10" });
+
+  const c = await cargos();
+  assert.equal(c.length, 1);
+  assert.ok(r.ok && r.data.yaEstaban === 1 && r.data.corregidos === 0, "ya estaba, y no hubo nada que corregir");
+});
+
+test("junta los duplicados que ya habían quedado en la base", async () => {
+  // Reparar lo que el bug viejo dejó: el operador aprieta el botón y la pantalla se ordena sola,
+  // sin que nadie tenga que entrar a tocar la base.
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 4.5 });
+  await cobrarAbonosDelMes(OWNER, { periodo: "2026-10" });
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 4500 });
+  // Un duplicado como los que dejaba la clave vieja, por membresía.
+  const m = await db.membresia.findFirstOrThrow({ where: { inquilinoId: "in1" }, select: { id: true } });
+  await db.asiento.create({
+    data: {
+      operadorId: "op1", inquilinoId: "in1", cuenta: "corriente", concepto: "cargo_membresia",
+      montoCent: 450_000n, moneda: "ARS", periodo: "2026-10",
+      fechaHecho: new Date("2026-10-01T12:00:00Z"), clave: `cargo_membresia:${m.id}:2026-10`,
+    },
+  });
+  assert.equal((await cargos()).length, 2, "el escenario arranca con los dos cargos");
+
+  const r = await cobrarAbonosDelMes(OWNER, { periodo: "2026-10" });
+
+  const c = await cargos();
+  assert.equal(c.length, 1, "queda uno solo");
+  assert.equal(c[0]!.montoCent, 450_000n);
+  assert.ok(r.ok && r.data.consolidados === 1);
+});
+
+test("un cargo YA LIQUIDADO no se toca ni se junta", async () => {
+  // Hay un papel emitido con ese importe adentro: corregirlo sería reescribirlo.
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 4500 });
+  await cobrarAbonosDelMes(OWNER, { periodo: "2026-10" });
+  const liq = await db.liquidacion.create({
+    data: {
+      operadorId: "op1", inquilinoId: "in1", periodo: "2026-10", numero: 1,
+      subtotalCent: 450_000n, netoCent: 450_000n, ivaCent: 0n, totalCent: 450_000n,
+      estado: "emitida", venceEl: new Date("2026-10-28T12:00:00Z"),
+      alicuota: 0, receptorRazonSocial: "Megafreight", receptorCondIva: "consumidor_final",
+    },
+    select: { id: true },
+  });
+  await db.asiento.updateMany({ where: { concepto: "cargo_membresia" }, data: { liquidacionId: liq.id } });
+
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 9999 });
+  await cobrarAbonosDelMes(OWNER, { periodo: "2026-10" });
+
+  const sellado = await db.asiento.findFirstOrThrow({ where: { liquidacionId: liq.id }, select: { montoCent: true } });
+  assert.equal(sellado.montoCent, 450_000n, "el importe emitido no se reescribe");
+});
+
+test("el abono se lee con el punto de miles: 4.500 son cuatro mil quinientos", async () => {
+  // El origen de todo: `Number("4.500")` da 4.5, así que el abono se guardaba mil veces menor.
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: "4.500" as unknown as number });
+
+  const m = await db.membresia.findFirstOrThrow({ where: { inquilinoId: "in1" }, select: { precioMensualCent: true } });
+  assert.equal(m.precioMensualCent, 450_000n, "$4.500, no $4,50");
+});

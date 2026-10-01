@@ -14,6 +14,7 @@ import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
 import { aplicarPrecioVigente } from "../plata/reajustar.ts";
 import { rangoDiaEnZona } from "../../dominio/motor/zona.ts";
+import { aPesos } from "../../dominio/tarifa.ts";
 import { resolverTarifa, type TarifaVigente } from "../../dominio/tarifa.ts";
 import type { Actor } from "../../lib/actor.ts";
 
@@ -24,10 +25,20 @@ const Alcance = z.object({
   inquilinoId: z.string().trim().transform((s) => s || null).nullable().default(null),
 });
 
+/**
+ * Un importe en pesos tal como lo escribe el operador, incluido el punto de miles.
+ *
+ * `z.coerce.number()` leía "4.500" como 4.5 —mil veces menos, sin error— porque el campo es de
+ * texto y el valor llega tal cual se tecleó. `aPesos` usa la misma convención con la que la app
+ * MUESTRA plata, así que lo que uno ve y lo que uno escribe significan lo mismo.
+ */
+export const PlataEnPesos = z
+  .preprocess((v) => aPesos(v) ?? v, z.number().finite().min(0).max(100_000_000));
+
 export const TarifaInput = Alcance.extend({
   // Se escribe en PESOS (lo que el owner tiene en la cabeza) y se guarda en CENTAVOS.
-  // coerce.number sobre "8000" y sobre "8000.50"; el redondeo es al centavo, no al peso.
-  precioHora: z.coerce.number().finite().min(0).max(100_000_000),
+  // Se lee con el punto de miles de este lado del mundo: "9.100" son nueve mil cien, no 9,1.
+  precioHora: PlataEnPesos,
   /**
    * Desde cuándo rige, como 'YYYY-MM-DD'. Si no viene, desde este instante.
    *
@@ -75,14 +86,14 @@ export type ResultadoTarifa =
  * agujero sería silencioso — se descubre a fin de mes, cuando el resumen viene en cero.
  */
 export const TarifasLoteInput = z.object({
-  precioHora: z.coerce.number().finite().min(0).max(100_000_000),
+  precioHora: PlataEnPesos,
   /** Igual que en `TarifaInput`: desde cuándo rige. Vale para el general y para las excepciones. */
   vigenteDesde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fecha inválida").optional(),
   excepciones: z
     .array(
       z.object({
         inquilinoId: z.string().min(1),
-        precioHora: z.coerce.number().finite().min(0).max(100_000_000),
+        precioHora: PlataEnPesos,
       }),
     )
     .max(500)
