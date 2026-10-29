@@ -137,7 +137,20 @@ export default async function GastosPage({
           </label>
           <label style={{ display: "grid", gap: 4, margin: 0, fontSize: 13 }}>
             <span className="tenue">Importe</span>
-            <input name="monto" type="number" min="1" step="1" required placeholder="85000" style={{ width: 130 }} />
+            {/* Texto y no `number`: con `number`, escribir "120.000" —el punto de miles de acá—
+                llegaba al servidor y se leía como 120. Un cobro de ciento veinte mil se
+                registraba como ciento veinte pesos, sin error. `inputMode="decimal"` conserva
+                el teclado numérico en el celular. */}
+            <input
+              name="monto"
+              type="text"
+              inputMode="decimal"
+              required
+              placeholder="85.000"
+              autoComplete="off"
+              aria-label="Importe del gasto"
+              style={{ width: 130 }}
+            />
           </label>
           <label style={{ display: "grid", gap: 4, margin: 0, fontSize: 13 }}>
             <span className="tenue">Fecha</span>

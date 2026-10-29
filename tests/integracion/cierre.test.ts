@@ -171,3 +171,64 @@ test("el mes de un profesional no arrastra los cargos de otro", async () => {
   assert.equal(otro.pendienteCent, 9_000n, "el de al lado sigue entero");
   assert.equal(otro.liquidacion, null);
 });
+
+// ── Ajustes a favor del profesional ─────────────────────────────────────────
+//
+// Un ajuste a favor —"te descuento la semana que estuvo la obra"— quedaba solo en el saldo del
+// libro: no estaba en la lista de conceptos que el cierre reclama, así que la liquidación le
+// emitía el total como si el descuento no existiera. El profesional recibía una cuenta por plata
+// que ya se le había perdonado.
+
+const MES = PERIODO;
+const ajuste = (concepto: "ajuste_credito" | "ajuste_debito", montoCent: bigint, clave: string, inq = "in1") =>
+  asentarIdempotente(db, {
+    operadorId: "op1", inquilinoId: inq, concepto, montoCent, moneda: "ARS", periodo: MES,
+    fechaHecho: new Date(`${MES}-05T12:00:00Z`), clave, motivo: "ajuste de prueba",
+  });
+
+test("un ajuste a favor baja el total de la liquidación", async () => {
+  await cargo("in1", 100_000n, "c1");
+  await ajuste("ajuste_credito", -30_000n, "descuento");
+
+  const r = await uno(owner, { inquilinoId: "in1", periodo: MES, venceEl: `${MES}-28` });
+
+  assert.ok(r.ok && r.data.ok);
+  assert.equal(r.data.totalCent, 70_000n, "el descuento está en el papel, no solo en el libro");
+});
+
+test("la pantalla anuncia el mismo número que después se emite", async () => {
+  // La propiedad que hace confiable al cierre: lo que se aprueba es lo que sale.
+  await cargo("in1", 100_000n, "c1");
+  await ajuste("ajuste_credito", -30_000n, "descuento");
+
+  const antes = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
+  const anunciado = antes.find((f) => f.inquilinoId === "in1")!.pendienteCent;
+  const r = await uno(owner, { inquilinoId: "in1", periodo: MES, venceEl: `${MES}-28` });
+
+  assert.ok(r.ok && r.data.ok);
+  assert.equal(r.data.totalCent, anunciado);
+});
+
+test("no se emite un papel en negativo: se avisa y los cargos quedan", async () => {
+  // Un total negativo sería una nota de crédito, que este sistema no emite.
+  await cargo("in1", 100_000n, "c1");
+  await ajuste("ajuste_credito", -300_000n, "descuentazo");
+
+  const r = await uno(owner, { inquilinoId: "in1", periodo: MES, venceEl: `${MES}-28` });
+
+  assert.ok(r.ok && !r.data.ok && r.data.error === "SALDO_A_FAVOR");
+  assert.equal(await db.liquidacion.count({ where: { periodo: MES } }), 0, "no se numeró nada");
+  const suelto = await db.asiento.findFirstOrThrow({ where: { clave: "c1" }, select: { liquidacionId: true } });
+  assert.equal(suelto.liquidacionId, null, "los cargos quedaron sin liquidar: no se perdió nada");
+});
+
+test("un ajuste a favor de OTRO mes no toca este", async () => {
+  await cargo("in1", 100_000n, "c1");
+  await asentarIdempotente(db, {
+    operadorId: "op1", inquilinoId: "in1", concepto: "ajuste_credito", montoCent: -50_000n, moneda: "ARS",
+    periodo: "2020-01", fechaHecho: new Date("2020-01-05T12:00:00Z"), clave: "viejo", motivo: "x",
+  });
+
+  const r = await uno(owner, { inquilinoId: "in1", periodo: MES, venceEl: `${MES}-28` });
+  assert.ok(r.ok && r.data.ok && r.data.totalCent === 100_000n);
+});

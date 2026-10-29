@@ -14,7 +14,7 @@ import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
 import { aplicarPrecioVigente } from "../plata/reajustar.ts";
 import { rangoDiaEnZona } from "../../dominio/motor/zona.ts";
-import { aPesos } from "../../dominio/tarifa.ts";
+import { plataEnPesos } from "../../lib/plata-entrada.ts";
 import { resolverTarifa, type TarifaVigente } from "../../dominio/tarifa.ts";
 import type { Actor } from "../../lib/actor.ts";
 
@@ -32,8 +32,7 @@ const Alcance = z.object({
  * texto y el valor llega tal cual se tecleó. `aPesos` usa la misma convención con la que la app
  * MUESTRA plata, así que lo que uno ve y lo que uno escribe significan lo mismo.
  */
-export const PlataEnPesos = z
-  .preprocess((v) => aPesos(v) ?? v, z.number().finite().min(0).max(100_000_000));
+export const PlataEnPesos = plataEnPesos(z.number().finite().min(0).max(100_000_000));
 
 export const TarifaInput = Alcance.extend({
   // Se escribe en PESOS (lo que el owner tiene en la cabeza) y se guarda en CENTAVOS.

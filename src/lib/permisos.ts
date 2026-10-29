@@ -40,6 +40,7 @@ export type Permiso =
   | "cuenta.ver.propia"
   | "cuenta.ver.todas"
   | "finanzas.ver.agregada"
+  | "gasto.administrar" // cargar y anular gastos del centro: ESCRIBE
   | "periodo.cerrar"
   | "acceso.codigo.ver"
   | "acceso.codigo.rotar"
@@ -72,6 +73,7 @@ export const ETIQUETA_PERMISO: Record<Permiso, string> = {
   "cobro.registrar": "Registrar un cobro",
   "cuenta.ver.propia": "Ver la cuenta propia",
   "cuenta.ver.todas": "Ver las cuentas",
+  "gasto.administrar": "Cargar y anular gastos",
   "finanzas.ver.agregada": "Ver los números del centro",
   "periodo.cerrar": "Cerrar el mes",
   "acceso.codigo.ver": "Ver el código de acceso",
@@ -99,6 +101,7 @@ const TODOS: Permiso[] = [
   "cuenta.ver.propia",
   "cuenta.ver.todas",
   "finanzas.ver.agregada",
+  "gasto.administrar",
   "periodo.cerrar",
   "acceso.codigo.ver",
   "acceso.codigo.rotar",
@@ -140,3 +143,23 @@ export function puede(rol: Rol, p: Permiso): boolean {
 }
 
 export const PERMISOS_TODOS = TODOS;
+
+/**
+ * Los permisos que SOLO habilitan a mirar.
+ *
+ * Ninguna acción puede declarar uno de estos: `definirAccion` envuelve escrituras, y autorizar
+ * una escritura con un permiso de lectura le da la escritura a todo el que podía mirar. Pasó: las
+ * acciones de gastos pedían `finanzas.ver.agregada`, que tiene el rol de soporte —documentado como
+ * "SOLO lectura, nunca escribe"—, así que soporte podía cargar y anular gastos y mover el
+ * resultado del centro. El test de la matriz no podía verlo: la matriz estaba bien, lo que estaba
+ * mal era qué permiso pedía la acción. Hay un test estructural que recorre las acciones.
+ */
+export const PERMISOS_DE_LECTURA: ReadonlySet<Permiso> = new Set<Permiso>([
+  "agenda.ver.identidad",
+  "agenda.ver.disponibilidad",
+  "cuenta.ver.propia",
+  "cuenta.ver.todas",
+  "finanzas.ver.agregada",
+  "acceso.codigo.ver",
+  "auditoria.ver",
+]);

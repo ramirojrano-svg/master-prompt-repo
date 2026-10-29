@@ -98,7 +98,7 @@ export default async function DetalleProfesionalPage({
       "Esa persona usa el mismo email en otro centro, así que la contraseña es una sola para los dos. " +
       "Tiene que restablecerla desde allá, o darle acá un email distinto.",
     ENTRADA_INVALIDA: `Revisá el email y que la contraseña tenga al menos ${LARGO_MIN_CLAVE} caracteres.`,
-    MES_CERRADO: "Ese mes ya está cerrado: el cobro no se puede anular sin reabrir la liquidación.",
+    MES_CERRADO: "Ese mes ya está cerrado: para anular el cobro, reabrí su liquidación en Cierre de mes con la × roja, anulalo, y volvé a cerrarla.",
     YA_ANULADO: "Ese cobro ya estaba anulado.",
     COBRO_INEXISTENTE: "No se encontró ese cobro.",
     INQUILINO_INEXISTENTE: "No se encontró ese profesional.",
@@ -242,7 +242,20 @@ export default async function DetalleProfesionalPage({
             <form action={registrarPago} className="panel" style={{ padding: 16, marginBottom: 12, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
               <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
                 <span className="tenue">Importe</span>
-                <input name="monto" type="number" min="1" step="1" required placeholder="50000" style={{ width: 130 }} />
+                {/* Texto y no `number`: con `number`, escribir "120.000" —el punto de miles de acá—
+                llegaba al servidor y se leía como 120. Un cobro de ciento veinte mil se
+                registraba como ciento veinte pesos, sin error. `inputMode="decimal"` conserva
+                el teclado numérico en el celular. */}
+            <input
+              name="monto"
+              type="text"
+              inputMode="decimal"
+              required
+              placeholder="50.000"
+              autoComplete="off"
+              aria-label="Importe del cobro"
+              style={{ width: 130 }}
+            />
               </label>
               <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
                 <span className="tenue">Medio</span>

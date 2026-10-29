@@ -11,6 +11,7 @@
 // vean dos números distintos y ninguna pueda explicar por qué.
 
 import { z } from "zod";
+import { plataEnPesos } from "../../lib/plata-entrada.ts";
 import { type PrismaClient, type RubroGasto } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
@@ -50,8 +51,8 @@ export const ETIQUETA_RUBRO: Record<RubroGasto, string> = {
 export const GastoInput = z.object({
   rubro: z.enum(RUBROS),
   detalle: z.string().trim().min(2).max(200),
-  /** En PESOS, como lo escribe el operador. */
-  monto: z.coerce.number().positive().max(1_000_000_000),
+  /** En PESOS, como lo escribe el operador —con el punto de miles—. "85.000" son ochenta y cinco mil. */
+  monto: plataEnPesos(z.number().finite().positive().max(1_000_000_000)),
   /** 'YYYY-MM-DD' — el día del gasto, que manda sobre el mes al que pertenece. */
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fecha inválida"),
   proveedor: z.string().trim().max(120).optional(),
@@ -88,7 +89,7 @@ async function cargar(
   return { ok: true, id: g.id };
 }
 
-export const cargarGasto = definirAccion({ permiso: "finanzas.ver.agregada", schema: GastoInput }, (a, i) => cargar(a, i));
+export const cargarGasto = definirAccion({ permiso: "gasto.administrar", schema: GastoInput }, (a, i) => cargar(a, i));
 
 export const AnularGastoInput = z.object({
   gastoId: z.string().min(1),
@@ -118,12 +119,12 @@ async function anular(
   return r.count === 1 ? { ok: true } : { ok: false, error: "YA_ANULADO" };
 }
 
-export const anularGasto = definirAccion({ permiso: "finanzas.ver.agregada", schema: AnularGastoInput }, (a, i) => anular(a, i));
+export const anularGasto = definirAccion({ permiso: "gasto.administrar", schema: AnularGastoInput }, (a, i) => anular(a, i));
 
 /** Versiones inyectables, para los tests. */
 export const gastosCon = (db: PrismaClient) => ({
-  cargar: definirAccion({ permiso: "finanzas.ver.agregada", schema: GastoInput, db }, (a, i) => cargar(a, i, db)),
-  anular: definirAccion({ permiso: "finanzas.ver.agregada", schema: AnularGastoInput, db }, (a, i) => anular(a, i, db)),
+  cargar: definirAccion({ permiso: "gasto.administrar", schema: GastoInput, db }, (a, i) => cargar(a, i, db)),
+  anular: definirAccion({ permiso: "gasto.administrar", schema: AnularGastoInput, db }, (a, i) => anular(a, i, db)),
 });
 
 export type GastoDelMes = {

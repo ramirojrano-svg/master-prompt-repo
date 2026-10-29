@@ -19,6 +19,7 @@
 
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { plataEnPesos } from "../../lib/plata-entrada.ts";
 import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
 import { definirAccion } from "../../lib/accion.ts";
@@ -36,8 +37,8 @@ export const ETIQUETA_MEDIO: Record<(typeof MEDIOS)[number], string> = {
 
 export const CobroInput = z.object({
   inquilinoId: z.string().min(1),
-  /** En PESOS, como lo escribe el operador. */
-  monto: z.coerce.number().positive().max(100_000_000),
+  /** En PESOS, como lo escribe el operador —con el punto de miles—. "120.000" son ciento veinte mil. */
+  monto: plataEnPesos(z.number().finite().positive().max(100_000_000)),
   medio: z.enum(MEDIOS),
   /** Nº de operación del comprobante. Opcional, pero es lo que evita cargar dos veces lo mismo. */
   referencia: z.string().trim().max(80).optional(),

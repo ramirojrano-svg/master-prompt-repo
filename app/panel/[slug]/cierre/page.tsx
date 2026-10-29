@@ -241,6 +241,14 @@ export default async function CierrePage({
           </p>
         )}
         {sp.error === "NADA_QUE_LIQUIDAR" && <p className="aviso-error">Ese profesional no tiene cargos sin liquidar en {nombreDePeriodo(periodo)}.</p>}
+        {sp.error === "SALDO_A_FAVOR" && (
+          <p className="aviso-error">
+            No se emitió: a ese profesional le quedan más ajustes a favor que cargos en{" "}
+            {nombreDePeriodo(periodo)}, así que el papel saldría en negativo. Eso sería una nota de
+            crédito, que no se emite desde acá. Revisale los ajustes en su ficha; los cargos
+            quedaron sin liquidar, no se perdió nada.
+          </p>
+        )}
         {sp.error === "YA_LIQUIDADO" && <p className="aviso-error">Ese mes ya estaba cerrado para ese profesional. No se emitió nada nuevo.</p>}
         {sp.ok === "reabierto" && (
           <p className="aviso-ok">

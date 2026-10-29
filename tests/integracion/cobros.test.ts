@@ -160,3 +160,20 @@ test("un profesional no puede registrar cobros", async () => {
   const r = await registrarCobro(inquilino, { inquilinoId: "in1", monto: 50_000, medio: "transferencia" });
   assert.ok(!r.ok, "tiene que rechazarse por permisos");
 });
+
+test("un cobro escrito con el punto de miles es lo que uno quiso decir", async () => {
+  // "120.000" se leía como 120: un cobro de ciento veinte mil se registraba como ciento veinte
+  // pesos, y como un cobro baja la deuda, el saldo quedaba mal en la dirección peligrosa —parecía
+  // que el profesional había pagado—.
+  const r = await registrarCobro(OWNER, { inquilinoId: "in1", monto: "120.000" as unknown as number, medio: "transferencia" });
+
+  assert.ok(r.ok);
+  const pago = await db.asiento.findFirstOrThrow({ where: { concepto: "pago" }, select: { montoCent: true } });
+  assert.equal(pago.montoCent, -12_000_000n, "$120.000, no $120");
+});
+
+test("un importe que no es plata se rechaza, no se guarda en cero", async () => {
+  const r = await registrarCobro(OWNER, { inquilinoId: "in1", monto: "ciento veinte mil" as unknown as number, medio: "transferencia" });
+  assert.equal(r.ok, false);
+  assert.equal(await db.asiento.count({ where: { concepto: "pago" } }), 0);
+});

@@ -264,7 +264,7 @@ export function mensajeDeMovimiento(codigo: string): string {
     case "NO_MOVIBLE":
       return "Los bloqueos no se arrastran.";
     case "MES_CERRADO":
-      return "Ese turno ya está en un mes liquidado: moverlo cambiaría plata ya cerrada.";
+      return "Ese turno ya está en un mes liquidado: moverlo cambiaría plata ya cerrada. Si hace falta, reabrí esa liquidación en Cierre de mes con la × roja, movelo, y volvé a cerrarla.";
     case "FECHA_PASADA":
       return "No se puede mover un turno a una fecha que ya pasó.";
     case "FUERA_DE_HORIZONTE":
@@ -292,7 +292,7 @@ export function mensajeDeTurno(codigo: string): string {
     case "NO_CANCELABLE":
       return "Los bloqueos no se cancelan desde acá.";
     case "MES_CERRADO":
-      return "Ese turno está en un mes ya liquidado: cancelarlo cambiaría plata cerrada.";
+      return "Ese turno está en un mes ya liquidado: cancelarlo cambiaría plata cerrada. Si hay que devolverle esa hora, reabrí esa liquidación en Cierre de mes con la × roja, cancelalo, y volvé a cerrarla.";
     case "NO_APLICABLE":
       return "El turno no está en un estado que permita esa marca.";
     case "NO_ENCONTRADA":

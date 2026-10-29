@@ -24,6 +24,7 @@
 import { z } from "zod";
 import { type PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma.ts";
+import { JOIN_REVERTIDO, SUMA_COBRADO, SUMA_FACTURADO } from "../reportes/movimientos.ts";
 import { definirAccion } from "../../lib/accion.ts";
 import type { Actor } from "../../lib/actor.ts";
 
@@ -56,11 +57,18 @@ export async function queArrastra(
   if (!i) return null;
 
   const donde = { operadorId: a.operadorId, inquilinoId: a.inquilinoId };
-  const [reservas, movimientos, cargos, cobros, liquidaciones, tarifas, acceso] = await Promise.all([
+  const [reservas, movimientos, plata, liquidaciones, tarifas, acceso] = await Promise.all([
     db.ocupacion.count({ where: donde }),
     db.asiento.count({ where: donde }),
-    db.asiento.aggregate({ where: { ...donde, montoCent: { gt: 0 } }, _sum: { montoCent: true } }),
-    db.asiento.aggregate({ where: { ...donde, montoCent: { lt: 0 } }, _sum: { montoCent: true } }),
+    // Por CONCEPTO y no por signo, como en el resto de las pantallas (ver `movimientos.ts`). Con
+    // el criterio viejo, a quien se le canceló un turno le figuraba que había pagado una plata que
+    // nunca mandó, y a quien se le anuló un cobro le figuraba una venta que no existió — en la
+    // pantalla que uno mira justo antes de borrarle la historia, que es irreversible.
+    db.$queryRaw<{ cargado: bigint; cobrado: bigint }[]>`
+      SELECT ${SUMA_FACTURADO} AS cargado, ${SUMA_COBRADO} AS cobrado
+      FROM "Asiento" a
+      ${JOIN_REVERTIDO}
+      WHERE a."operadorId" = ${a.operadorId} AND a."inquilinoId" = ${a.inquilinoId}`,
     db.liquidacion.findMany({ where: donde, select: { numero: true, totalCent: true }, orderBy: { numero: "asc" } }),
     db.tarifa.count({ where: donde }),
     db.usuarioOperador.findFirst({ where: donde, select: { usuarioId: true } }),
@@ -72,9 +80,8 @@ export async function queArrastra(
     estado: i.estado,
     reservas,
     movimientos,
-    cargadoCent: cargos._sum.montoCent ?? 0n,
-    // Los cobros están en negativo: se dan vuelta para leerlos como plata que entró.
-    cobradoCent: -(cobros._sum.montoCent ?? 0n),
+    cargadoCent: plata[0]?.cargado ?? 0n,
+    cobradoCent: plata[0]?.cobrado ?? 0n,
     liquidaciones,
     tarifas,
     tieneAcceso: acceso !== null,

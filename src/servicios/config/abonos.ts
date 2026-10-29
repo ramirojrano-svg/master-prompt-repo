@@ -102,28 +102,42 @@ async function cobrarDelMes(
   // agosto en septiembre, el cargo pertenece a agosto igual (§5.1).
   const fechaHecho = new Date(`${input.periodo}-01T12:00:00.000Z`);
 
+  // UN cargo por profesional, por el total de lo que abona. Hoy `ponerAbono` cierra el anterior
+  // antes de crear el nuevo, así que cada uno tiene un solo abono vigente — pero el cargo del mes
+  // es uno solo por persona, y si alguna vez hubiera dos abonos, recorrerlos de a uno postearía el
+  // primero y después lo pisaría con el segundo. Sumar acá hace que el resultado no dependa de esa
+  // suposición.
+  const porInquilino = new Map<string, { montoCent: bigint; membresiaId: string }>();
+  for (const m of vigentes) {
+    const previo = porInquilino.get(m.inquilinoId);
+    porInquilino.set(m.inquilinoId, {
+      montoCent: (previo?.montoCent ?? 0n) + m.precioMensualCent,
+      membresiaId: previo?.membresiaId ?? m.id,
+    });
+  }
+
   let cobrados = 0;
   let yaEstaban = 0;
   let corregidos = 0;
   let consolidados = 0;
   let total = 0n;
-  for (const m of vigentes) {
+  for (const [inquilinoId, m] of porInquilino) {
     const r = await cobrarMembresia(db, {
       operadorId: actor.operadorId,
-      inquilinoId: m.inquilinoId,
-      membresiaId: m.id,
+      inquilinoId,
+      membresiaId: m.membresiaId,
       periodo: input.periodo,
-      montoCent: m.precioMensualCent,
+      montoCent: m.montoCent,
       moneda: operador.moneda,
       fechaHecho,
     });
     consolidados += r.consolidados;
     if (r.creado) {
       cobrados++;
-      total += m.precioMensualCent;
+      total += m.montoCent;
     } else if (r.corregido) {
       corregidos++;
-      total += m.precioMensualCent;
+      total += m.montoCent;
     } else {
       yaEstaban++;
     }

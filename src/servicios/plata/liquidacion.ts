@@ -20,6 +20,15 @@ export const FACTURABLES: Concepto[] = [
   "penalidad_noshow",
   "interes_mora",
   "ajuste_debito",
+  // Un ajuste A FAVOR del profesional. Entra por la misma razón por la que entra el débito: es un
+  // movimiento del mes que alguien cargó a mano y tiene que estar en el papel. Afuera, el
+  // descuento quedaba solo en el saldo del libro y la liquidación le reclamaba el total: se le
+  // emitía una cuenta por plata que ya se le había perdonado.
+  //
+  // Distinto de `nota_credito`, que NO está acá a propósito: esa es la vuelta atrás de un cargo
+  // concreto, y el par entero —cargo y crédito— se excluye en `cargosAnulados`. Sumarla además
+  // daría el total bien con un renglón de más.
+  "ajuste_credito",
 ];
 
 /**
@@ -67,10 +76,11 @@ export async function cargosAnulados(
 }
 
 class NadaQueLiquidar extends Error {}
+class SaldoAFavor extends Error {}
 
 export type ResultadoCierre =
   | { ok: true; liquidacionId: string; numero: number; totalCent: bigint }
-  | { ok: false; error: "NADA_QUE_LIQUIDAR" | "YA_LIQUIDADO" };
+  | { ok: false; error: "NADA_QUE_LIQUIDAR" | "YA_LIQUIDADO" | "SALDO_A_FAVOR" };
 
 export async function cerrarPeriodo(
   a: {
@@ -128,6 +138,13 @@ export async function cerrarPeriodo(
       // 2) Recién ahora sumar, y sumar SOLO lo reclamado.
       const total = await tx.asiento.aggregate({ where: { liquidacionId: liq.id }, _sum: { montoCent: true } });
       const subtotalCent = total._sum.montoCent ?? 0n;
+
+      // Un total negativo sería un papel que dice que el centro le debe plata al profesional, y
+      // eso no es una liquidación: es una nota de crédito, que este sistema no emite. Se frena
+      // antes de numerar nada —la transacción vuelve atrás y los cargos quedan sin liquidar— y se
+      // le avisa, en vez de emitir un documento que nadie sabe cómo leer.
+      if (subtotalCent < 0n) throw new SaldoAFavor();
+
       const { netoCent, ivaCent } = desagregarIva(subtotalCent, a.alicuotaDecimas);
 
       await tx.liquidacion.update({
@@ -139,6 +156,7 @@ export async function cerrarPeriodo(
     });
   } catch (e) {
     if (e instanceof NadaQueLiquidar) return { ok: false, error: "NADA_QUE_LIQUIDAR" };
+    if (e instanceof SaldoAFavor) return { ok: false, error: "SALDO_A_FAVOR" };
     if (esUniqueViolado(e)) return { ok: false, error: "YA_LIQUIDADO" }; // otra corrida ya cerró (inquilino,periodo)
     throw e;
   }

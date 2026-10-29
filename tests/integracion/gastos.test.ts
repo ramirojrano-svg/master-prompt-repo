@@ -127,3 +127,25 @@ test("un profesional no puede cargar gastos del espacio", async () => {
   const r = await cargarGasto(inquilino, luz);
   assert.ok(!r.ok, "tiene que rechazarse por permisos");
 });
+
+test("un gasto escrito con el punto de miles es lo que uno quiso decir", async () => {
+  // "85.000" se leía como 85. Un gasto mil veces menor no da error: solo hace que el resultado
+  // del mes en Negocio sea mejor de lo que es.
+  const r = await cargarGasto(OWNER, { rubro: "servicios", detalle: "luz", monto: "85.000" as unknown as number, fecha: "2026-08-05" });
+
+  assert.ok(r.ok);
+  const g = await db.gasto.findFirstOrThrow({ select: { montoCent: true } });
+  assert.equal(g.montoCent, 8_500_000n, "$85.000, no $85");
+});
+
+test("cargar y anular gastos NO lo puede hacer un rol de solo lectura", async () => {
+  // Pedían `finanzas.ver.agregada`, que es de LECTURA y que tiene soporte —documentado como "solo
+  // lectura, nunca escribe"—. Un rol que solo podía mirar movía el resultado del centro.
+  const soporte = { usuarioId: "u9", operadorId: "op1", rol: "soporte_plataforma" as const, inquilinoId: null };
+
+  const r = await cargarGasto(soporte, { rubro: "servicios", detalle: "luz", monto: 85000, fecha: "2026-08-05" });
+
+  assert.equal(r.ok, false);
+  assert.equal(r.ok === false && r.error, "SIN_PERMISO");
+  assert.equal(await db.gasto.count(), 0, "un rechazo no deja rastro escrito");
+});
