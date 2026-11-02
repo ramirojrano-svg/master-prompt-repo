@@ -34,7 +34,9 @@ export type FilaCierre = {
   pendientes: number;
   pendienteCent: bigint;
   /** Si ya se cerró: el número que le tocó y el total congelado. */
-  liquidacion: { id: string; numero: number; totalCent: bigint; estado: string; emitidaAt: Date | null } | null;
+  liquidacion: { id: string; numero: number; totalCent: bigint; estado: string; emitidaAt: Date | null; avisadaEl: Date | null } | null;
+  /** Ya normalizado para wa.me. null = no tiene cargado, y entonces no hay botón que ofrecer. */
+  whatsapp: string | null;
   /**
    * Las horas de uso del mes y a qué precio por hora están cargadas.
    *
@@ -90,9 +92,9 @@ export async function pendientesDeCierre(
     }),
     db.liquidacion.findMany({
       where: { operadorId: a.operadorId, periodo: a.periodo },
-      select: { id: true, inquilinoId: true, numero: true, totalCent: true, estado: true, emitidaAt: true },
+      select: { id: true, inquilinoId: true, numero: true, totalCent: true, estado: true, emitidaAt: true, avisadaEl: true },
     }),
-    db.inquilino.findMany({ where: { operadorId: a.operadorId }, select: { id: true, nombre: true, pagador: true } }),
+    db.inquilino.findMany({ where: { operadorId: a.operadorId }, select: { id: true, nombre: true, pagador: true, whatsapp: true } }),
     idsQueNoFacturan(db, a.operadorId),
 
     // Los cargos POR HORA del mes con su reserva, para poder mostrar horas y precio por hora. Se
@@ -162,7 +164,8 @@ export async function pendientesDeCierre(
         pagador: i?.pagador ?? null,
         pendientes: p?._count._all ?? 0,
         pendienteCent: p?._sum.montoCent ?? 0n,
-        liquidacion: l ? { id: l.id, numero: l.numero, totalCent: l.totalCent, estado: l.estado, emitidaAt: l.emitidaAt } : null,
+        liquidacion: l ? { id: l.id, numero: l.numero, totalCent: l.totalCent, estado: l.estado, emitidaAt: l.emitidaAt, avisadaEl: l.avisadaEl } : null,
+        whatsapp: i?.whatsapp ?? null,
         horas: Math.round(((usoDe.get(id)?.minutos ?? 0) / 60) * 100) / 100,
         // Ordenados, así "6.000 y 7.100" sale siempre igual y dos filas se comparan de un vistazo.
         preciosHora: [...(usoDe.get(id)?.precios ?? [])].map(BigInt).sort((x, y) => (x < y ? -1 : x > y ? 1 : 0)),
