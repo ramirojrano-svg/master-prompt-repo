@@ -22,7 +22,7 @@ import { formatearPesos } from "../../../../src/dominio/tarifa.ts";
 import { nombreDePeriodo, periodoAnterior, periodoSiguiente, venceElDelPeriodo } from "../../../../src/dominio/reporte.ts";
 import { periodoDeTrabajo } from "../../../../src/servicios/plata/periodo-trabajo.ts";
 import { datosDeCobro } from "../../../../src/servicios/config/cobro.ts";
-import { abonosVigentes, cobrarAbonosDelMes } from "../../../../src/servicios/config/abonos.ts";
+import { abonosSinCobrar as abonosSinCobrarDelMes, cobrarAbonosDelMes } from "../../../../src/servicios/config/abonos.ts";
 import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
 import { BotonEnviar } from "../BotonEnviar.tsx";
 import { IconoDocumento } from "../../../Iconos.tsx";
@@ -112,21 +112,11 @@ export default async function CierrePage({
   // Los abonos NO se cargan solos: hay un botón aparte que postea el cargo del mes. Si nadie lo
   // aprieta, quien tiene abono no tiene ningún cargo, no aparece en esta lista, y termina siendo
   // el único al que no se le factura el mes. Se detecta acá para poder avisarlo antes de cerrar.
-  const abonos = await abonosVigentes(actor.operadorId);
-  const yaCobrados = abonos.length
-    ? new Set(
-        (
-          await prisma.asiento.findMany({
-            where: {
-              operadorId: actor.operadorId,
-              clave: { in: abonos.map((m) => `cargo_membresia:${m.id}:${periodo}`) },
-            },
-            select: { clave: true },
-          })
-        ).map((x) => x.clave),
-      )
-    : new Set<string>();
-  const abonosSinCobrar = abonos.filter((m) => !yaCobrados.has(`cargo_membresia:${m.id}:${periodo}`));
+  //
+  // La detección la hace el servicio, no esta pantalla. Acá estaba escrita a mano —armando la
+  // clave del asiento— y cuando la clave cambió, el cartel quedó buscando algo que ya no se
+  // escribe: avisaba para siempre y el botón contestaba "ya estaban cargados".
+  const abonosSinCobrar = await abonosSinCobrarDelMes({ operadorId: actor.operadorId, periodo });
 
   const venceDefault = venceElDelPeriodo(periodo, cobro.diaVencimiento);
   const venceTexto = new Date(`${venceDefault}T12:00:00Z`).toLocaleDateString("es-AR", {

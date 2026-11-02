@@ -6,9 +6,9 @@
 //
 // El cobro de cada mes NO se postea solo: lo dispara el operador desde la pantalla de precios.
 // Es a propósito — una app que factura sola en segundo plano genera deuda que nadie miró, y el
-// día que el importe está mal ya se le mandó el resumen a treinta personas. La clave del asiento
-// es `cargo_membresia:<membresiaId>:<periodo>`, así que apretar el botón dos veces en el mismo
-// mes no cobra dos veces.
+// día que el importe está mal ya se le mandó el resumen a treinta personas. Apretar el botón dos
+// veces en el mismo mes no cobra dos veces: hay UN cargo por profesional y período (ver
+// `cobrarMembresia`).
 
 import { z } from "zod";
 import { type PrismaClient } from "@prisma/client";
@@ -152,6 +152,39 @@ export const abonosCon = (db: PrismaClient) => ({
   poner: definirAccion({ permiso: "tarifa.administrar", schema: AbonoInput, db }, (a, i) => ponerAbono(a, i, db)),
   cobrar: definirAccion({ permiso: "tarifa.administrar", schema: PeriodoInput, db }, (a, i) => cobrarDelMes(a, i, db)),
 });
+
+/**
+ * Los abonos vigentes a los que TODAVÍA no se les posteó el cargo de ese mes.
+ *
+ * Vive acá y no en la pantalla porque la pantalla lo tenía escrito a mano, armando la clave del
+ * asiento por su cuenta. Cuando la clave cambió —de la membresía al profesional— el cartel quedó
+ * buscando una clave que ya no se escribe: avisaba "sin cargar" para siempre, y al apretar el
+ * botón contestaba "ya estaban cargados". Dos lugares que tenían que saber lo mismo, y uno se
+ * enteró del cambio y el otro no.
+ *
+ * Por eso no se busca por clave sino por el hecho: un cargo de abono, de ese profesional, en ese
+ * mes. Es la misma verdad que mira `cobrarMembresia` al decidir si postea, así que el cartel y el
+ * botón no pueden volver a contradecirse.
+ */
+export async function abonosSinCobrar(
+  a: { operadorId: string; periodo: string },
+  db: PrismaClient = prisma,
+) {
+  const vigentes = await abonosVigentes(a.operadorId, db);
+  if (vigentes.length === 0) return [];
+
+  const cobrados = await db.asiento.findMany({
+    where: {
+      operadorId: a.operadorId,
+      periodo: a.periodo,
+      concepto: "cargo_membresia",
+      inquilinoId: { in: vigentes.map((m) => m.inquilino.id) },
+    },
+    select: { inquilinoId: true },
+  });
+  const yaTiene = new Set(cobrados.map((c) => c.inquilinoId));
+  return vigentes.filter((m) => !yaTiene.has(m.inquilino.id));
+}
 
 /** Los abonos vigentes, para la pantalla. */
 export async function abonosVigentes(operadorId: string, db: PrismaClient = prisma) {

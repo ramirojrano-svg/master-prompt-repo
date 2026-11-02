@@ -7,7 +7,7 @@
 import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
-import { abonosCon, abonosVigentes } from "../../src/servicios/config/abonos.ts";
+import { abonosCon, abonosSinCobrar, abonosVigentes } from "../../src/servicios/config/abonos.ts";
 import { prisma } from "../../src/db/prisma.ts";
 import { nuevoPool, reiniciarEsquema, seedBase, URL_DB } from "./db.ts";
 
@@ -198,4 +198,57 @@ test("el abono se lee con el punto de miles: 4.500 son cuatro mil quinientos", a
 
   const m = await db.membresia.findFirstOrThrow({ where: { inquilinoId: "in1" }, select: { precioMensualCent: true } });
   assert.equal(m.precioMensualCent, 450_000n, "$4.500, no $4,50");
+});
+
+// ── El cartel y el botón tienen que decir lo mismo ──────────────────────────
+//
+// Falla reportada: se cargan los abonos, el cartel sigue diciendo "sin cargar", y al apretar el
+// botón contesta "ya están cargados". Las dos pantallas miraban cosas distintas — la del cartel
+// armaba la clave del asiento a mano, y cuando la clave cambió (de la membresía al profesional)
+// quedó buscando algo que ya no se escribe. Avisaba para siempre.
+//
+// Lo que se prueba no es la clave: es que las dos respuestas no puedan contradecirse.
+
+test("después de cobrar, no queda ningún abono marcado como sin cargar", async () => {
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 });
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in2", montoMensual: 180_000 });
+  assert.equal((await abonosSinCobrar({ operadorId: "op1", periodo: "2026-10" }, db)).length, 2);
+
+  const r = await cobrarAbonosDelMes(OWNER, { periodo: "2026-10" });
+
+  assert.ok(r.ok && r.data.cobrados === 2);
+  assert.deepEqual(
+    await abonosSinCobrar({ operadorId: "op1", periodo: "2026-10" }, db),
+    [],
+    "el cartel no puede seguir pidiendo lo que el botón ya hizo",
+  );
+});
+
+test("lo que el cartel anuncia es exactamente lo que el botón va a cobrar", async () => {
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 });
+  await cobrarAbonosDelMes(OWNER, { periodo: "2026-10" });
+  // Se suma otro DESPUÉS de haber cobrado: el cartel tiene que pedir solo ese.
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in2", montoMensual: 180_000 });
+
+  const pendientes = await abonosSinCobrar({ operadorId: "op1", periodo: "2026-10" }, db);
+  assert.equal(pendientes.length, 1);
+  assert.equal(pendientes[0]!.inquilino.id, "in2");
+
+  const r = await cobrarAbonosDelMes(OWNER, { periodo: "2026-10" });
+  assert.ok(r.ok && r.data.cobrados === 1 && r.data.yaEstaban === 1);
+});
+
+test("cada mes se pide por separado", async () => {
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 });
+  await cobrarAbonosDelMes(OWNER, { periodo: "2026-10" });
+
+  assert.equal((await abonosSinCobrar({ operadorId: "op1", periodo: "2026-10" }, db)).length, 0);
+  assert.equal((await abonosSinCobrar({ operadorId: "op1", periodo: "2026-11" }, db)).length, 1, "noviembre todavía no se cobró");
+});
+
+test("un abono dado de baja no se sigue pidiendo", async () => {
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 250_000 });
+  await ponerAbonoMensual(OWNER, { inquilinoId: "in1", montoMensual: 0 }); // baja
+
+  assert.deepEqual(await abonosSinCobrar({ operadorId: "op1", periodo: "2026-10" }, db), []);
 });
