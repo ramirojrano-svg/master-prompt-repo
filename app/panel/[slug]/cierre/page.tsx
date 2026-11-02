@@ -25,9 +25,6 @@ import { datosDeCobro } from "../../../../src/servicios/config/cobro.ts";
 import { abonosSinCobrar as abonosSinCobrarDelMes, cobrarAbonosDelMes } from "../../../../src/servicios/config/abonos.ts";
 import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
 import { BotonEnviar } from "../BotonEnviar.tsx";
-import { AvisarWhatsApp } from "./AvisarWhatsApp.tsx";
-import { marcarComoAvisada, mensajeDeAviso } from "../../../../src/servicios/plata/aviso-whatsapp.ts";
-import { firmarEnlace } from "../../../../src/lib/enlace-firmado.ts";
 import { IconoDocumento } from "../../../Iconos.tsx";
 
 /**
@@ -100,16 +97,6 @@ export default async function CierrePage({
   // Cerrado y cobrado no son lo mismo y por eso van separados: emitir el papel no es que la plata
   // llegó. Con un solo número —el que había— la pantalla contestaba "¿qué me falta cerrar?" y
   // dejaba sin respuesta la que se hace después, todo el mes: "¿quién me pagó?".
-  // A quién NO se le va a poder mandar el WhatsApp. Se dice ANTES de empezar la ronda: sin esto,
-  // el dato aparece recién cuando llegás a su fila y no hay botón, y para entonces ya cerraste el
-  // mes. Solo cuenta a los que tienen liquidación: al resto todavía no hay nada que mandarle.
-  const sinWhatsApp = yaCerradas.filter((f) => !f.whatsapp);
-
-  // De dónde sale la dirección del PDF. En Vercel la da el propio despliegue; en una instalación
-  // con dominio propio se carga a mano. Sin ninguna de las dos, el mensaje sale igual pero sin
-  // link: un `https://undefined/...` sería peor que no mandarlo.
-  const base = (process.env.NEXT_PUBLIC_APP_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : ""))
-    .replace(/\/+$/, "");
   const totalCerrado = yaCerradas.reduce((acc, f) => acc + (f.liquidacion?.totalCent ?? 0n), 0n);
   const totalCobrado = filas.reduce((acc, f) => acc + f.pagadoCent, 0n);
   // Lo emitido que todavía no entró. Puede dar negativo si alguien pagó por adelantado más de lo
@@ -162,15 +149,6 @@ export default async function CierrePage({
     const r = await cobrarAbonosDelMes(a, { periodo: String(formData.get("periodo") ?? "") });
     revalidatePath(`/panel/${slug}/cierre`);
     redirect(`${volverA}${r.ok ? `&ok=abonos&n=${r.data.cobrados}` : `&error=${r.error}`}`);
-  }
-
-  async function avisarPorWhatsApp(formData: FormData) {
-    "use server";
-    const a = await actorDeSesion(slug);
-    if (!a) redirect(`/login?centro=${encodeURIComponent(slug)}`);
-    await marcarComoAvisada(a, { liquidacionId: String(formData.get("liquidacionId") ?? "") });
-    // Solo se repinta: el chat ya lo abrió el navegador y navegar acá tiraría la lista.
-    revalidatePath(`/panel/${slug}/cierre`);
   }
 
   async function darCobrada(formData: FormData) {
@@ -280,13 +258,13 @@ export default async function CierrePage({
         )}
         {sp.error === "YA_AVISADA" && (
           <p className="aviso-error">
-            No se pudo reabrir: esa liquidación ya se le mandó. Borrarla lo dejaría con un papel que no existe.
+            No se pudo reabrir: esa liquidación ya se le mandó por mail. Borrarla lo dejaría con un papel que no existe.
           </p>
         )}
         {sp.error === "NO_ENCONTRADA" && <p className="aviso-error">Esa liquidación ya no existe.</p>}
         {sp.error === "YA_AVISADAS" && (
           <p className="aviso-error">
-            No se reabrió: alguna liquidación de {nombreDePeriodo(periodo)} ya se le mandó al
+            No se reabrió: alguna liquidación de {nombreDePeriodo(periodo)} ya se le mandó por mail al
             profesional. Borrarla acá lo dejaría con un papel que no existe.
           </p>
         )}
@@ -405,32 +383,6 @@ export default async function CierrePage({
             dos veces el mismo mes.
           </p>
         </section>
-
-        {/* ── A quién no se le puede avisar por WhatsApp ────────────────────── */}
-        {sinWhatsApp.length > 0 && (
-          <div className="panel" style={{ padding: 18, marginTop: 18, borderLeft: "4px solid var(--alerta)" }}>
-            <h2 style={{ marginTop: 0, fontSize: 16 }}>
-              {sinWhatsApp.length === 1
-                ? "Hay un profesional sin WhatsApp cargado"
-                : `Hay ${sinWhatsApp.length} profesionales sin WhatsApp cargado`}
-            </h2>
-            <p style={{ margin: "6px 0 10px", fontSize: 14, lineHeight: 1.6 }}>
-              Tienen la liquidación emitida, pero su fila no va a tener botón de WhatsApp: no hay a
-              qué número abrir el chat.
-            </p>
-            <ul style={{ margin: "0 0 10px", paddingLeft: 18, fontSize: 14, lineHeight: 1.7 }}>
-              {sinWhatsApp.slice(0, 10).map((f) => (
-                <li key={f.inquilinoId}>
-                  <Link href={`/panel/${slug}/inquilinos/${f.inquilinoId}`}>{f.nombre}</Link>
-                </li>
-              ))}
-            </ul>
-            <p className="tenue" style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>
-              Se carga en su ficha, en <b>Profesionales</b>. Da igual cómo lo escribas —con 15, con
-              +54, con guiones—: se guarda normalizado.
-            </p>
-          </div>
-        )}
 
         {/* ── Abonos del mes sin postear ───────────────────────────────────────
             Aparece solo si falta alguno. Un abono no genera su cargo solo: hay un botón que lo
@@ -555,42 +507,6 @@ export default async function CierrePage({
                           >
                             <IconoDocumento tam={22} />
                           </Link>
-                          {/* Mandarle la liquidación por WhatsApp.
-
-                              Acá se cobra por WhatsApp, no por mail. Hasta ahora eso era: entrar
-                              a la liquidación, bajar el PDF, buscar a la persona en la agenda del
-                              teléfono y escribir el total a mano. Veintinueve veces.
-
-                              Un link `wa.me` no es un envío automático —WhatsApp no deja que un
-                              servidor mande mensajes sin la API oficial de Meta— pero abre el chat
-                              correcto con el mensaje ya escrito: el mes, el total, cuándo vence y
-                              a dónde transferir. Queda apretar enviar.
-
-                              Sin teléfono cargado no se dibuja: un botón que abre un chat
-                              equivocado es peor que no tener botón. */}
-                          {(() => {
-                            const llave = base ? firmarEnlace(f.liquidacion.id) : null;
-                            const aviso = mensajeDeAviso({
-                              urlPdf: llave ? `${base}/l/${llave}` : null,
-                              whatsapp: f.whatsapp,
-                              nombre: f.nombre,
-                              periodo,
-                              totalCent: f.liquidacion.totalCent,
-                              venceEl: venceDefault,
-                              moneda: operador.moneda,
-                              cobro,
-                            });
-                            return aviso ? (
-                              <AvisarWhatsApp
-                                href={aviso.href}
-                                accion={avisarPorWhatsApp}
-                                liquidacionId={f.liquidacion.id}
-                                nombre={f.nombre}
-                                avisada={f.liquidacion.avisadaEl !== null}
-                              />
-                            ) : null;
-                          })()}
-
                           {/* Cobrada de un toque. El caso normal es que pague el total, junto, y
                               el formulario de cobro pide importe, medio, comprobante y fecha:
                               cuatro campos para decir "sí, me pagó", por cada uno de treinta y
@@ -689,7 +605,7 @@ export default async function CierrePage({
             <p className="tenue" style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.5 }}>
               No se borra plata: los cargos siguen enteros en el libro, solo dejan de estar dentro de
               un papel numerado. Después podés volver a cerrar el mes cuando corresponda. Si alguna
-              liquidación ya se mandó —por mail o por WhatsApp—, o si ya entró un pago de este mes, no se deshace.
+              liquidación ya se mandó por mail, o si ya entró un pago de este mes, no se deshace.
             </p>
             <form action={reabrir} style={{ marginTop: 14 }}>
               <input type="hidden" name="periodo" value={periodo} />

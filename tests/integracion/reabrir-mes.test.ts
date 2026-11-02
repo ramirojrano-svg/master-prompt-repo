@@ -15,7 +15,6 @@ import { PrismaClient } from "@prisma/client";
 import { cierreCon, pendientesDeCierre } from "../../src/servicios/plata/cierre.ts";
 import { asentarIdempotente } from "../../src/servicios/plata/ledger.ts";
 import { cobrosCon } from "../../src/servicios/plata/cobros.ts";
-import { avisosCon } from "../../src/servicios/plata/aviso-whatsapp.ts";
 import { prisma } from "../../src/db/prisma.ts";
 import type { Actor } from "../../src/lib/actor.ts";
 import { insertarOcupacion, nuevoPool, reiniciarEsquema, seedBase, URL_DB } from "./db.ts";
@@ -24,7 +23,6 @@ const pgPool = nuevoPool();
 const db = new PrismaClient({ datasourceUrl: URL_DB });
 const { todos, reabrir, reabrirUna, cobrar } = cierreCon(db);
 const cobros = cobrosCon(db);
-const avisos = avisosCon(db);
 
 const owner: Actor = { usuarioId: "u1", operadorId: "op1", rol: "owner", inquilinoId: null };
 const profesional: Actor = { usuarioId: "u2", operadorId: "op1", rol: "inquilino_titular", inquilinoId: "in1" };
@@ -519,64 +517,4 @@ test("quien no tiene horas no reporta precios", async () => {
   const f = filas.find((x) => x.inquilinoId === "in1")!;
   assert.equal(f.horas, 0);
   assert.deepEqual(f.preciosHora, []);
-});
-
-// ── Dejar constancia de que se avisó por WhatsApp ───────────────────────────
-//
-// Acá se cobra por WhatsApp, así que el aviso sale por ahí y no por mail. La marca tiene que ser
-// LA MISMA que usa el envío por correo: si fueran dos, a quien se le mandó por WhatsApp le
-// llegaría igual el mail automático del último día hábil, y además se podría reabrir una
-// liquidación que el profesional ya tiene en el teléfono.
-
-test("marcar avisada deja la fecha y la fila lo muestra", async () => {
-  await mesCerrado();
-  const suya = await db.liquidacion.findFirstOrThrow({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
-
-  const r = await avisos.marcar(owner, { liquidacionId: suya.id });
-
-  assert.ok(r.ok && r.data.ok);
-  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
-  assert.ok(filas.find((f) => f.inquilinoId === "in1")!.liquidacion!.avisadaEl !== null);
-  assert.equal(filas.find((f) => f.inquilinoId === "in2")!.liquidacion!.avisadaEl, null, "el de al lado no");
-});
-
-test("volver a tocarlo no corre la fecha: queda cuándo se avisó de verdad", async () => {
-  await mesCerrado();
-  const suya = await db.liquidacion.findFirstOrThrow({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
-  await avisos.marcar(owner, { liquidacionId: suya.id });
-  const primera = (await db.liquidacion.findUniqueOrThrow({ where: { id: suya.id }, select: { avisadaEl: true } })).avisadaEl;
-
-  await avisos.marcar(owner, { liquidacionId: suya.id });
-
-  const despues = (await db.liquidacion.findUniqueOrThrow({ where: { id: suya.id }, select: { avisadaEl: true } })).avisadaEl;
-  assert.deepEqual(despues, primera);
-});
-
-test("avisar por WhatsApp impide reabrir, igual que avisar por mail", async () => {
-  // Es la misma marca a propósito: el profesional ya tiene el papel, venga por donde venga.
-  await mesCerrado();
-  const suya = await db.liquidacion.findFirstOrThrow({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
-  await avisos.marcar(owner, { liquidacionId: suya.id });
-
-  const r = await reabrirUna(owner, { liquidacionId: suya.id });
-  assert.ok(r.ok && !r.data.ok && r.data.error === "YA_AVISADA");
-});
-
-test("un profesional no puede marcar avisada la liquidación de nadie", async () => {
-  await mesCerrado();
-  const suya = await db.liquidacion.findFirstOrThrow({ where: { inquilinoId: "in1", periodo: MES }, select: { id: true } });
-
-  const r = await avisos.marcar(profesional, { liquidacionId: suya.id });
-  assert.equal(r.ok, false);
-  assert.equal((await db.liquidacion.findUniqueOrThrow({ where: { id: suya.id }, select: { avisadaEl: true } })).avisadaEl, null);
-});
-
-test("el teléfono llega a la fila ya normalizado para wa.me", async () => {
-  // Se guarda normalizado al cargarlo; la fila solo lo pasa. Si llegara crudo, el link no abriría.
-  await db.inquilino.update({ where: { id: "in1" }, data: { whatsapp: "5491122334455" } });
-  await mesCerrado();
-
-  const filas = await pendientesDeCierre({ operadorId: "op1", periodo: MES }, db);
-  assert.equal(filas.find((f) => f.inquilinoId === "in1")!.whatsapp, "5491122334455");
-  assert.equal(filas.find((f) => f.inquilinoId === "in2")!.whatsapp, null, "sin cargar es null, y no hay botón");
 });
