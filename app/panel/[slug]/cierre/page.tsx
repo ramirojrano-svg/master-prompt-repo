@@ -27,6 +27,7 @@ import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
 import { BotonEnviar } from "../BotonEnviar.tsx";
 import { AvisarWhatsApp } from "./AvisarWhatsApp.tsx";
 import { marcarComoAvisada, mensajeDeAviso } from "../../../../src/servicios/plata/aviso-whatsapp.ts";
+import { firmarEnlace } from "../../../../src/lib/enlace-firmado.ts";
 import { IconoDocumento } from "../../../Iconos.tsx";
 
 /**
@@ -103,6 +104,12 @@ export default async function CierrePage({
   // el dato aparece recién cuando llegás a su fila y no hay botón, y para entonces ya cerraste el
   // mes. Solo cuenta a los que tienen liquidación: al resto todavía no hay nada que mandarle.
   const sinWhatsApp = yaCerradas.filter((f) => !f.whatsapp);
+
+  // De dónde sale la dirección del PDF. En Vercel la da el propio despliegue; en una instalación
+  // con dominio propio se carga a mano. Sin ninguna de las dos, el mensaje sale igual pero sin
+  // link: un `https://undefined/...` sería peor que no mandarlo.
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : ""))
+    .replace(/\/+$/, "");
   const totalCerrado = yaCerradas.reduce((acc, f) => acc + (f.liquidacion?.totalCent ?? 0n), 0n);
   const totalCobrado = filas.reduce((acc, f) => acc + f.pagadoCent, 0n);
   // Lo emitido que todavía no entró. Puede dar negativo si alguien pagó por adelantado más de lo
@@ -562,7 +569,9 @@ export default async function CierrePage({
                               Sin teléfono cargado no se dibuja: un botón que abre un chat
                               equivocado es peor que no tener botón. */}
                           {(() => {
+                            const llave = base ? firmarEnlace(f.liquidacion.id) : null;
                             const aviso = mensajeDeAviso({
+                              urlPdf: llave ? `${base}/l/${llave}` : null,
                               whatsapp: f.whatsapp,
                               nombre: f.nombre,
                               periodo,

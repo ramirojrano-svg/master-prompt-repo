@@ -17,8 +17,14 @@
 // decía cuánto y no a dónde, así que el circuito terminaba igual en un WhatsApp preguntando el
 // alias.
 //
-// El PDF NO viaja en un link de wa.me: solo puede llevar texto. Para el detalle turno por turno
-// está el botón de compartir adentro de la liquidación, que sí adjunta el archivo.
+// EL PDF. Un link de `wa.me` solo puede llevar texto, así que el archivo no puede ir adjunto. Lo
+// que sí va es una dirección corta y firmada que lo abre: el profesional toca y ve su liquidación
+// en pantalla, sin entrar a la app ni tener usuario. La llave abre ESE documento, vence sola, y
+// está explicada en `enlace-firmado.ts`.
+//
+// El texto se queda igual aunque esté el link. Lo que hace falta para pagar —el total y el
+// alias— tiene que poder copiarse del mensaje: obligar a abrir un PDF para sacar un CBU es
+// exactamente el trabajo de más que esto viene a sacar.
 
 import { z } from "zod";
 import { type PrismaClient } from "@prisma/client";
@@ -51,6 +57,8 @@ export function mensajeDeAviso(a: {
   venceEl: string;
   moneda: string;
   cobro: Pick<DatosDeCobro, "titular" | "alias" | "cbu" | "cuit" | "banco">;
+  /** La dirección que abre el PDF. Si no se pasa, el mensaje sale igual, solo sin el link. */
+  urlPdf?: string | null;
 }): MensajeAviso | null {
   if (!a.whatsapp) return null;
 
@@ -80,6 +88,10 @@ export function mensajeDeAviso(a: {
   if (a.cobro.cuit) comoPagar.push(`CUIT: ${a.cobro.cuit}`);
   if (a.cobro.banco) comoPagar.push(`Banco: ${a.cobro.banco}`);
   if (comoPagar.length) lineas.push("", "Para transferir:", ...comoPagar);
+
+  // El link va al final y en su propio renglón: WhatsApp lo detecta y lo muestra como enlace, y
+  // pegado a otra palabra se lo come o lo corta.
+  if (a.urlPdf) lineas.push("", "Tu liquidación en PDF:", a.urlPdf);
 
   lineas.push("", "Cualquier duda, avisame. ¡Gracias!");
 

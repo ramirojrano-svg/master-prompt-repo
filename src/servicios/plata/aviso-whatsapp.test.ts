@@ -78,3 +78,27 @@ test("el texto viaja escapado, o el link se corta en el primer salto de línea",
   // Y lo que se escapó es exactamente el texto que se muestra.
   assert.equal(decodeURIComponent(m.href.split("?text=")[1]!), m.texto);
 });
+
+test("el link al PDF va al final y en su propio renglón", () => {
+  // WhatsApp detecta el enlace solo si está suelto: pegado a otra palabra se lo come o lo corta.
+  const m = mensajeDeAviso({ ...base, urlPdf: "https://emoapp-beta.vercel.app/l/abc.123.xyz" })!;
+  const renglones = m.texto.split("\n");
+  assert.ok(renglones.includes("https://emoapp-beta.vercel.app/l/abc.123.xyz"), "el link, solo en su renglón");
+  assert.match(m.texto, /Tu liquidación en PDF:/);
+});
+
+test("sin link, el mensaje sale igual y completo", () => {
+  // Si no hay dirección configurada, mandar "https://undefined/..." sería peor que no mandar nada.
+  const m = mensajeDeAviso({ ...base, urlPdf: null })!;
+  assert.doesNotMatch(m.texto, /PDF/);
+  assert.match(m.texto, /255\.600,00/);
+  assert.match(m.texto, /Alias: espacio\.moca\.ars/);
+});
+
+test("con link, el total y el alias SIGUEN en el texto", () => {
+  // Obligar a abrir un PDF para sacar un CBU es el trabajo de más que esto viene a sacar.
+  const m = mensajeDeAviso({ ...base, urlPdf: "https://x.test/l/t" })!;
+  // El separador después del "$" lo pone Intl y es un espacio especial: se compara sin él.
+  assert.match(m.texto, /Total:.*255\.600,00/);
+  assert.match(m.texto, /CBU: 0170099220000067797777/);
+});
