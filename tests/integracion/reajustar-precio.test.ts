@@ -611,3 +611,77 @@ test("'Todos menos…' usa UNA sola fecha para el general y las excepciones", as
   const distintas = new Set(abiertas.map((t) => t.vigenteDesde.getTime()));
   assert.equal(distintas.size, 1, "todas las del lote arrancan en el mismo instante");
 });
+
+// ── No avisar sobre meses ya facturados ─────────────────────────────────────
+//
+// El aviso de "precio sin aplicar" miraba toda la historia. Una reserva vieja, ya cobrada y
+// pagada, quedó con el precio que regía cuando se emitió el papel; que hoy le corresponda otro no
+// es un pendiente, es historia. Sin corte, el aviso se quedaba para siempre sobre liquidaciones
+// que nadie va a rehacer: no había forma de hacerlo desaparecer, y el ruido terminaba tapando los
+// avisos que sí hay que atender.
+
+/** Una reserva en una fecha dada, con su cargo, al precio que se le indique. */
+async function reservaVieja(id: string, inicio: Date, precioCent: bigint) {
+  await insertarOcupacion(pgPool, {
+    id, salaId: "sa1", inquilinoId: "in1",
+    inicio: inicio.toISOString(), fin: new Date(inicio.getTime() + 3_600_000).toISOString(),
+  });
+  await db.ocupacion.update({ where: { id }, data: { precioHoraCent: precioCent, importeCent: precioCent } });
+  await asentarIdempotente(db, {
+    operadorId: "op1", inquilinoId: "in1", concepto: "cargo_uso", montoCent: precioCent, moneda: "ARS",
+    periodo: inicio.toISOString().slice(0, 7), fechaHecho: inicio, clave: `cargo_uso:${id}`, reservaId: id,
+  });
+}
+
+test("el desajuste de un mes viejo no se informa si se pide desde hoy", async () => {
+  await db.tarifa.create({
+    data: {
+      operadorId: "op1", salaId: null, inquilinoId: "in1", nombre: "vigente",
+      precioHoraCent: 910_000n, vigenteDesde: new Date(Date.now() - 200 * 86_400_000),
+    },
+  });
+  const haceTresMeses = new Date(Date.now() - 90 * 86_400_000);
+  await reservaVieja("vieja", haceTresMeses, 800_000n);
+
+  const sinCorte = await desajusteDelCentro({ operadorId: "op1" }, db);
+  assert.equal(sinCorte.reajustables.length, 1, "sin corte, la vieja aparece");
+
+  const conCorte = await desajusteDelCentro(
+    { operadorId: "op1", desde: new Date(Date.now() - 10 * 86_400_000) },
+    db,
+  );
+  assert.equal(conCorte.reajustables.length, 0, "con corte, lo viejo es historia y no se avisa");
+  assert.equal(conCorte.selladas.length, 0);
+});
+
+test("el corte no esconde lo de ahora en adelante", async () => {
+  // Lo que importa tiene que seguir apareciendo: el corte saca ruido, no señal.
+  await db.tarifa.create({
+    data: {
+      operadorId: "op1", salaId: null, inquilinoId: "in1", nombre: "vigente",
+      precioHoraCent: 910_000n, vigenteDesde: new Date(Date.now() - 200 * 86_400_000),
+    },
+  });
+  await reservaVieja("vieja", new Date(Date.now() - 90 * 86_400_000), 800_000n);
+  await reservaVieja("proxima", new Date(Date.now() + 5 * 86_400_000), 800_000n);
+
+  const r = await desajusteDelCentro({ operadorId: "op1", desde: new Date(Date.now() - 10 * 86_400_000) }, db);
+
+  assert.equal(r.reajustables.length, 1);
+  assert.equal(r.reajustables[0]!.ocupacionId, "proxima");
+});
+
+test("un corte anterior a la tarifa más vieja no amplía la búsqueda", async () => {
+  // El corte solo puede ACHICAR: pedir desde el año pasado no hace mirar reservas que resuelven a
+  // una tarifa que ya no existe, que es trabajo de más para el mismo resultado.
+  await db.tarifa.create({
+    data: {
+      operadorId: "op1", salaId: null, inquilinoId: "in1", nombre: "vigente",
+      precioHoraCent: 910_000n, vigenteDesde: new Date(Date.now() - 30 * 86_400_000),
+    },
+  });
+  await reservaVieja("anterior", new Date(Date.now() - 60 * 86_400_000), 800_000n);
+
+  const r = await desajusteDelCentro({ operadorId: "op1", desde: new Date(Date.now() - 365 * 86_400_000) }, db);
+  assert.equal(r.reajustables.length, 0, "esa reserva es anterior a toda tarifa abierta");
+});

@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { Cabecera } from "../Cabecera.tsx";
-import { fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
+import { rangoDiaEnZona, fechaEnZona } from "../../../../src/dominio/motor/zona.ts";
 import { horasYMinutos } from "../../../../src/dominio/reporte.ts";
 import { abonosVigentes, cobrarAbonosDelMes, ponerAbonoMensual } from "../../../../src/servicios/config/abonos.ts";
 import { actorDeSesion } from "../../../../src/lib/sesion.ts";
@@ -71,7 +71,14 @@ export default async function TarifasPage({
   const sinPrecio = await reservasSinPrecio(actor.operadorId);
   // Las que quedaron con un precio distinto al que rige hoy. Se calcula siempre: el aviso solo
   // aparece cuando hay algo que aplicar, así que en un centro al día no se ve nada.
-  const { reajustables: desajustadas, selladas } = await desajusteDelCentro({ operadorId: actor.operadorId });
+  // Desde el 1° del mes en curso: lo de meses ya facturados es historia, no un pendiente. Antes se
+  // miraba todo, y el aviso de "precio sin aplicar" se quedaba para siempre sobre liquidaciones
+  // viejas que nadie va a rehacer — ruido permanente que tapa los avisos que sí hay que atender.
+  const inicioDelMes = rangoDiaEnZona(`${mesActual}-01`, sede.zonaHoraria)?.inicio;
+  const { reajustables: desajustadas, selladas } = await desajusteDelCentro({
+    operadorId: actor.operadorId,
+    desde: inicioDelMes,
+  });
 
   // Quién tiene precio PROPIO. Es el dato que faltaba para que la pantalla no mienta: un precio
   // general NO les llega —el suyo le gana por ser más específico, que es lo correcto— pero hasta

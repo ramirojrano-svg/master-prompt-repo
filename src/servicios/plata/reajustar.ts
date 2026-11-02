@@ -63,7 +63,20 @@ export type FilaSellada = {
  * mueve plata tiene que poder decir cuánta antes de que lo aprieten.
  */
 export async function desajusteDelCentro(
-  a: { operadorId: string; inquilinoId?: string },
+  a: {
+    operadorId: string;
+    inquilinoId?: string;
+    /**
+     * Desde cuándo mirar. Sirve para no avisar sobre meses YA FACTURADOS.
+     *
+     * Una reserva vieja, cobrada y pagada, quedó con el precio que regía cuando se emitió el
+     * papel. Que hoy le corresponda otro no es un problema que haya que arreglar: es historia. Sin
+     * este corte, la pantalla avisaba para siempre sobre meses cerrados, el aviso no se podía
+     * hacer desaparecer haciendo nada, y terminaba siendo ruido que tapa los avisos que SÍ
+     * importan.
+     */
+    desde?: Date;
+  },
   db: PrismaClient = prisma,
 ): Promise<{ reajustables: FilaReajuste[]; selladas: FilaSellada[] }> {
   const tarifas = await db.tarifa.findMany({
@@ -90,7 +103,8 @@ export async function desajusteDelCentro(
   // ABIERTAS resuelve a `null` y se descarta igual, así que se pide desde ahí. Es el mismo
   // resultado leyendo una fracción de la agenda, en vez de la historia entera en cada carga de la
   // pantalla de Precios.
-  const desde = tarifas.reduce((min, t) => (t.vigenteDesde < min ? t.vigenteDesde : min), tarifas[0]!.vigenteDesde);
+  const masVieja = tarifas.reduce((min, t) => (t.vigenteDesde < min ? t.vigenteDesde : min), tarifas[0]!.vigenteDesde);
+  const desde = a.desde && a.desde > masVieja ? a.desde : masVieja;
 
   const [ocupaciones, fichas] = await Promise.all([
     db.ocupacion.findMany({
